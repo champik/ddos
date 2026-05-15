@@ -4,36 +4,44 @@
 
 ---
 
-## TRIM — FFmpeg обрізка dead air
+## TRIM — Silence Detection + Re-encode
 
-Для кожного кліпу з episode-plan.json:
+Для кожного кліпу з episode-plan.json clipOrder:
+
+### 1. Знайти точки обрізання через silencedetect
 
 ```bash
-# Отримай тривалість
+SILENCE_OUT=$(ffmpeg -i "downloads/<clipId>.mp4" \
+  -af "silencedetect=noise=-40dB:duration=0.3" \
+  -f null - 2>&1)
+```
+
+Парсинг:
+- `START` = перше `silence_end: X.XX` → кінець початкової тиші = початок контенту
+- `END` = останнє `silence_start: Y.YY` → початок кінцевої тиші = кінець контенту
+
+Якщо silencedetect не знайшов жодного silence event → `START=0`, `END=<full duration>` (повний кліп без обрізання).
+
+### 2. Re-encode з виправленими timestamps (НІКОЛИ не використовувати -c copy після -ss)
+
+```bash
 DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "downloads/<clipId>.mp4")
+# START і END вже розраховані з silencedetect або 0/DURATION
 
-# Розрахуй trim points:
-# - якщо duration > 20s: пропустити перші 5% (max 2s)
-# - обрізати останні 3% (max 1.5s)
-START=<calculated>
-END=<calculated>
-
-ffmpeg -i "downloads/<clipId>.mp4" \
-  -ss $START -to $END \
-  -c copy \
-  -avoid_negative_ts make_zero \
+ffmpeg -i "downloads/<clipId>.mp4" -ss $START -to $END \
+  -vf "setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
+  -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
+  -c:v libx264 -preset fast -crf 23 \
+  -c:a aac -b:a 192k -ar 48000 \
+  -r 30 \
   -y "processed/<clipId>/clean.mp4"
 ```
 
-Потім нормалізуй аудіо:
-```bash
-ffmpeg -i "processed/<clipId>/clean.mp4" \
-  -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
-  -c:v copy \
-  -y "processed/<clipId>/normalized.mp4"
-```
+Якщо `processed/<clipId>/clean.mp4` вже існує → пропустити.
 
-Якщо normalized.mp4 вже існує — пропустити.
+Видалити `processed/<clipId>/normalized.mp4` якщо існує (більше не потрібен — loudnorm вбудовано).
+
+Оновити `state.stages.trim = "done"`.
 
 ---
 
