@@ -1,4 +1,6 @@
+auth/
 .env
+.worktrees/
 projects/*/downloads/
 projects/*/exports/*.mp4
 projects/*/exports/shorts/
