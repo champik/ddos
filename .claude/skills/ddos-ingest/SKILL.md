@@ -1,72 +1,167 @@
 # Skill: ddos-ingest
 
-Отримай кліпи з Twitch, відфільтруй, завантаж через yt-dlp.
+Отримай кліпи з Twitch, відфільтруй, розрахуй pre-score, завантаж найкращі.
 
 ---
 
 ## INGEST — Twitch API
 
 ### Отримати токен
+
 ```bash
 curl -s -X POST "https://id.twitch.tv/oauth2/token" \
   -d "client_id=$TWITCH_CLIENT_ID" \
   -d "client_secret=$TWITCH_CLIENT_SECRET" \
   -d "grant_type=client_credentials"
 ```
-Зберегти access_token.
 
-### Запит кліпів по категорії
+Зберегти `access_token`.
+
+### Категорії
+
+**Core (завжди включати):**
+```
+509658 = Just Chatting
+509672 = IRL
+32399  = Counter-Strike 2
+516575 = Valorant
+```
+
+**Dynamic (запитати щоразу):**
+```bash
+curl -s "https://api.twitch.tv/helix/games/top?first=20" \
+  -H "Client-ID: $TWITCH_CLIENT_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+З топ-20 взяти перші 12, виключивши:
+- id вже є в core
+- name (lowercase) містить: slots, casino, gambling, betting, poker
+
+Результат: ~14–16 категорій.
+
+### Запит кліпів
+
+Для кожної категорії:
 ```
 GET https://api.twitch.tv/helix/clips
   ?game_id=<gameId>
-  &started_at=<ISO час - N годин>
+  &started_at=<ISO: now - $HOURS годин>
   &first=20
   &after=<cursor>
-
-Headers:
-  Client-ID: $TWITCH_CLIENT_ID
-  Authorization: Bearer <token>
 ```
 
-### Гібридний sampling для кожної категорії
+**Hybrid sampling:**
+- Top range: 1 сторінка (20 кліпів)
+- Mid range: пропустити 1 сторінку cursor, взяти 2 сторінки (40 кліпів)
+- Hidden gems (для 4 random категорій): пропустити 3 сторінки, взяти 1 сторінку (20 кліпів)
 
-**Top range** (перша сторінка, 20 кліпів):
-- Запит без cursor
+Мета: **300–500 metadata кандидатів** загалом.
 
-**Mid range** (позиції 21–80):
-- Пропустити 1 сторінку (зберегти cursor), запросити ще 3 сторінки
-
-**Hidden gems** (позиції 81–160, для 3 випадкових категорій):
-- Пропустити 4 сторінки, запросити 2 сторінки
-
-Зберегти всі кліпи у `projects/<runId>/clips/raw-clips.json`.
-Оновити `state.counts.raw`.
+Зберегти у `clips/raw-clips.json`. Оновити `state.counts.raw`.
 
 ---
 
-## FILTER
+## FILTER — Metadata фільтрація (до download)
 
-Відхилити кліп якщо будь-яка умова:
+**Офіційні org-акаунти (відхиляти):**
+```
+esl_csgo, eslcs, blasttv, pgl, riotgames, valorant, esl_dota2,
+weplay_esports, faceit, dreamhack, esltv, iem
+```
+
+**Відхиляти кліп якщо будь-яка умова:**
 
 | Умова | Причина |
 |-------|---------|
-| language == "ru" | excluded_language |
-| title містить: русский/россия/russian/путін/рф | ru_keyword |
-| game назва містить: Slots/Casino/Gambling/Betting | gambling |
-| duration < 6 | too_short |
-| duration > 90 | too_long |
-| broadcaster_name вже зустрівся >= 3 рази | streamer_limit |
+| `language == "ru"` | excluded_language |
+| title (lowercase) містить: русский/россия/russian/путін/рф | ru_keyword |
+| `broadcaster_name` (lowercase) в org-списку | tournament_official |
+| title (lowercase) містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event |
+| game_name (lowercase) містить: slots/casino/gambling/betting/poker | gambling |
+| `duration < 6` або `duration > 90` | duration |
 
-Зберегти прийняті у `filtered-clips.json`, відхилені у `rejected-clips.json`.
+Зберегти у `filtered-clips.json` і `rejected-clips.json`.
 Оновити `state.counts.filtered`.
+
+---
+
+## PRE-SCORE — Відбір кліпів для download
+
+Для кожного filtered кліпу розрахувати `preScore` (0–100):
+
+```javascript
+function calcPreScore(clip, seenBroadcasters) {
+  // viewsScore: log10 scale, 500k views = 100
+  const viewsScore = Math.min(100, Math.log10(clip.view_count + 1) / Math.log10(500000) * 100);
+
+  // categoryScore: core = 85–90, dynamic = 60
+  const coreIds = ['509658','509672','32399','516575'];
+  const categoryScore = coreIds.includes(clip.game_id) ? 88 : 60;
+
+  // durationScore: 15–60s = 100, 6–15s = 60, 60–90s = 70
+  const d = clip.duration;
+  const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
+
+  // diversityScore: штраф за повторення стрімера
+  const seen = seenBroadcasters.get(clip.broadcaster_name) || 0;
+  const diversityScore = seen === 0 ? 100 : seen === 1 ? 75 : seen === 2 ? 45 : 0;
+
+  // noveltyScore: штраф за старі кліпи
+  const ageH = (Date.now() - new Date(clip.created_at)) / 3600000;
+  const noveltyScore = ageH <= 24 ? 100 : ageH <= 48 ? 65 : 35;
+
+  // languageScore
+  const languageScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 90 : 50;
+
+  // riskPenalty
+  const title = (clip.title || '').toLowerCase();
+  const riskPenalty = (title.includes('music') || title.includes('song')) ? 15 : 0;
+
+  return (
+    viewsScore    * 0.30 +
+    categoryScore * 0.20 +
+    durationScore * 0.15 +
+    diversityScore* 0.20 +
+    noveltyScore  * 0.10 +
+    languageScore * 0.05 -
+    riskPenalty
+  );
+}
+
+// Порахувати preScore для всіх, трекати кількість по broadcaster
+const broadcasterCount = new Map();
+const scored = filteredClips.map(clip => {
+  const score = calcPreScore(clip, broadcasterCount);
+  broadcasterCount.set(clip.broadcaster_name, (broadcasterCount.get(clip.broadcaster_name) || 0) + 1);
+  return { ...clip, preScore: score };
+}).sort((a, b) => b.preScore - a.preScore);
+```
+
+**Hybrid sampling для download (80 кліпів):**
+```
+N = 80
+top35  = scored.slice(0, Math.floor(N * 0.35))              // топ 28
+mid35  = scored.slice(Math.floor(scored.length * 0.30),
+                      Math.floor(scored.length * 0.70))
+         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.35))  // mid 28
+gems15 = scored.slice(Math.floor(scored.length * 0.70),
+                      Math.floor(scored.length * 0.90))
+         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.15))  // gems 12
+small10 = scored.filter(c => c.view_count < 10000)
+          .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.10)) // small 8
+trending5 = scored.filter(c => !coreIds.includes(c.game_id))
+            .slice(0, Math.floor(N * 0.05))                              // trending 4
+
+toDownload = dedup([...top35, ...mid35, ...gems15, ...small10, ...trending5]).slice(0, 80)
+```
+
+Зберегти у `clips/prescore-candidates.json`. Оновити `state.stages.prescore = "done"`.
 
 ---
 
 ## DOWNLOAD
 
-Завантажити максимум 50 кліпів (найвищий view_count з filtered).
-
-Для кожного кліпу:
 ```bash
 yt-dlp \
   --no-playlist \
@@ -77,10 +172,9 @@ yt-dlp \
   "<clip_url>"
 ```
 
-- Якщо файл вже існує — пропустити (кешування)
-- Якщо помилка — записати в rejected і продовжити
-- Паралельно: максимум 3 одночасно
+- Якщо файл вже існує → пропустити
+- Якщо помилка → записати в rejected, продовжити
+- Паралельно: max 5 одночасно
+- Limit: 80 кліпів
 
-Зберегти `downloaded-clips.json` зі списком успішних.
-Оновити `state.counts.downloaded`.
-Оновити `state.stages.download = "done"`.
+Зберегти `downloaded-clips.json`. Оновити `state.counts.downloaded`, `state.stages.download = "done"`.

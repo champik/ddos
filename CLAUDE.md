@@ -75,11 +75,15 @@
 ```
 
 ### Ліміти
-- maxClipCandidates: 150
-- maxDownloads: 50
-- maxClipsPerStreamer: 3
+- maxClipCandidates: 500
+- maxDownloads: 80
+- maxClipsPerEpisode: 12–18
+- maxClipsPerStreamer: 3 (у episode plan)
 - minDuration: 6s / maxDuration: 90s
-- targetEpisodeLength: 9–12 хвилин
+- targetEpisodeMin: 720с (12 хв)
+- targetEpisodeMax: 900с (15 хв)
+- maxShorts: 10
+- maxDancingClipsInFinale: 10
 
 ### Фільтри — ЗАВЖДИ відхиляти
 - language == "ru"
@@ -116,20 +120,25 @@ projects/<runId>/
 │   ├── transcript.json
 │   ├── score.json
 │   ├── hook.txt
-│   ├── clean.mp4
-│   ├── normalized.mp4
-│   ├── streamer-overlay.png
-│   ├── overlayed.mp4
+│   ├── clean.mp4                      # trimmed + re-encoded + loudnorm
+│   ├── overlayed.mp4                  # clean.mp4 + animated WebM broadcaster overlay
 │   ├── captions-longform.ass
 │   └── captions-vertical.ass
+├── cache/overlays/<broadcaster>.webm  # cached animated streamer overlays
 ├── edit/
 │   ├── episode-plan.json
 │   ├── shorts-selection.json
-│   └── reconnecting.mp4
+│   ├── captions-segments.json
+│   ├── episode.ass                    # merged episode captions
+│   ├── reconnecting-panel.webm        # pre-rendered reconnecting WebM
+│   ├── reconnecting.mp4               # 1s glitch moment
+│   ├── chill-finale.mp4               # singing + dancing finale (optional)
+│   └── concat-list.txt
 ├── exports/
 │   ├── episode-NNN.mp4
 │   ├── thumbnail.png
 │   ├── metadata.json
+│   ├── analytics.json
 │   └── shorts/<clipId>.mp4
 └── review/review.html
 ```
@@ -151,12 +160,14 @@ assets/thumbnail-template/logo.svg         DDOS лого
 
 ## Skills
 
+- `ddos-analytics` — YouTube Analytics → Notion tracking
 - `ddos-ingest`    — Twitch API + filter + yt-dlp download
 - `ddos-score`     — WhisperX transcribe + Claude scoring + hooks
 - `ddos-render`    — FFmpeg trim + overlays + long-form render
 - `ddos-shorts`    — vertical crop + captions + shorts render
 - `ddos-thumbnail` — Puppeteer thumbnail + metadata generation
 - `ddos-review`    — review.html генерація
+- `ddos-publish`   — YouTube upload + OAuth2 publish flow
 
 ---
 

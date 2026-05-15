@@ -11,12 +11,12 @@
 З openerClipId (з episode-plan.json) витягни кадр на позиції 60% тривалості:
 
 ```bash
-DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/<openerClipId>/normalized.mp4")
+DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/<openerClipId>/clean.mp4")
 TIMESTAMP=$(echo "$DURATION * 0.6" | bc)
 
 ffmpeg \
   -ss $TIMESTAMP \
-  -i "processed/<openerClipId>/normalized.mp4" \
+  -i "processed/<openerClipId>/clean.mp4" \
   -frames:v 1 -q:v 2 \
   -y "exports/best-frame.png"
 ```

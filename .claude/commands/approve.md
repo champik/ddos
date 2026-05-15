@@ -1,17 +1,11 @@
-# Команда: /ddos approve
+# Команда: /ddos approve <runId>
 
-Апрувить run для upload на YouTube.
-
-## Виконання
-
-1. Читай `projects/<runId>/state.json`
-2. Перевір що stage "review" == "done"
-3. Якщо ні — повідомити: "Спочатку дочекайся завершення pipeline"
-4. Встанови `state.status = "approved"`
-5. Збережи state.json
-6. Вивести:
-```
-✓ Run <runId> approved
-
-Завантажити на YouTube: /ddos upload <runId>
-```
+1. Прочитати `projects/<runId>/state.json`
+2. Перевірити `state.outputs.youtubeVideoId` — якщо порожній, вивести помилку
+3. Опублікувати відео:
+   ```bash
+   VIDEO_ID=<state.outputs.youtubeVideoId>
+   node scripts/youtube-upload.js publish-video "$VIDEO_ID"
+   ```
+4. Оновити `state.status = "published"`, `state.approvedAt = <ISO datetime>`
+5. Вивести: `Епізод #<N> опублікований: https://youtu.be/$VIDEO_ID`
