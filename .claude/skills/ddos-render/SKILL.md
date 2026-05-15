@@ -229,6 +229,105 @@ node scripts/merge-captions.js "edit/captions-segments.json" "edit/episode.ass"
 
 ---
 
+## CHILL FINALE
+
+Читати `episode-plan.json.chillPlan`.
+
+### Якщо type == "skip"
+Пропустити. `edit/chill-finale.mp4` не створювати. Concat-list закінчуватиметься на останній групі.
+
+### Якщо type == "singing_then_dancing" або "dancing_montage"
+
+**Підготовка singing clip (тільки для singing_then_dancing):**
+
+```bash
+SING_ID=<chillPlan.singingClipId>
+SING_SRC="assets/chill-archive/singing/${SING_ID}.mp4"
+[ -f "$SING_SRC" ] || SING_SRC="processed/${SING_ID}/clean.mp4"
+
+if chillPlan.extractFromVod == false:
+  ffmpeg -i "$SING_SRC" -t 15 \
+    -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS" \
+    -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
+    -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -ar 48000 -r 30 \
+    -y "edit/chill-singing.mp4"
+
+if chillPlan.extractFromVod == true:
+  # 1. Отримати vod_offset
+  VOD_DATA=$(curl -s "https://api.twitch.tv/helix/clips?id=$SING_ID" \
+    -H "Client-ID: $TWITCH_CLIENT_ID" -H "Authorization: Bearer $TOKEN")
+  VOD_ID=$(echo $VOD_DATA | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).data[0].video_id))")
+  VOD_OFFSET=$(echo $VOD_DATA | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).data[0].vod_offset))")
+
+  # 2. Скачати VOD сегмент
+  yt-dlp "https://www.twitch.tv/videos/$VOD_ID" \
+    --download-sections "*${VOD_OFFSET}s-$((VOD_OFFSET+90))s" \
+    --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best" \
+    --output "edit/chill-vod-raw.mp4"
+
+  # 3. Trim і encode
+  ffmpeg -i "edit/chill-vod-raw.mp4" -t 15 \
+    -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS" \
+    -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
+    -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -ar 48000 -r 30 \
+    -y "edit/chill-singing.mp4"
+```
+
+**Підготовка dancing clips:**
+
+Для кожного clipId в `chillPlan.dancingClipIds` (до 10):
+```bash
+DANCE_SRC="assets/chill-archive/dancing/${CLIP_ID}.mp4"
+[ -f "$DANCE_SRC" ] || DANCE_SRC="processed/${CLIP_ID}/clean.mp4"
+
+ffmpeg -i "$DANCE_SRC" -t 5 \
+  -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setpts=PTS-STARTPTS" \
+  -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
+  -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k -ar 48000 -r 30 \
+  -y "edit/chill-dance-${N}.mp4"
+```
+
+**Склейка (singing_then_dancing):**
+
+```bash
+# Concat-list для dancing clips (без аудіо — аудіо буде від singing)
+echo "file '...chill-dance-1.mp4'" >> edit/dancing-list.txt
+# ... для кожного dance clip
+
+ffmpeg -f concat -safe 0 -i edit/dancing-list.txt \
+  -an -c:v copy "edit/chill-dancing-video.mp4"
+
+# Аудіо від singing від секунди 10 до кінця
+DANCE_DUR=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 edit/chill-dancing-video.mp4)
+ffmpeg -i "edit/chill-singing.mp4" -ss 10 -t $DANCE_DUR \
+  -vn -c:a aac -b:a 192k -ar 48000 "edit/chill-singing-audio.mp4"
+
+# Накласти аудіо від singing на відео танців
+ffmpeg -i "edit/chill-dancing-video.mp4" -i "edit/chill-singing-audio.mp4" \
+  -map 0:v -map 1:a \
+  -c:v copy -c:a aac -b:a 192k \
+  -shortest "edit/chill-dancing-mixed.mp4"
+
+# Фінальний concat: 15с спів + танці з аудіо співу
+cat > edit/chill-final-list.txt << 'EOF'
+file 'edit/chill-singing.mp4'
+file 'edit/chill-dancing-mixed.mp4'
+EOF
+ffmpeg -f concat -safe 0 -i edit/chill-final-list.txt \
+  -c copy "edit/chill-finale.mp4"
+```
+
+**Склейка (dancing_montage):**
+```bash
+# Просто concat dancing clips з їх оригінальним аудіо
+ffmpeg -f concat -safe 0 -i edit/dancing-list.txt \
+  -c copy "edit/chill-finale.mp4"
+```
+
+Оновити `state.stages.chillFinale = "done"`.
+
+---
+
 ## RENDER LONG-FORM
 
 ### Крок 1: Валідація episode-plan.json
