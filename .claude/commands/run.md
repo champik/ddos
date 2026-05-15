@@ -22,11 +22,27 @@
   "startedAt": "<ISO>",
   "status": "running",
   "stages": {
-    "ingest": "pending", "filter": "pending", "download": "pending",
-    "transcribe": "pending", "score": "pending", "plan": "pending",
-    "trim": "pending", "hooks": "pending", "captions": "pending",
-    "overlays": "pending", "renderLong": "pending", "renderShorts": "pending",
-    "thumbnail": "pending", "metadata": "pending", "review": "pending"
+    "analytics": "pending",
+    "ingest": "pending",
+    "filter": "pending",
+    "prescore": "pending",
+    "download": "pending",
+    "transcribe": "pending",
+    "score": "pending",
+    "plan": "pending",
+    "hooks": "pending",
+    "trim": "pending",
+    "effects": "pending",
+    "overlays": "pending",
+    "captions": "pending",
+    "reconnecting": "pending",
+    "chillFinale": "pending",
+    "renderLong": "pending",
+    "renderShorts": "pending",
+    "thumbnail": "pending",
+    "metadata": "pending",
+    "review": "pending",
+    "publish": "pending"
   },
   "counts": { "raw": 0, "filtered": 0, "downloaded": 0, "scored": 0 },
   "outputs": { "longformPath": null, "thumbnailPath": null, "shortsPaths": [] }
@@ -40,12 +56,14 @@
 Якщо stage "failed" — записати помилку і **продовжувати** далі якщо можливо.
 
 **Порядок:**
-1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай ingest + filter + download
-2. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score + plan + hooks
-3. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай trim + overlays + render long-form
-4. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай render shorts + captions
-5. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
-6. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
+1. Прочитай `.claude/skills/ddos-analytics/SKILL.md` → виконай analytics (якщо є попередні runs з youtubeVideoId)
+2. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай ingest + filter + prescore + download
+3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score + plan + hooks
+4. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай trim + effects + overlays + captions merge + reconnecting + chill finale + render long-form + render shorts
+5. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions for shorts
+6. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
+7. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
+8. Прочитай `.claude/skills/ddos-publish/SKILL.md` → виконай upload YouTube
 
 ### Крок 3 — Фінальний звіт
 
