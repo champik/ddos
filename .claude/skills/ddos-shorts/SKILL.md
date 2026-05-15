@@ -52,34 +52,39 @@ Hot слова (жовті): no, bro, what, wait, oh, stop, go, yes, wtf, litera
 
 ---
 
-## RENDER SHORTS — 1080×1920
+## RENDER SHORTS — 1080×1920 Background Blur (без чорних смуг)
 
 Для кожного clipId з `edit/shorts-selection.json`:
 
 ```bash
-# Smart vertical crop:
-# 1. Scale щоб ширина = 1920 (зберегти aspect)
-# 2. Crop центральні 1080×1080
-# 3. Pad до 1080×1920 (чорні смуги зверху/знизу)
-# 4. Burn ASS субтитри
-
+INPUT="processed/<clipId>/clean.mp4"
 CAPTIONS="processed/<clipId>/captions-vertical.ass"
 
-ffmpeg -i "processed/<clipId>/normalized.mp4" \
-  -vf "
-    scale=1920:1080:force_original_aspect_ratio=increase,
-    crop=1080:1080:(iw-1080)/2:(ih-1080)/2,
-    pad=1080:1920:0:(oh-ih)/2:black,
-    ass=${CAPTIONS}
+# Побудова caption filter (порожній якщо файл відсутній)
+if [ -f "$CAPTIONS" ]; then
+  CAPTION_FILTER=",ass=${CAPTIONS}"
+else
+  CAPTION_FILTER=""
+fi
+
+ffmpeg -i "$INPUT" \
+  -filter_complex "
+    [0:v]split[main][bg];
+    [bg]scale=1080:1920:force_original_aspect_ratio=increase,
+        crop=1080:1920,
+        boxblur=20:5,
+        eq=brightness=-0.3[blurred];
+    [main]scale=1080:608[fg];
+    [blurred][fg]overlay=(W-w)/2:(H-h)/2${CAPTION_FILTER}[out]
   " \
-  -c:v h264_nvenc -preset p4 -cq 24 \
-  -c:a aac -b:a 128k \
+  -map "[out]" -map "0:a" \
+  -c:v libx264 -preset fast -crf 24 \
+  -c:a aac -b:a 128k -ar 48000 \
   -movflags +faststart \
   -y "exports/shorts/<clipId>.mp4"
 ```
 
-Якщо captions-vertical.ass не існує — рендерити без субтитрів.
-Якщо NVENC не доступний — `libx264 -preset fast -crf 24`.
+Якщо NVENC доступний: замінити `-c:v libx264 -preset fast -crf 24` на `-c:v h264_nvenc -preset p4 -cq 24`.
 
 Зберегти список у `state.outputs.shortsPaths`.
 Оновити `state.stages.renderShorts = "done"`.
