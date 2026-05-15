@@ -1,0 +1,8 @@
+.env
+projects/*/downloads/
+projects/*/exports/*.mp4
+projects/*/exports/shorts/
+projects/
+node_modules/
+__pycache__/
+*.pyc
