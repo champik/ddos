@@ -20,13 +20,17 @@ python3 scripts/transcribe.py \
 
 ---
 
-## SCORE — Claude оцінка
+## SCORE — Claude оцінка (13 вимірів + editingNotes)
 
-Для кожного кліпу викликай Claude API з таким промптом:
+Для кожного кліпу з downloaded-clips.json:
 
+1. Прочитати `processed/<clipId>/transcript.json` якщо існує (витяг перших 500 символів)
+2. Оцінити безпосередньо в поточній розмові:
+
+**Scoring prompt:**
 ```
-Ти оцінюєш Twitch кліп для "Daily Dose Of Stream" — щоденний YouTube дайджест стрімерської культури.
-Контент: смішний, комфортний, курований. Не токсичний, не overproduced.
+Ти оцінюєш Twitch кліп для "Daily Dose Of Stream".
+Контент: смішний, комфортний, курований. Не токсичний.
 
 Кліп:
 - Стрімер: <broadcaster_name>
@@ -34,11 +38,11 @@ python3 scripts/transcribe.py \
 - Мова: <language>
 - Тривалість: <duration>s
 - Назва: "<title>"
-- Транскрипт (перші 400 символів): "<transcript_excerpt>"
+- Транскрипт (до 500 симв): "<excerpt>"
 
-Оціни кожне поле від 0 до 100. Будь строгим — не кожен кліп заслуговує на високий бал.
+Оціни від 0 до 100. Будь строгим — не кожен заслуговує 80+.
 
-Відповідай ТІЛЬКИ валідним JSON без markdown:
+JSON (без markdown):
 {
   "retentionScore": 0-100,
   "funnyScore": 0-100,
@@ -51,12 +55,36 @@ python3 scripts/transcribe.py \
   "cooldownPotential": 0-100,
   "musicRisk": 0-100,
   "toxicityRisk": 0-100,
+  "singingScore": 0-100,
+  "dancingScore": 0-100,
+  "rageScore": 0-100,
   "flags": [],
-  "reasoning": "1-2 речення"
+  "reasoning": "1-2 речення",
+  "editingNotes": {
+    "punchZoomAt": null,
+    "colorPunchAt": [],
+    "rageMoments": []
+  }
 }
 ```
 
-Розрахуй ddosScore за формулою з CLAUDE.md.
+**editingNotes:** Визначати на основі транскрипту і категорії:
+- `punchZoomAt`: секунда найсильнішого моменту (де треба punch zoom). null якщо немає.
+- `colorPunchAt`: масив секунд де burst of energy (excited words in transcript).
+- `rageMoments`: масив {start, end} де rage/крик (ALL CAPS слова + rage vocabulary в transcript).
+
+**DDOS Score формула:**
+```
+ddosScore =
+  retentionScore * 0.30
+  + funnyScore   * 0.25
+  + payoffStrength * 0.20
+  + contextClarity * 0.15
+  + noveltyScore * 0.10
+  - (musicRisk > 60 ? (musicRisk - 60) * 0.3 : 0)
+  - (toxicityRisk > 40 ? (toxicityRisk - 40) * 0.5 : 0)
+```
+
 Зберегти у `processed/<clipId>/score.json`.
 Зберегти всі scores у `clips/scored-clips.json`.
 
@@ -70,42 +98,99 @@ python3 scripts/transcribe.py \
 
 ---
 
+## PEAK MOMENT — Знайти найгучніший 1-секундний момент
+
+Для кожного кліпу після scoring:
+
+```bash
+ffprobe -v quiet -select_streams a:0 -show_entries stream=codec_type \
+  "processed/<clipId>/clean.mp4" 2>/dev/null
+```
+
+Якщо аудіо трек відсутній → `peakMoment = {"start": 0, "end": 1.0, "rmsDb": -50}`, пропустити.
+
+Інакше — запустити Python скрипт:
+
+```bash
+PEAK=$(python3 scripts/find_peak.py "processed/<clipId>/clean.mp4")
+# Додати peakMoment в score.json
+```
+
+Зберегти `score.json`:
+```json
+{
+  "...all score fields...",
+  "peakMoment": {"start": 12.5, "end": 13.5, "rmsDb": -8.3}
+}
+```
+
+---
+
+## CHILL CLIP ACCUMULATION
+
+Після scoring кожного кліпу:
+
+```bash
+if singingScore > 70:
+  mkdir -p assets/chill-archive/singing
+  cp "processed/<clipId>/clean.mp4" "assets/chill-archive/singing/<clipId>.mp4"
+  # Додати в assets/chill-archive/index.json:
+  {"clipId": "...", "type": "singing", "broadcaster": "...", "score": N, "runId": "...", "duration": N}
+
+if dancingScore > 70:
+  mkdir -p assets/chill-archive/dancing
+  cp "processed/<clipId>/clean.mp4" "assets/chill-archive/dancing/<clipId>.mp4"
+  # Аналогічно в index.json з type: "dancing"
+```
+
+---
+
 ## PLAN — Claude будує план епізоду
 
-Передай топ-25 scored кліпів Claude і попроси побудувати план:
+Передай топ-30 scored кліпів. Claude вирішує план безпосередньо в розмові.
 
+**Planning prompt:**
 ```
 Ти директор епізоду "Daily Dose Of Stream" #<N>.
 
-Доступні кліпи (топ за DDOS score):
-<список: clipId | стрімер | категорія | ddosScore | funnyScore | shortsPotential | cooldownPotential>
+Кліпи (відсортовані за ddosScore):
+<clipId | стрімер | категорія | ddosScore | funnyScore | rageScore | singingScore | dancingScore | shortsPotential | duration>
 
-Правила:
-- Обери 12–18 кліпів для long-form (мета 9–12 хв, середній кліп ~45с)
-- Перший кліп — сильний, без повільного старту
-- Чергуй емоційний тон (chaos / funny / wholesome / impressive)
-- Максимум 3 кліпи від одного стрімера
-- Обери 1 transitionClipId (для RECONNECTING переходу між сегментами)
-- Обери 1 cooldownClipId (для закінчення: танець / wholesome / спів)
-- Останній кліп перед cooldown — сильний
-- Обери 5–8 кліпів для Shorts (найвищий shortsPotential)
-- Згрупуй кліпи за категорією/настроєм у segments
+ПРАВИЛА ГРУПУВАННЯ:
+- GAME_GROUP: та сама гра, різні стрімери → підряд (до 5 кліпів)
+- STREAMER_GROUP: той самий стрімер, та сама гра → підряд (до 3 кліпів)
+- VIBE_GROUP: схожий тон chaos/wholesome/rage → підряд
+- MICRO_GROUP: кліпи < 15с → збирати разом (до 6 кліпів) для динамічного ритму
+- ЗАБОРОНЕНО: той самий стрімер + різна гра в одній групі
 
-Відповідай ТІЛЬКИ валідним JSON:
+ПРАВИЛА ВИБОРУ:
+- Обери 12–18 кліпів для long-form (ціль 12–15 хв, враховуй duration кожного)
+- Перша група: сильний, захоплюючий контент (opener)
+- reconnectingClipId: кліп з першої групи з найвищим funnyScore або rageScore
+- Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець
+- Обери 5–10 кліпів для Shorts (найвищий shortsPotential)
+
+Відповідай ТІЛЬКИ JSON:
 {
   "clipOrder": ["id1","id2",...],
+  "groups": [
+    {"type":"GAME_GROUP","label":"CS2 Chaos","clipIds":["id1","id2"],"tone":"chaotic"}
+  ],
   "openerClipId": "id",
-  "closerClipId": "id",
-  "transitionClipId": "id or null",
-  "cooldownClipId": "id or null",
-  "cooldownType": "dance|singing|wholesome|skip",
+  "reconnectingClipId": "id",
+  "chillPlan": {
+    "type": "singing_then_dancing|dancing_montage|skip",
+    "singingClipId": "id or null",
+    "dancingClipIds": ["id1",...],
+    "extractFromVod": false
+  },
   "shortClipIds": ["id1",...],
-  "segments": [{"label":"CS2 Chaos","clipIds":["id1","id2"],"tone":"chaotic"}],
-  "reasoning": "коротке пояснення"
+  "reasoning": "..."
 }
 ```
 
 Зберегти у `edit/episode-plan.json` і `edit/shorts-selection.json`.
+Оновити `state.stages.plan = "done"`.
 
 ---
 
