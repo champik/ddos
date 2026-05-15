@@ -45,85 +45,85 @@ ffmpeg -i "downloads/<clipId>.mp4" -ss $START -to $END \
 
 ---
 
-## OVERLAYS — Puppeteer → PNG → FFmpeg
+## OVERLAYS — WebM Alpha з кешуванням
 
-### Streamer name overlay
+### Reconnecting panel (pre-render один раз на початку)
 
-Для кожного кліпу згенеруй PNG через Node.js + Puppeteer:
-
-```javascript
-// scripts/render-overlay.js
-const puppeteer = require('puppeteer');
-const fs = require('fs');
-
-async function renderStreamerOverlay(streamerName, outPath) {
-  let html = fs.readFileSync('assets/streamer-overlay/streamer_name.html', 'utf8');
-  // Підстав ім'я стрімера
-  html = html.replace('@NORTHERNLION_OFFICIAL', '@' + streamerName.toUpperCase());
-  // Підстав logo якщо треба
-  const logoB64 = fs.readFileSync('assets/thumbnail-template/logo.svg').toString('base64');
-  html = html.replace('./logo.svg', 'data:image/svg+xml;base64,' + logoB64);
-
-  const tmpHtml = outPath.replace('.png', '_tmp.html');
-  fs.writeFileSync(tmpHtml, html);
-
-  const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
-  await page.goto('file://' + require('path').resolve(tmpHtml));
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: outPath, type: 'png', omitBackground: true });
-  await browser.close();
-}
+```bash
+mkdir -p edit
+if [ ! -f "edit/reconnecting-panel.webm" ]; then
+  node scripts/render-overlay.js reconnecting "edit/reconnecting-panel.webm"
+fi
 ```
 
-Запустити для кожного кліпу:
-```bash
-node scripts/render-overlay.js "<broadcaster_name>" "processed/<clipId>/streamer-overlay.png"
-```
+### Streamer name overlay (per clip, з кешуванням)
 
-Потім burn overlay у відео (перші 3 секунди):
+Для кожного кліпу з episode-plan.json:
+
 ```bash
-ffmpeg -i "processed/<clipId>/normalized.mp4" \
-  -i "processed/<clipId>/streamer-overlay.png" \
-  -filter_complex "[0:v][1:v]overlay=0:0:enable='between(t,0,3)'[out]" \
+BROADCASTER="<broadcaster_name_lowercase>"
+CACHE="cache/overlays/${BROADCASTER}.webm"
+
+mkdir -p cache/overlays
+if [ ! -f "$CACHE" ]; then
+  node scripts/render-overlay.js streamer "<broadcaster_name>" "$CACHE"
+fi
+
+# Burn animated WebM overlay (показується перші 3с кліпу)
+ffmpeg -i "processed/<clipId>/clean.mp4" \
+  -i "$CACHE" \
+  -filter_complex "
+    [0:v][1:v]overlay=20:H-h-120:eof_action=pass:format=auto[out]
+  " \
   -map "[out]" -map "0:a" \
-  -c:v h264_nvenc -preset p4 -cq 23 \
+  -c:v libx264 -preset fast -crf 23 \
   -c:a copy \
   -y "processed/<clipId>/overlayed.mp4"
 ```
 
-Якщо NVENC не доступний — замінити на `-c:v libx264 -preset fast -crf 23`.
+Якщо `overlayed.mp4` вже існує → пропустити.
 
-### RECONNECTING transition
+Оновити `state.stages.overlays = "done"`.
 
-Згенеруй PNG оверлею:
-```javascript
-// scripts/render-reconnecting.js
-async function renderReconnecting(outPath) {
-  let html = fs.readFileSync('assets/overlays/reconnecting.html', 'utf8');
-  const logoB64 = fs.readFileSync('assets/thumbnail-template/logo.svg').toString('base64');
-  html = html.replace('./logo.svg', 'data:image/svg+xml;base64,' + logoB64);
+---
 
-  // ... puppeteer screenshot з omitBackground: true
-}
-```
+## RECONNECTING — Glitch Moment + Panel Overlay (1 секунда)
 
-Застосуй до transitionClipId (перші 0.7s, B&W + затемнення):
+Виконується після OVERLAYS.
+
+### Вибір моменту
+
+Читати `episode-plan.json.reconnectingClipId`.
+Читати `processed/<reconnectingClipId>/score.json` → `peakMoment.start`.
+
+### Рендер
+
 ```bash
-ffmpeg \
-  -i "processed/<transitionClipId>/normalized.mp4" \
-  -i "edit/reconnecting-overlay.png" \
+CLIP="processed/<reconnectingClipId>/overlayed.mp4"
+# Якщо overlayed не існує → використати clean.mp4
+[ -f "$CLIP" ] || CLIP="processed/<reconnectingClipId>/clean.mp4"
+
+PEAK_START=<peakMoment.start>
+PANEL="edit/reconnecting-panel.webm"
+
+ffmpeg -ss $PEAK_START -t 1.1 -i "$CLIP" \
+  -i "$PANEL" \
   -filter_complex "
-    [0:v]trim=duration=0.7,setpts=PTS-STARTPTS,hue=s=0,eq=brightness=-0.25[bw];
-    [bw][1:v]overlay=0:0[out]
+    [0:v]setpts=PTS-STARTPTS,
+         noise=alls=15:allf=t+u,
+         eq=contrast=1.3:saturation=0.6[glitch];
+    [glitch][1:v]overlay=W-w-44:44:eof_action=pass:format=auto[out]
   " \
   -map "[out]" -map "0:a" \
-  -t 0.7 \
-  -c:v h264_nvenc -preset p4 -cq 24 \
-  -c:a aac -b:a 128k \
+  -t 1.0 \
+  -c:v libx264 -preset fast -crf 22 \
+  -c:a aac -b:a 192k -ar 48000 -r 30 \
   -y "edit/reconnecting.mp4"
 ```
+
+Оновити `state.stages.reconnecting = "done"`.
+
+**Примітка:** Один і той самий `edit/reconnecting.mp4` вставляється між ВСІМА групами в concat-list — глядач вже бачив цей момент у першій групі, тому він впізнаваний.
 
 ---
 
