@@ -127,6 +127,57 @@ ffmpeg \
 
 ---
 
+## CAPTIONS MERGE — Об'єднати субтитри з time offsets
+
+Виконується після TRIM і перед RENDER LONG. Збирає всі per-clip ASS файли в один `edit/episode.ass`.
+
+### Розрахунок cumulative offsets
+
+```javascript
+const plan = require('./edit/episode-plan.json');
+const { execSync } = require('child_process');
+
+const INTRO_DUR = 1.25;     // assets/intro/intro.mp4
+const RECONNECT_DUR = 1.0;  // edit/reconnecting.mp4
+
+function getClipDuration(clipId) {
+  const out = execSync(
+    `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/${clipId}/clean.mp4"`
+  ).toString().trim();
+  return parseFloat(out) || 0;
+}
+
+let offset = INTRO_DUR;
+const segments = [];
+
+for (let gi = 0; gi < plan.groups.length; gi++) {
+  const group = plan.groups[gi];
+  for (const clipId of group.clipIds) {
+    const assFile = `processed/${clipId}/captions-longform.ass`;
+    segments.push({ assFile, offset });
+    offset += getClipDuration(clipId);
+  }
+  // Додати reconnecting між групами (не після останньої)
+  if (gi < plan.groups.length - 1) {
+    offset += RECONNECT_DUR;
+  }
+}
+
+require('fs').writeFileSync('edit/captions-segments.json', JSON.stringify(segments, null, 2));
+```
+
+### Запуск merge
+
+```bash
+node scripts/merge-captions.js "edit/captions-segments.json" "edit/episode.ass"
+```
+
+Якщо жоден кліп не має `captions-longform.ass` → пропустити (episode.ass не буде, render без субтитрів).
+
+Оновити `state.stages.captions = "done"`.
+
+---
+
 ## RENDER LONG-FORM
 
 ### Крок 1: Валідація episode-plan.json
