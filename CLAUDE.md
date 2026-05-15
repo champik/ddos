@@ -120,20 +120,25 @@ projects/<runId>/
 │   ├── transcript.json
 │   ├── score.json
 │   ├── hook.txt
-│   ├── clean.mp4
-│   ├── normalized.mp4
-│   ├── streamer-overlay.png
-│   ├── overlayed.mp4
+│   ├── clean.mp4                      # trimmed + re-encoded + loudnorm
+│   ├── overlayed.mp4                  # clean.mp4 + animated WebM broadcaster overlay
 │   ├── captions-longform.ass
 │   └── captions-vertical.ass
+├── cache/overlays/<broadcaster>.webm  # cached animated streamer overlays
 ├── edit/
 │   ├── episode-plan.json
 │   ├── shorts-selection.json
-│   └── reconnecting.mp4
+│   ├── captions-segments.json
+│   ├── episode.ass                    # merged episode captions
+│   ├── reconnecting-panel.webm        # pre-rendered reconnecting WebM
+│   ├── reconnecting.mp4               # 1s glitch moment
+│   ├── chill-finale.mp4               # singing + dancing finale (optional)
+│   └── concat-list.txt
 ├── exports/
 │   ├── episode-NNN.mp4
 │   ├── thumbnail.png
 │   ├── metadata.json
+│   ├── analytics.json
 │   └── shorts/<clipId>.mp4
 └── review/review.html
 ```

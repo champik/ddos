@@ -38,10 +38,13 @@ node scripts/youtube-upload.js upload-video \
 
 ## UPLOAD SHORTS
 
-Для кожного clipId з `state.outputs.shortsPaths`:
+`state.outputs.shortsPaths` містить список шляхів до файлів (наприклад `exports/shorts/<clipId>.mp4`).
+Для кожного елементу витягни clipId через `basename "$SHORT_PATH" .mp4`:
 
 ```bash
-HOOK=$(cat "projects/<runId>/processed/<clipId>/hook.txt" 2>/dev/null || echo "CLIP")
+SHORT_PATH="exports/shorts/<clipId>.mp4"
+CLIP_ID=$(basename "$SHORT_PATH" .mp4)
+HOOK=$(cat "projects/<runId>/processed/$CLIP_ID/hook.txt" 2>/dev/null || echo "CLIP")
 MAIN_ID=$(node -e "const s=require('projects/<runId>/state.json'); console.log(s.outputs.youtubeVideoId||'')")
 
 node scripts/youtube-upload.js upload-short \

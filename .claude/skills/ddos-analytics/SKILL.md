@@ -35,12 +35,28 @@ for (const runId of projects.slice(0, 10)) { // перевірити остан�
 
 Для кожного попереднього епізоду:
 
-```javascript
-// Використати той самий getAuth() що і в youtube-upload.js
-// Потрібен googleapis пакет
+Виконати через тимчасовий Node.js скрипт, що реюзає `getAuth()` з `youtube-upload.js`:
 
+```bash
+node -e "
 const { google } = require('googleapis');
-// auth = getAuth() (той самий flow)
+const { OAuth2Client } = require('google-auth-library');
+const fs = require('fs');
+
+// Реюзаємо збережений token (без інтерактивного OAuth)
+const creds = JSON.parse(fs.readFileSync('auth/client_secret.json','utf8'));
+const { client_id, client_secret, redirect_uris } = creds.installed || creds.web;
+const oauth2 = new OAuth2Client(client_id, client_secret, redirect_uris[0]);
+const saved = JSON.parse(fs.readFileSync('auth/token.json','utf8'));
+oauth2.setCredentials(saved);
+
+// ...решта коду нижче
+"
+```
+
+```javascript
+const { google } = require('googleapis');
+const auth = oauth2; // з блоку вище
 
 const analytics = google.youtubeAnalytics({ version: 'v2', auth });
 const today = new Date().toISOString().split('T')[0];
