@@ -127,6 +127,57 @@ ffmpeg -ss $PEAK_START -t 1.1 -i "$CLIP" \
 
 ---
 
+## EFFECTS — Динамічний монтаж
+
+Для кожного кліпу з episode-plan.json де `score.json.editingNotes` непорожній:
+
+**Input:** `processed/<clipId>/overlayed.mp4`
+
+### Zoom punch (якщо punchZoomAt != null)
+
+```bash
+PUNCH_S=<editingNotes.punchZoomAt>
+PUNCH_F=$(echo "$PUNCH_S * 30" | bc | cut -d. -f1)  # frame number
+DUR=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/<clipId>/overlayed.mp4")
+TOTAL_F=$(echo "$DUR * 30" | bc | cut -d. -f1)
+
+ffmpeg -i "processed/<clipId>/overlayed.mp4" \
+  -vf "
+    zoompan=
+      z='if(between(on,${PUNCH_F}-9,${PUNCH_F}),
+           1+0.15*(on-${PUNCH_F}+9)/9,
+         if(between(on,${PUNCH_F},${PUNCH_F}+6),
+           1.15,
+         if(between(on,${PUNCH_F}+6,${PUNCH_F}+15),
+           1.15-0.15*(on-${PUNCH_F}-6)/9,1)))':
+      d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=30,
+    scale=1920:1080
+  " \
+  -c:v libx264 -preset fast -crf 23 -c:a copy \
+  -y "processed/<clipId>/overlayed_fx.mp4"
+mv "processed/<clipId>/overlayed_fx.mp4" "processed/<clipId>/overlayed.mp4"
+```
+
+### Color punch (якщо colorPunchAt непорожній)
+
+```bash
+# Застосовується до всього відео але eq=saturation=1.3 тільки в потрібні моменти
+# Для простоти: якщо є colorPunchAt → легкий color boost всього кліпу
+ffmpeg -i "processed/<clipId>/overlayed.mp4" \
+  -vf "eq=saturation=1.2:contrast=1.05" \
+  -c:v libx264 -preset fast -crf 23 -c:a copy \
+  -y "processed/<clipId>/overlayed_fx.mp4"
+mv "processed/<clipId>/overlayed_fx.mp4" "processed/<clipId>/overlayed.mp4"
+```
+
+### Перевірка чи потрібні effects
+
+Якщо `editingNotes.punchZoomAt == null` І `editingNotes.colorPunchAt == []` І `editingNotes.rageMoments == []` → пропустити clip (overlayed.mp4 залишається без змін).
+
+Оновити `state.stages.effects = "done"`.
+
+---
+
 ## CAPTIONS MERGE — Об'єднати субтитри з time offsets
 
 Виконується після TRIM і перед RENDER LONG. Збирає всі per-clip ASS файли в один `edit/episode.ass`.
