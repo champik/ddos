@@ -129,38 +129,60 @@ ffmpeg \
 
 ## RENDER LONG-FORM
 
-### Побудуй список файлів для concat
+### Крок 1: Валідація episode-plan.json
 
-Порядок:
-1. `assets/intro/intro.mp4`
-2. Кліпи з episode-plan.json clipOrder:
-   - Використовуй `overlayed.mp4` якщо існує, інакше `normalized.mp4`
-   - Після останнього кліпу кожного segment (крім останнього) — вставити `edit/reconnecting.mp4`
-3. `assets/outro/outro.mp4`
-
-Записати concat list:
-```
-file '/absolute/path/to/assets/intro/intro.mp4'
-file '/absolute/path/to/processed/clipId1/overlayed.mp4'
-file '/absolute/path/to/processed/clipId2/overlayed.mp4'
-file '/absolute/path/to/edit/reconnecting.mp4'
-file '/absolute/path/to/processed/clipId3/overlayed.mp4'
-...
-file '/absolute/path/to/assets/outro/outro.mp4'
-```
-
-### Concat + render
 ```bash
-ffmpeg \
-  -f concat -safe 0 \
+CLIP_COUNT=$(node -e "const p=require('./edit/episode-plan.json'); console.log(p.clipOrder.length)")
+```
+
+Якщо `CLIP_COUNT < 12` або `CLIP_COUNT > 18`:
+→ Записати `state.stages.renderLong = "failed"` з поясненням і ЗУПИНИТИСЬ.
+
+### Крок 2: Побудова concat-list.txt
+
+Порядок (абсолютні шляхи):
+```
+file '/abs/path/assets/intro/intro.mp4'
+[кліпи GROUP 1: overlayed.mp4, або clean.mp4 якщо overlay не існує]
+file '/abs/path/edit/reconnecting.mp4'
+[кліпи GROUP 2]
+file '/abs/path/edit/reconnecting.mp4'
+...
+[кліпи GROUP N]
+[file '/abs/path/edit/chill-finale.mp4' — тільки якщо файл існує]
+file '/abs/path/assets/outro/outro.mp4'
+```
+
+Групи беремо з `episode-plan.json` поля `groups[].clipIds`, в порядку груп.
+Reconnecting.mp4 вставляємо після кожної групи КРІМ останньої (до chill/outro).
+
+Всі файли в concat-list МАЮТЬ бути у форматі: H.264, 30fps, 1920×1080, AAC 48kHz — це гарантується TRIM стадією. Якщо файл відсутній → skip з попередженням.
+
+### Крок 3: Concat (без re-encode — всі файли однакового формату)
+
+```bash
+ffmpeg -f concat -safe 0 \
   -i "edit/concat-list.txt" \
-  -c:v h264_nvenc -preset p4 -cq 22 \
-  -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
-  -c:a aac -b:a 192k \
+  -c copy \
+  -y "edit/raw-episode.mp4"
+```
+
+### Крок 4: Burn captions (якщо episode.ass існує)
+
+```bash
+# Якщо edit/episode.ass існує:
+ffmpeg -i "edit/raw-episode.mp4" \
+  -vf "ass=edit/episode.ass" \
+  -c:v libx264 -preset medium -crf 22 \
+  -c:a copy \
+  -movflags +faststart \
+  -y "exports/episode-<N>.mp4"
+
+# Якщо episode.ass НЕ існує:
+ffmpeg -i "edit/raw-episode.mp4" \
+  -c copy \
   -movflags +faststart \
   -y "exports/episode-<N>.mp4"
 ```
-
-Якщо NVENC не доступний — `libx264 -preset medium -crf 22`.
 
 Оновити `state.outputs.longformPath` і `state.stages.renderLong = "done"`.
