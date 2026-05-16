@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // YouTube Data API v3 upload tool
 // Commands:
-//   node youtube-upload.js upload-video <runId> <metadata.json> <video.mp4> <thumbnail.png>
-//   node youtube-upload.js upload-short <runId> <clipId> <short.mp4> <mainVideoId> <hookText>
+//   node youtube-upload.js upload-video  <runId> <metadata.json> <video.mp4> <thumbnail.png>
+//   node youtube-upload.js upload-short  <runId> <clipId> <short.mp4> <mainVideoId> [publishAt ISO]
 //   node youtube-upload.js publish-video <videoId>
+//   node youtube-upload.js publish-all   <runId> [publishNowISO]
+//     publishNowISO — коли опублікувати основне відео (default: зараз)
+//     Шортси: +1год, +2год, +3год... від publishNowISO
 'use strict';
 const { google } = require('googleapis');
 const { OAuth2Client } = require('google-auth-library');
@@ -40,7 +43,6 @@ async function getAuth() {
     }
   }
 
-  // First-time OAuth flow
   const url = oauth2.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
   console.log('\n=== YouTube Authorization ===');
   console.log('Open in browser:\n' + url);
@@ -69,9 +71,9 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
       snippet: {
         title: (meta.titleOptions && meta.titleOptions[0]) || meta.title || 'Daily Dose Of Stream',
         description: meta.description || '',
-        tags: meta.hashtags || ['twitch', 'gaming', 'clips'],
+        tags: meta.tags || ['twitch', 'gaming', 'clips'],
         categoryId: '20',
-        defaultLanguage: 'uk'
+        defaultLanguage: 'en'
       },
       status: { privacyStatus: 'unlisted', selfDeclaredMadeForKids: false }
     },
@@ -103,31 +105,86 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
   return videoId;
 }
 
-async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText) {
+// Build short description: link to full video is the first line so YouTube picks it up
+function buildShortDescription(mainVideoId, clipMeta) {
+  const hashtags = (clipMeta && clipMeta.hashtags)
+    ? clipMeta.hashtags.join(' ')
+    : '#DailyDoseOfStream #TwitchClips #Shorts';
+  const caption = (clipMeta && clipMeta.caption) ? clipMeta.caption + '\n\n' : '';
+  const link = mainVideoId
+    ? `Full episode ▶ https://youtu.be/${mainVideoId}\n\n`
+    : '';
+  return `${link}${caption}${hashtags}`;
+}
+
+// publishAt — optional ISO string. If provided, video is scheduled (private until that time).
+async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publishAt) {
   const auth = await getAuth();
   const yt = google.youtube({ version: 'v3', auth });
-  const title = `${hookText || 'Clip'} #shorts`.slice(0, 100);
-  const desc  = mainVideoId
-    ? `Full episode → https://youtu.be/${mainVideoId}\n\n#shorts #twitch #gaming`
-    : '#shorts #twitch #gaming';
+
+  // Try to get proper title + metadata from metadata.json
+  const metaPath = path.join('projects', runId, 'exports', 'metadata.json');
+  let clipMeta = null;
+  if (fs.existsSync(metaPath)) {
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    clipMeta = (meta.shortsMetadata || []).find(m => m.clipId === clipId) || null;
+  }
+
+  const title = clipMeta
+    ? clipMeta.title.slice(0, 100)
+    : `${hookText || 'Clip'} | Daily Dose Of Stream #shorts`.slice(0, 100);
+
+  const description = buildShortDescription(mainVideoId, clipMeta);
+
+  const statusBody = publishAt
+    ? { privacyStatus: 'private', publishAt, selfDeclaredMadeForKids: false }
+    : { privacyStatus: 'public', selfDeclaredMadeForKids: false };
+
+  const tags = clipMeta
+    ? (clipMeta.hashtags || []).map(h => h.replace(/^#/, ''))
+    : ['DailyDoseOfStream', 'TwitchClips', 'Shorts'];
+
+  const size = fs.statSync(shortPath).size;
+  if (publishAt) {
+    console.log(`Uploading short (scheduled ${publishAt}): ${path.basename(shortPath)} — ${title}`);
+  } else {
+    console.log(`Uploading short (public now): ${path.basename(shortPath)} — ${title}`);
+  }
 
   const res = await yt.videos.insert({
     part: ['snippet', 'status'],
     requestBody: {
-      snippet: { title, description: desc, tags: ['shorts','twitch','gaming'], categoryId: '20' },
-      status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
+      snippet: {
+        title,
+        description,
+        tags,
+        categoryId: '20',
+        defaultLanguage: 'en'
+      },
+      status: statusBody
     },
     media: { body: fs.createReadStream(shortPath) }
+  }, {
+    onUploadProgress: e => {
+      const pct = Math.round(e.bytesRead / size * 100);
+      process.stdout.write(`\rProgress: ${pct}%`);
+    }
   });
+
   const shortId = res.data.id;
-  console.log(`Short: https://youtube.com/shorts/${shortId}`);
+  process.stdout.write('\n');
+  if (publishAt) {
+    console.log(`Scheduled: https://youtube.com/shorts/${shortId} at ${publishAt}`);
+  } else {
+    console.log(`Short live: https://youtube.com/shorts/${shortId}`);
+  }
 
   const statePath = path.join('projects', runId, 'state.json');
   if (fs.existsSync(statePath)) {
     const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     state.outputs = state.outputs || {};
     state.outputs.youtubeShortsIds = state.outputs.youtubeShortsIds || [];
-    state.outputs.youtubeShortsIds.push(shortId);
+    state.outputs.youtubeShortsIds.push({ clipId, shortId, publishAt: publishAt || 'now' });
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   }
   return shortId;
@@ -143,11 +200,75 @@ async function publishVideo(videoId) {
   console.log(`Published: https://youtu.be/${videoId}`);
 }
 
+// publish-all: publish main video now + schedule shorts at +1hr, +2hr, ...
+// publishNowISO — optional, when to make main video public (default: now)
+async function publishAll(runId, publishNowISO) {
+  const statePath = path.join('projects', runId, 'state.json');
+  if (!fs.existsSync(statePath)) throw new Error(`state.json not found for runId: ${runId}`);
+  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+
+  const mainVideoId = state.outputs && state.outputs.youtubeVideoId;
+  if (!mainVideoId) throw new Error('Main video not uploaded yet. Run upload-video first.');
+
+  // 1. Publish main video
+  const mainPublishTime = publishNowISO ? new Date(publishNowISO) : new Date();
+  // If scheduled in the future, use publishAt; otherwise publish now
+  if (mainPublishTime > new Date(Date.now() + 60000)) {
+    const auth = await getAuth();
+    const yt = google.youtube({ version: 'v3', auth });
+    await yt.videos.update({
+      part: ['status'],
+      requestBody: {
+        id: mainVideoId,
+        status: { privacyStatus: 'private', publishAt: mainPublishTime.toISOString() }
+      }
+    });
+    console.log(`Main video scheduled: https://youtu.be/${mainVideoId} at ${mainPublishTime.toISOString()}`);
+  } else {
+    await publishVideo(mainVideoId);
+    console.log(`Main video published now: https://youtu.be/${mainVideoId}`);
+  }
+
+  state.publishedAt = mainPublishTime.toISOString();
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+
+  // 2. Schedule shorts at +1hr, +2hr, ...
+  const plan = JSON.parse(fs.readFileSync(path.join('projects', runId, 'edit', 'episode-plan.json'), 'utf8'));
+  const shortClipIds = plan.shortClipIds || [];
+  const shortsDir = path.join('projects', runId, 'exports', 'shorts');
+
+  let scheduled = 0;
+  for (let i = 0; i < shortClipIds.length; i++) {
+    const clipId = shortClipIds[i];
+    const shortPath = path.join(shortsDir, `${clipId}.mp4`);
+    if (!fs.existsSync(shortPath)) {
+      console.log(`[SKIP] Short not found: ${clipId}`);
+      continue;
+    }
+    // +1hr per short after main publish time (minimum 5 min in future from now)
+    const shortPublishTime = new Date(mainPublishTime.getTime() + (i + 1) * 60 * 60 * 1000);
+    // YouTube requires publishAt to be at least 5 minutes in the future
+    const minTime = new Date(Date.now() + 5 * 60 * 1000);
+    const actualPublishTime = shortPublishTime < minTime ? minTime : shortPublishTime;
+
+    await uploadShort(runId, clipId, shortPath, mainVideoId, null, actualPublishTime.toISOString());
+    scheduled++;
+  }
+
+  console.log(`\n✅ Done. Main video published + ${scheduled} shorts scheduled.`);
+  console.log(`   Main:   https://youtu.be/${mainVideoId}`);
+  console.log(`   Shorts: published every 1hr starting ${new Date(mainPublishTime.getTime() + 3600000).toLocaleTimeString()}`);
+
+  state.stages.publish = 'done';
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+}
+
 const [,, cmd, ...args] = process.argv;
 const cmds = {
   'upload-video':  () => uploadVideo(...args),
   'upload-short':  () => uploadShort(...args),
-  'publish-video': () => publishVideo(args[0])
+  'publish-video': () => publishVideo(args[0]),
+  'publish-all':   () => publishAll(args[0], args[1])
 };
-if (!cmds[cmd]) { console.error('Unknown command:', cmd); process.exit(1); }
+if (!cmds[cmd]) { console.error('Unknown command:', cmd, '\nValid: upload-video, upload-short, publish-video, publish-all'); process.exit(1); }
 cmds[cmd]().catch(e => { console.error('Error:', e.message); process.exit(1); });

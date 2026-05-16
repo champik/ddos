@@ -39,7 +39,10 @@ node scripts/progress.js "projects/<runId>" 15 "Генерую review.html"
 Кожен варіант як окрема картка.
 
 ### 5. Таблиця кліпів
-Колонки: # | Стрімер | Категорія | Назва | DDOS | Funny | Shorts | Music⚠ | Flags
+Колонки: # | Стрімер ▶ | Категорія | Назва | DDOS | Funny | Shorts | Music⚠ | Views | Flags
+
+Views форматувати: `≥1000 → "1.5k"`, інакше повне число, відсутнє → `"—"`.
+Стрімер — клікабельна посилання на overlayed.mp4 (або clean.mp4 якщо overlay не існує).
 
 ### 6. Shorts preview grid
 ```html

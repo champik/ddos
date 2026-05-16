@@ -68,9 +68,27 @@ node scripts/apply-overlays.js "projects/<runId>"
 - Кешується в `cache/overlays/<slug>.mkv` (повторно використовується між епізодами)
 - Consecutивні кліпи від одного стрімера: банер не показується (лише `-c copy`)
 - Рендерить `edit/reconnecting.mp4` через render-overlay.js reconnecting → `cache/overlays/reconnecting-panel.mkv`
-- FFmpeg overlay: `[0:v][1:v]overlay=0:0:eof_action=pass:format=auto`
+- FFmpeg overlay (ВАЖЛИВО — НЕ використовувати `eof_action=pass`, не працює на Windows FFmpeg):
+  ```
+  [0:v][1:v]overlay=0:0:enable='between(t,0,3)':format=auto[out]
+  ```
+  `enable='between(t,0,3)'` — банер показується перші 3 секунди, потім зникає автоматично.
 
 Якщо треба переробити overlay — видалити `cache/overlays/<slug>.mkv` вручну, потім запустити знову.
+
+**Reconnecting clip — B&W + colored panel + glitch:**
+
+`renderReconnecting()` в apply-overlays.js будує 3-ступеневий filter_complex:
+```javascript
+const bwFilter    = 'setpts=PTS-STARTPTS,eq=saturation=0:contrast=1.25:brightness=-0.05';
+const glitchFilter = "noise=alls=25:allf=t+u,hue=H='if(mod(floor(t*13),2), 1.57, 0)'";
+
+// filter_complex:
+'[0:v]' + bwFilter + '[bw]',           // сам кліп → чорно-білий
+'[bw][1:v]overlay=0:0:format=auto[composite]',  // colored RECONNECTING панель поверх
+'[composite]' + glitchFilter + '[out]'  // глітч (noise + hue-rotate) на все разом
+```
+Результат: відео B&W, панель з написом кольорова, поверх всього — глітч ефект.
 
 Оновити `state.stages.overlays = "done"`, `state.stages.reconnecting = "done"`.
 
@@ -92,22 +110,12 @@ Zoom punch та color punch effects вимкнені — реалізація в
 
 ---
 
-## CAPTIONS — ASS субтитри
+## CAPTIONS
 
-Виконується після TRIM і перед RENDER LONG.
+Субтитри генеруються ТІЛЬКИ для шортсів — в рамках ddos-shorts skill, після вибору shortClipIds.
+На цьому етапі (ddos-render) субтитри НЕ генеруються.
 
-```bash
-node scripts/gen-captions.js "projects/<runId>"
-```
-
-Скрипт:
-- Генерує `processed/<clipId>/captions-longform.ass` (тільки емоційні фрази, Impact 72px жовтий)
-- Генерує `processed/<clipId>/captions-vertical.ass` (всі фрази, word-by-word reveal, Impact 82px)
-- Генерує `edit/episode.ass` (merged з time offsets для all clips)
-
-Якщо жоден кліп не має transcript.json → episode.ass не буде, render без субтитрів.
-
-Оновити `state.stages.captions = "done"`.
+Встановити `state.stages.captions = "skip"` і продовжити.
 
 ---
 
@@ -260,18 +268,17 @@ ffmpeg -f concat -safe 0 \
   -y "edit/raw-episode.mp4"
 ```
 
-### Крок 4: Burn captions (якщо episode.ass існує)
+### Крок 4: Фінальний рендер (ЗАВЖДИ без субтитрів)
 
-Використовувати Node скрипт — він обробляє Windows path escaping для ASS filter:
+Longform відео рендериться БЕЗ субтитрів — episode.ass вже видалений на кроці CAPTIONS.
 
 ```bash
 node scripts/render-final.js "projects/<runId>" <episodeNumber>
 ```
 
-Скрипт автоматично:
+Скрипт:
 - Бере `edit/raw-episode.mp4`
-- Якщо `edit/episode.ass` існує → `-vf ass=<escaped path>` + re-encode libx264 crf22
-- Якщо немає → `-c copy`
-- Виводить в `exports/episode-NNN.mp4`
+- `edit/episode.ass` має бути ВІДСУТНІЙ (видалений після gen-captions.js)
+- Виконує `-c copy` → `exports/episode-NNN.mp4`
 
 Оновити `state.outputs.longformPath` і `state.stages.renderLong = "done"`.

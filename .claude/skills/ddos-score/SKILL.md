@@ -212,28 +212,21 @@ node scripts/progress.js "projects/<runId>" 6 "Будую план епізод�
 node scripts/progress.js "projects/<runId>" 8 "Генерую хуки для кліпів"
 ```
 
-Для кожного кліпу з episode-plan.json згенеруй хук:
+Хуки генеруються **в розмові** (не через API виклик). Зчитай дані кліпів і згенеруй всі хуки одним батчем:
 
-```
-Згенеруй короткий текстовий хук для Twitch кліпу.
-
-Стиль: саркастичний, anticipation-based, не спойлер. 2–5 слів. ALL CAPS.
-
-Приклади хороших хуків:
-THIS LOOKED FINE AT FIRST
-HE REALLY THOUGHT THIS WOULD WORK  
-ABSOLUTELY NOTHING COULD GO WRONG
-NOT WHAT HE EXPECTED
-WAIT FOR IT
-
-Кліп:
-- Стрімер: <name>
-- Категорія: <game>
-- Назва: "<title>"
-- Транскрипт: "<excerpt>"
-
-Відповідай ТІЛЬКИ текстом хуку, нічого більше.
+```bash
+node scripts/gen-hooks.js "<runId>"
 ```
 
-Зберегти у `processed/<clipId>/hook.txt`.
+Скрипт виведе список кліпів без хуків (CACHED кліпи пропущені). Для кожного кліпу зі списку:
+- Стиль: ALL CAPS, 2–5 слів, anticipation-based, сарказм, **без спойлерів**
+- Приклади: `THIS LOOKED FINE AT FIRST` / `HE REALLY THOUGHT THIS WOULD WORK` / `WAIT FOR IT`
+
+Зберегти кожен хук напряму через Write tool:
+```
+projects/<runId>/processed/<clipId>/hook.txt
+```
+
+**НЕ** викликати Anthropic API або будь-який зовнішній сервіс — хуки генеруються Claude безпосередньо в розмові.
+
 Оновити `state.stages.score = "done"`, `state.stages.plan = "done"`, `state.stages.hooks = "done"`.

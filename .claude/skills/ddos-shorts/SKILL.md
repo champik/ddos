@@ -4,19 +4,29 @@
 
 ---
 
-## CAPTIONS — ASS субтитри
+## CAPTIONS — ASS субтитри для шортсів
 
-Субтитри генеруються скриптом `gen-captions.js` (вже частина CAPTIONS стадії в ddos-render).
+Виконується тут (в ddos-shorts), після того як shortClipIds вже відомі з episode-plan.json.
+Генерується тільки `captions-vertical.ass` для кожного short кліпу — НЕ для всього епізоду.
 
-Формати що генерує скрипт:
-- `captions-longform.ass` — тільки емоційні фрази, Impact 72px, жовтий `#f5ff3d`, 1920×1080
-- `captions-vertical.ass` — всі фрази, word-by-word progressive reveal, Impact 82px, 1080×1920
+```bash
+node scripts/gen-captions.js "projects/<runId>" --shorts-only
+```
+
+Що генерує:
+- `processed/<clipId>/captions-vertical.ass` для кожного clipId з `plan.shortClipIds`
+- Word-by-word progressive reveal, Impact 82px, 1080×1920
+- **НЕ** генерує `episode.ass` — longform відео завжди без субтитрів
 
 **ВАЖЛИВО — Кольори ASS:**
 - Жовтий `#f5ff3d` = `&H003DFFF5` (ASS BGR порядок, НЕ `&H00F5FF3D` — це буде блакитний)
 - Білий `#f4f0e6` = `&H00E6F0F4`
 
-Hot слова (стиль Hot = білий в шортах для контрасту): no, bro, what, wait, oh, stop, go, yes, wtf, literally, insane, crazy, nah, dude, man, guys, let, come, look, watch
+Hot слова (стиль Hot = білий для контрасту): no, bro, what, wait, oh, stop, go, yes, wtf, literally, insane, crazy, nah, dude, man, guys, let, come, look, watch
+
+Якщо transcript.json відсутній для кліпу → short рендериться без субтитрів.
+
+Оновити `state.stages.captions = "done"`.
 
 ---
 

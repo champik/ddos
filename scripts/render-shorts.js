@@ -26,9 +26,9 @@ function slug(name) {
 }
 
 const base      = path.resolve(projectDir);
-const selection = readJson(path.join(base, 'edit/shorts-selection.json'));
+const plan      = readJson(path.join(base, 'edit/episode-plan.json'));
 const scored    = readJson(path.join(base, 'clips/scored-clips.json'));
-const clipIds   = selection.shortClipIds || [];
+const clipIds   = plan.shortClipIds || [];
 
 const broadcasters = {};
 for (const clip of scored) broadcasters[clip.id] = clip.broadcaster_name;

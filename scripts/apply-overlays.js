@@ -88,7 +88,7 @@ function applyStreamerOverlay(clipId, broadcasterName, skipBanner) {
   const ok = ffrun([
     '-i', clean,
     '-i', bannerMkv,
-    '-filter_complex', '[0:v][1:v]overlay=0:0:eof_action=pass:format=auto[out]',
+    '-filter_complex', "[0:v][1:v]overlay=0:0:enable='between(t,0,3)':format=auto[out]",
     '-map', '[out]', '-map', '0:a',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
     '-c:a', 'copy',
@@ -145,20 +145,15 @@ function renderReconnecting() {
   const panelMkv = ensureReconnectingMkv();
   console.log(`[RECONNECT] clipId=${rcId} peakStart=${peakStart}`);
 
-  // Hue-rotate glitch applied to the ENTIRE video frame (not just the panel).
-  // Simulates CSS `animation: panel-glitch 1.5s steps(20)` with hue-rotate(90deg):
-  //   floor(t*13) changes ~13 times/sec → mod 2 alternates 0° / 90° (PI/2 rad).
-  // Combined with noise + high saturation for a strong distortion effect.
-  const glitchFilter =
-    'setpts=PTS-STARTPTS,' +
-    'noise=alls=22:allf=t+u,' +
-    'eq=contrast=1.3:saturation=1.6:brightness=-0.05,' +
-    "hue=H='if(mod(floor(t*13),2), 1.57, 0)'";
+  // B&W clip → colored panel on top → glitch (noise + hue-rotate) over everything.
+  // Pipeline: [0:v] desaturate → [bw]; [bw][panel] overlay → [composite]; [composite] glitch → [out]
+  const bwFilter = 'setpts=PTS-STARTPTS,eq=saturation=0:contrast=1.25:brightness=-0.05';
+  const glitchFilter = "noise=alls=25:allf=t+u,hue=H='if(mod(floor(t*13),2), 1.57, 0)'";
 
   if (!panelMkv) {
     const ok = ffrun([
       '-ss', String(peakStart), '-t', '1.1', '-i', src,
-      '-vf', glitchFilter,
+      '-vf', `${bwFilter},${glitchFilter}`,
       '-t', '1.0',
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-r', '30', '-y', out
@@ -171,8 +166,9 @@ function renderReconnecting() {
     '-ss', String(peakStart), '-t', '1.1', '-i', src,
     '-i', panelMkv,
     '-filter_complex', [
-      `[0:v]${glitchFilter}[glitch]`,
-      '[glitch][1:v]overlay=0:0:eof_action=pass:format=auto[out]'
+      `[0:v]${bwFilter}[bw]`,
+      '[bw][1:v]overlay=0:0:format=auto[composite]',
+      `[composite]${glitchFilter}[out]`
     ].join(';'),
     '-map', '[out]', '-map', '0:a',
     '-t', '1.0',

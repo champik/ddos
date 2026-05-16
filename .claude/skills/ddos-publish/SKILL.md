@@ -36,28 +36,52 @@ node scripts/youtube-upload.js upload-video \
 
 ---
 
-## UPLOAD SHORTS
+## PUBLISH ALL (рекомендований шлях)
 
-`state.outputs.shortsPaths` містить список шляхів до файлів (наприклад `exports/shorts/<clipId>.mp4`).
-Для кожного елементу витягни clipId через `basename "$SHORT_PATH" .mp4`:
+Одна команда: публікує основне відео зараз + планує шортси через кожну годину.
 
 ```bash
-SHORT_PATH="exports/shorts/<clipId>.mp4"
-CLIP_ID=$(basename "$SHORT_PATH" .mp4)
-HOOK=$(cat "projects/<runId>/processed/$CLIP_ID/hook.txt" 2>/dev/null || echo "CLIP")
-MAIN_ID=$(node -e "const s=require('projects/<runId>/state.json'); console.log(s.outputs.youtubeVideoId||'')")
-
-node scripts/youtube-upload.js upload-short \
-  "<runId>" \
-  "<clipId>" \
-  "projects/<runId>/exports/shorts/<clipId>.mp4" \
-  "$MAIN_ID" \
-  "$HOOK"
+node scripts/youtube-upload.js publish-all "<runId>"
 ```
 
-Шортси публікуються одразу як Public і лінкуються на основне відео.
+Або із запланованим часом публікації основного відео:
 
-Оновити `state.stages.publish = "done"`.
+```bash
+node scripts/youtube-upload.js publish-all "<runId>" "2026-05-16T18:00:00.000Z"
+```
+
+Що відбувається:
+1. Основне відео (вже завантажене як unlisted) → виставляється як **public** зараз або за розкладом
+2. Кожен шортс з `episode-plan.json.shortClipIds` завантажується зі статусом `private + publishAt`
+   - Short #1 → mainPublishTime + 1 год
+   - Short #2 → mainPublishTime + 2 год
+   - Short #3 → mainPublishTime + 3 год
+   - ...
+3. Description кожного шортса:
+   ```
+   Full episode ▶ https://youtu.be/<mainVideoId>
+   
+   <caption з metadata.json>
+   
+   #DailyDoseOfStream #TwitchClips #Shorts
+   ```
+4. Title береться з `metadata.json.shortsMetadata[clipId].title`
+5. Зберігає `state.publishedAt` і `state.outputs.youtubeShortsIds[]`
+
+---
+
+## UPLOAD SHORTS (вручну, окремо)
+
+```bash
+node scripts/youtube-upload.js upload-short \
+  "<runId>" "<clipId>" \
+  "projects/<runId>/exports/shorts/<clipId>.mp4" \
+  "<mainVideoId>" \
+  "" \
+  "2026-05-16T19:00:00.000Z"   # publishAt (опціонально)
+```
+
+Без publishAt — публікується одразу як Public.
 
 ---
 
@@ -66,9 +90,12 @@ node scripts/youtube-upload.js upload-short \
 Обробляється в `.claude/commands/approve.md`. Після approve:
 
 ```bash
-VIDEO_ID=$(node -e "const s=require('projects/<runId>/state.json'); console.log(s.outputs.youtubeVideoId)")
-node scripts/youtube-upload.js publish-video "$VIDEO_ID"
+node scripts/youtube-upload.js publish-all "<runId>"
 ```
 
 Оновити `state.status = "published"`.
-Вивести: `✅ Епізод #N опублікований: https://youtu.be/$VIDEO_ID`
+Вивести:
+```
+✅ Епізод #N опублікований: https://youtu.be/<videoId>
+📱 Shorts заплановані: +1год, +2год, +3год...
+```

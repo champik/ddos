@@ -32,7 +32,7 @@
     "plan": "pending",
     "hooks": "pending",
     "trim": "pending",
-    "effects": "pending",
+    "effects": "skip",
     "overlays": "pending",
     "captions": "pending",
     "reconnecting": "pending",
@@ -59,8 +59,8 @@
 1. Прочитай `.claude/skills/ddos-analytics/SKILL.md` → виконай analytics (якщо є попередні runs з youtubeVideoId)
 2. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай ingest + filter + prescore + download
 3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score + plan + hooks
-4. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай trim + effects + overlays + captions merge + reconnecting + chill finale + render long-form + render shorts
-5. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions for shorts
+4. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай trim + overlays + reconnecting + chill finale + render long-form
+5. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions (--shorts-only) + render shorts
 6. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
 7. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
 8. Прочитай `.claude/skills/ddos-publish/SKILL.md` → виконай upload YouTube

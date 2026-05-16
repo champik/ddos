@@ -88,6 +88,13 @@ weplay_esports, faceit, dreamhack, esltv, iem
 | title (lowercase) містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event |
 | game_name (lowercase) містить: slots/casino/gambling/betting/poker | gambling |
 | `duration < 6` або `duration > 90` | duration |
+| `language` in `["ja","ko","zh","th"]` | asian_language (see exception below) |
+
+**Азійські мови — виняток:** Максимум **1 кліп на епізод** якщо виконані обидві умови:
+- момент суто візуальний (без діалогу — реакція, фізичний гег, тощо)
+- стрімер міжнародно відомий (xfactor, впізнаваний глядачам без контексту)
+
+Якщо таких кліпів кілька — взяти лише найкращий за `preScore`. Решту відхиляти з причиною `asian_language`.
 
 Зберегти у `filtered-clips.json` і `rejected-clips.json`.
 Оновити `state.counts.filtered`.

@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "googleapis": "^171.4.0",
     "puppeteer": "^24.43.1"
   }

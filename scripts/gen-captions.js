@@ -1,17 +1,19 @@
 'use strict';
 // gen-captions.js — phrase-based ASS captions from transcripts
-// Longform: emotional phrases only (hot words / CAPS / exclamation)
-// Shorts:   all phrases, word-by-word reveal within each phrase
-// Usage: node scripts/gen-captions.js <projectDir>
+// Shorts: all phrases, word-by-word reveal within each phrase
+// Usage:
+//   node scripts/gen-captions.js <projectDir>               — all clips in clipOrder
+//   node scripts/gen-captions.js <projectDir> --shorts-only — only shortClipIds, no episode.ass
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const projectDir = process.argv[2];
-if (!projectDir) { console.error('Usage: node gen-captions.js <projectDir>'); process.exit(1); }
+const shortsOnly = process.argv.includes('--shorts-only');
+if (!projectDir) { console.error('Usage: node gen-captions.js <projectDir> [--shorts-only]'); process.exit(1); }
 
-require('./progress').step(projectDir, 9, 'Субтитри ASS');
+require('./progress').step(projectDir, 9, shortsOnly ? 'Субтитри для шортсів' : 'Субтитри ASS');
 
 function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, '')); }
 const plan   = readJson(path.join(projectDir, 'edit/episode-plan.json'));
@@ -181,10 +183,15 @@ function getDuration(filePath) {
 }
 
 // --- Per-clip ASS ---
-console.log('\n=== gen-captions.js ===\n');
+console.log('\n=== gen-captions.js' + (shortsOnly ? ' (shorts-only)' : '') + ' ===\n');
+
+// In shorts-only mode process only shortClipIds; otherwise all clips in clipOrder
+const clipIds = shortsOnly
+  ? (plan.shortClipIds || [])
+  : plan.clipOrder;
 
 let generated = 0;
-for (const clipId of plan.clipOrder) {
+for (const clipId of clipIds) {
   const transcriptPath = path.join(projectDir, 'processed', clipId, 'transcript.json');
   if (!fs.existsSync(transcriptPath)) { console.log(`[SKIP] No transcript: ${clipId}`); continue; }
 
@@ -207,29 +214,33 @@ for (const clipId of plan.clipOrder) {
   console.log(`[OK] ${clipId} — ${tr.words.length} words, ${phrases.length} phrases (${lfTag})`);
 }
 
-// --- Merge episode.ass ---
-const INTRO_DUR = 1.25;
-const RECONNECT_DUR = 1.0;
+if (shortsOnly) {
+  console.log(`\n[DONE] Generated ${generated} shorts captions (vertical only, no episode.ass)\n`);
+} else {
+  // --- Merge episode.ass (full mode only — will be deleted before longform render) ---
+  const INTRO_DUR = 1.25;
+  const RECONNECT_DUR = 1.0;
 
-let offset = INTRO_DUR;
-const episodeLines = [LONGFORM_HEADER];
+  let offset = INTRO_DUR;
+  const episodeLines = [LONGFORM_HEADER];
 
-for (let gi = 0; gi < plan.groups.length; gi++) {
-  const group = plan.groups[gi];
-  for (const clipId of group.clipIds) {
-    const transcriptPath = path.join(projectDir, 'processed', clipId, 'transcript.json');
-    if (fs.existsSync(transcriptPath)) {
-      const tr = readJson(transcriptPath);
-      if (tr.words && tr.words.length > 0) {
-        const ass = genLongformAss(tr.words, '', offset);
-        episodeLines.push(...ass.split('\n').filter(l => l.startsWith('Dialogue:')));
+  for (let gi = 0; gi < plan.groups.length; gi++) {
+    const group = plan.groups[gi];
+    for (const clipId of group.clipIds) {
+      const transcriptPath = path.join(projectDir, 'processed', clipId, 'transcript.json');
+      if (fs.existsSync(transcriptPath)) {
+        const tr = readJson(transcriptPath);
+        if (tr.words && tr.words.length > 0) {
+          const ass = genLongformAss(tr.words, '', offset);
+          episodeLines.push(...ass.split('\n').filter(l => l.startsWith('Dialogue:')));
+        }
       }
+      const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
+      offset += getDuration(cleanPath);
     }
-    const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
-    offset += getDuration(cleanPath);
+    if (gi < plan.groups.length - 1) offset += RECONNECT_DUR;
   }
-  if (gi < plan.groups.length - 1) offset += RECONNECT_DUR;
-}
 
-fs.writeFileSync(path.join(projectDir, 'edit/episode.ass'), episodeLines.join('\n'), 'utf8');
-console.log(`\n[DONE] Generated ${generated} clip captions + episode.ass\n`);
+  fs.writeFileSync(path.join(projectDir, 'edit/episode.ass'), episodeLines.join('\n'), 'utf8');
+  console.log(`\n[DONE] Generated ${generated} clip captions + episode.ass\n`);
+}

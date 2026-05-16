@@ -108,7 +108,7 @@ node scripts/progress.js "projects/<runId>" 14 "YouTube метадані (Claude
     "Second Option | Daily Dose Of Stream",
     "Third Option | Daily Dose Of Stream"
   ],
-  "description": "Короткий вступ (2-3 речення).\n\nСтрімери: streamer1, streamer2...\n\n#DailyDoseOfStream #TwitchClips #Streaming",
+  "description": "Your daily dose of the best Twitch moments.",
   "tags": ["DailyDoseOfStream","TwitchClips","Streaming","JustChatting"],
   "thumbnailText": "2-4 СЛОВА ВЕЛИКИМИ",
   "shortsMetadata": [
@@ -129,22 +129,63 @@ node scripts/progress.js "projects/<runId>" 14 "YouTube метадані (Claude
 
 Зберегти у `exports/metadata.json`.
 
-### Після збереження metadata.json — вставити YouTube timecodes в description
+### Після збереження metadata.json — розрахувати timecodes і зібрати фінальний опис
 
-Claude генерує description БЕЗ timecodes (тільки вступ + теги). Timecodes рахуються окремо з реальних тривалостей кліпів:
+Claude генерує тільки вступний рядок description. Timecodes і теги додаються окремо:
+
+**Правила timecodes (глав):**
+- Кожна нова плашка стрімера = нова глава (перший кліп кожної групи + перший кліп від нового стрімера в групі)
+- Consecutивні кліпи від ТОГО САМОГО стрімера — НЕ новий таймкод
+- Перша глава ЗАВЖДИ `00:00` — вона поглинає інтро (00:00 = перший стрімер, не "Intro")
+- Нікнейм стрімера з `scored-clips.json` (broadcaster_name), БЕЗ символу `@`
+- RECONNECT_DUR = 1.0s між групами, INTRO_DUR = 1.25s (але 00:00 поглинає intro)
 
 ```javascript
-// Порядок: 00:00 Intro → кожен кліп з groups[].clipIds → Chill Outro (якщо є)
 // INTRO_DUR = 1.25s, RECONNECT_DUR = 1.0s
 // fmt(secs): "MM:SS" або "H:MM:SS" для відео >1 год
 // YouTube вимоги: перший timestamp = 00:00, мінімум 3 глави, зростаючий порядок
 
-const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
-const tags = meta.tags.map(t => '#' + t).join(' ');
+// Рахуємо: t починається з 0 (intro поглинається першою главою)
+// Для кожної групи: якщо стрімер змінився — додати chapter
+// Між групами +RECONNECT_DUR
 
-// Фінальний формат description:
-// "Your daily dose of the best Twitch moments.\n\n{chapters}\n\n{hashtags}"
-meta.description = 'Your daily dose of the best Twitch moments.\n\n' + chaptersStr + '\n\n' + tags;
+const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.broadcasterName).join('\n');
+```
+
+**Теги — завжди включати нікнейми стрімерів:**
+```javascript
+// Базові теги + всі стрімери з episode-plan.json groups[].clipIds
+const streamerTags = [...new Set(
+  plan.groups.flatMap(g => g.clipIds.map(id => scored.find(c => c.id === id)?.broadcaster_name))
+)].filter(Boolean);
+
+meta.tags = [
+  'DailyDoseOfStream','TwitchClips','Streaming','JustChatting','IRL',
+  'Twitch','TwitchHighlights','StreamerMoments',
+  ...streamerTags
+];
+```
+
+**Видимі хештеги в description** — тільки базові + топ-5 стрімерів за ddosScore:
+```javascript
+const topStreamers = streamerTags.slice(0, 5).map(s => '#' + s.replace(/\s/g, '')).join(' ');
+const baseHashtags = '#DailyDoseOfStream #TwitchClips #Streaming #JustChatting #IRL #Twitch #TwitchHighlights #StreamerMoments';
+```
+
+**Фінальний формат description:**
+```
+Your daily dose of the best Twitch moments.
+
+00:00 HAchubby
+00:21 theavamariee
+01:13 Gorgc
+...
+
+#DailyDoseOfStream #TwitchClips #Streaming #JustChatting #IRL #Twitch #TwitchHighlights #StreamerMoments #xQc #HAchubby #Gorgc
+```
+
+```javascript
+meta.description = 'Your daily dose of the best Twitch moments.\n\n' + chaptersStr + '\n\n' + baseHashtags + ' ' + topStreamers;
 ```
 
 Оновити `state.stages.thumbnail = "done"`, `state.stages.metadata = "done"`.
