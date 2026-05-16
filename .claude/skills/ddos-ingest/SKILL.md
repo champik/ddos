@@ -6,6 +6,10 @@
 
 ## INGEST — Twitch API
 
+```bash
+node scripts/progress.js "projects/<runId>" 1 "Отримую кліпи з Twitch"
+```
+
 ### Отримати токен
 
 ```bash
@@ -63,6 +67,10 @@ GET https://api.twitch.tv/helix/clips
 ---
 
 ## FILTER — Metadata фільтрація (до download)
+
+```bash
+node scripts/progress.js "projects/<runId>" 2 "Фільтрація та pre-score"
+```
 
 **Офіційні org-акаунти (відхиляти):**
 ```
@@ -163,13 +171,36 @@ toDownload = dedup([...top35, ...mid35, ...gems15, ...small10, ...trending5]).sl
 ## DOWNLOAD
 
 ```bash
+node scripts/progress.js "projects/<runId>" 3 "Завантаження кліпів (yt-dlp)"
+```
+
+### Назва файлу
+
+```javascript
+function buildDownloadFilename(clip) {
+  const cat = (clip.game_name || 'unknown').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const streamer = clip.broadcaster_name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  const views = clip.view_count;
+  const date = clip.created_at.slice(0, 10).replace(/-/g, '_');
+  return `${cat}_${streamer}_${views}_${date}.mp4`;
+}
+```
+
+```bash
+FILENAME=$(buildDownloadFilename clip)
 yt-dlp \
   --no-playlist \
   --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
   --merge-output-format mp4 \
-  --output "projects/<runId>/downloads/<clipId>.mp4" \
+  --output "projects/<runId>/downloads/$FILENAME" \
   --quiet \
   "<clip_url>"
+```
+
+Після успішного завантаження додати `localPath` до clip об'єкта:
+```javascript
+clip.localPath = `projects/${runId}/downloads/${filename}`;
 ```
 
 - Якщо файл вже існує → пропустити
@@ -177,4 +208,7 @@ yt-dlp \
 - Паралельно: max 5 одночасно
 - Limit: 80 кліпів
 
-Зберегти `downloaded-clips.json`. Оновити `state.counts.downloaded`, `state.stages.download = "done"`.
+Зберегти `downloaded-clips.json` (кожен кліп має `localPath`).
+Оновити `state.counts.downloaded`, `state.stages.download = "done"`.
+
+> Downstream steps (trim, transcribe) мають брати шлях до файлу з `clip.localPath`, не конструювати його з clipId.

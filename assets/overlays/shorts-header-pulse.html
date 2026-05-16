@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1080px;
+      height: 1920px;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    @keyframes heartbeat {
+      0%, 100% { transform: scale(1.0); opacity: 0.78; }
+      35%       { transform: scale(1.06); opacity: 1.0;  }
+      65%       { transform: scale(1.0); opacity: 0.82; }
+    }
+
+    /* Centering wrapper — no animation so transforms don't conflict */
+    /* top≈290px: visual center of safe zone above 16:9 clip (0–656px → midpoint 328px minus half element height) */
+    .pulse-wrapper {
+      position: absolute;
+      top: 290px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+    }
+
+    .pulse-unit {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      animation: heartbeat 2.4s ease-in-out infinite;
+      transform-origin: center center;
+    }
+
+    .logo {
+      width: 68px;
+      height: 68px;
+      object-fit: contain;
+      flex-shrink: 0;
+      filter: drop-shadow(0 2px 10px rgba(0,0,0,0.85));
+    }
+
+    .name {
+      font-family: Impact, sans-serif;
+      font-size: 54px;
+      font-weight: 900;
+      color: #f5ff3d;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      line-height: 1;
+      /* readability over any blurred bg */
+      text-shadow:
+        2px  2px 0 #000,
+       -2px -2px 0 #000,
+        2px -2px 0 #000,
+       -2px  2px 0 #000,
+        0    3px 10px rgba(0,0,0,0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="pulse-wrapper">
+    <div class="pulse-unit">
+      <img class="logo" src="./logo.svg"/>
+      <div class="name">@STREAMER_PLACEHOLDER</div>
+    </div>
+  </div>
+</body>
+</html>

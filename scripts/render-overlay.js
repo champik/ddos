@@ -7,14 +7,14 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const os = require('os');
 
 const FPS = 30;
 const DURATION_S = 3;
-const FRAMES = FPS * DURATION_S;
 
-async function captureFrames(html, width, height, framesDir) {
+async function captureFrames(html, width, height, framesDir, durationS = DURATION_S) {
+  const frames = Math.round(FPS * durationS);
   const tmpHtml = path.join(framesDir, '_overlay.html');
   fs.writeFileSync(tmpHtml, html, 'utf8');
 
@@ -32,8 +32,8 @@ async function captureFrames(html, width, height, framesDir) {
     document.getAnimations().forEach(a => { a.pause(); a.currentTime = 0; });
   });
 
-  for (let i = 0; i < FRAMES; i++) {
-    const timeMs = (i / FRAMES) * DURATION_S * 1000;
+  for (let i = 0; i < frames; i++) {
+    const timeMs = (i / frames) * durationS * 1000;
     await page.evaluate((t) => {
       document.getAnimations().forEach(a => { a.currentTime = t; });
     }, timeMs);
@@ -49,18 +49,17 @@ async function captureFrames(html, width, height, framesDir) {
   fs.unlinkSync(tmpHtml);
 }
 
-function compileWebm(framesDir, outputPath) {
-  const cmd = [
-    'ffmpeg', '-y',
+function compileOverlay(framesDir, outputPath) {
+  // FFV1 in MKV preserves alpha correctly on Windows (VP9/VP8 do not)
+  const r = spawnSync('ffmpeg', [
+    '-y',
     '-framerate', String(FPS),
     '-i', path.join(framesDir, 'frame_%04d.png'),
-    '-c:v', 'libvpx-vp9',
+    '-c:v', 'ffv1',
     '-pix_fmt', 'yuva420p',
-    '-b:v', '0', '-crf', '25',
-    '-auto-alt-ref', '0',
     outputPath
-  ].join(' ');
-  execSync(cmd, { stdio: 'pipe' });
+  ], { stdio: 'pipe', encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(r.stderr.slice(-300));
 }
 
 function inlineLogoSvg(html) {
@@ -78,7 +77,7 @@ async function renderStreamer(name, outputPath) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-str-'));
   try {
     await captureFrames(html, 1920, 1080, tmpDir);
-    compileWebm(tmpDir, outputPath);
+    compileOverlay(tmpDir, outputPath);
     console.log(`Streamer overlay (${name}) → ${outputPath}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -92,8 +91,26 @@ async function renderReconnecting(outputPath) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-rc-'));
   try {
     await captureFrames(html, 1920, 1080, tmpDir);
-    compileWebm(tmpDir, outputPath);
+    compileOverlay(tmpDir, outputPath);
     console.log(`Reconnecting panel → ${outputPath}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+// Render pulsating 1080×1920 MKV header for Shorts (logo + @streamer, 2 heartbeat cycles)
+async function renderShortsHeader(name, outputPath) {
+  let html = fs.readFileSync('assets/overlays/shorts-header-pulse.html', 'utf8');
+  html = inlineLogoSvg(html);
+  html = html.replace(/STREAMER_PLACEHOLDER/g, name.toUpperCase());
+
+  // 2 complete heartbeat cycles at 2.4s each = 4.8s; loops seamlessly via -stream_loop
+  const HEADER_DURATION = 4.8;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-hdr-'));
+  try {
+    await captureFrames(html, 1080, 1920, tmpDir, HEADER_DURATION);
+    compileOverlay(tmpDir, outputPath);
+    console.log(`Shorts header pulse (@${name}) → ${outputPath}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -104,8 +121,11 @@ if (mode === 'streamer' && args.length >= 2) {
   renderStreamer(args[0], args[1]).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'reconnecting' && args.length >= 1) {
   renderReconnecting(args[0]).catch(e => { console.error(e.message); process.exit(1); });
+} else if (mode === 'shorts-header' && args.length >= 2) {
+  renderShortsHeader(args[0], args[1]).catch(e => { console.error(e.message); process.exit(1); });
 } else {
-  console.error('Usage: node render-overlay.js streamer <name> <out.webm>');
-  console.error('       node render-overlay.js reconnecting <out.webm>');
+  console.error('Usage: node render-overlay.js streamer <name> <out.mkv>');
+  console.error('       node render-overlay.js reconnecting <out.mkv>');
+  console.error('       node render-overlay.js shorts-header <name> <out.png>');
   process.exit(1);
 }

@@ -6,11 +6,17 @@
 
 ## TRANSCRIBE — faster-whisper
 
+```bash
+node scripts/progress.js "projects/<runId>" 4 "Транскрипція (Whisper large-v3)"
+```
+
 Для кожного завантаженого кліпу запусти Python скрипт:
+
+Шлях до відео брати з `clips/downloaded-clips.json` → `clip.localPath`.
 
 ```bash
 python3 scripts/transcribe.py \
-  "projects/<runId>/downloads/<clipId>.mp4" \
+  "<clip.localPath>" \
   "projects/<runId>/processed/<clipId>/transcript.json" \
   "<clipId>"
 ```
@@ -20,58 +26,58 @@ python3 scripts/transcribe.py \
 
 ---
 
-## SCORE — Claude оцінка (13 вимірів + editingNotes)
+## SCORE — Claude оцінка (batch, 8 кліпів за раз)
 
-Для кожного кліпу з downloaded-clips.json:
-
-1. Прочитати `processed/<clipId>/transcript.json` якщо існує (витяг перших 500 символів)
-2. Оцінити безпосередньо в поточній розмові:
-
-**Scoring prompt:**
-```
-Ти оцінюєш Twitch кліп для "Daily Dose Of Stream".
-Контент: смішний, комфортний, курований. Не токсичний.
-
-Кліп:
-- Стрімер: <broadcaster_name>
-- Категорія: <game_name>
-- Мова: <language>
-- Тривалість: <duration>s
-- Назва: "<title>"
-- Транскрипт (до 500 симв): "<excerpt>"
-
-Оціни від 0 до 100. Будь строгим — не кожен заслуговує 80+.
-
-JSON (без markdown):
-{
-  "retentionScore": 0-100,
-  "funnyScore": 0-100,
-  "payoffStrength": 0-100,
-  "contextClarity": 0-100,
-  "noveltyScore": 0-100,
-  "shortsPotential": 0-100,
-  "longFormPotential": 0-100,
-  "transitionPotential": 0-100,
-  "cooldownPotential": 0-100,
-  "musicRisk": 0-100,
-  "toxicityRisk": 0-100,
-  "singingScore": 0-100,
-  "dancingScore": 0-100,
-  "rageScore": 0-100,
-  "flags": [],
-  "reasoning": "1-2 речення",
-  "editingNotes": {
-    "punchZoomAt": null,
-    "colorPunchAt": [],
-    "rageMoments": []
-  }
-}
+```bash
+node scripts/progress.js "projects/<runId>" 5 "Оцінювання кліпів (Claude)"
 ```
 
-**editingNotes:** Визначати на основі транскрипту і категорії:
-- `punchZoomAt`: секунда найсильнішого моменту (де треба punch zoom). null якщо немає.
-- `colorPunchAt`: масив секунд де burst of energy (excited words in transcript).
-- `rageMoments`: масив {start, end} де rage/крик (ALL CAPS слова + rage vocabulary в transcript).
+**Батчинг обов'язковий** — ніколи не оцінювати по одному кліпу. Групувати по 8 і відправляти один запит.
+
+Для кожної групи 8 кліпів:
+1. Прочитати `processed/<clipId>/transcript.json` якщо існує (перші 400 символів)
+2. Відправити один batch prompt:
+
+**Scoring prompt (batch):**
+```
+Ти оцінюєш Twitch кліпи для "Daily Dose Of Stream".
+Канал: смішний, комфортний, курований. Не токсичний.
+
+Оціни кожен кліп від 0 до 100. Будь строгим — більшість кліпів 40-70, лише справді видатні 80+.
+
+Кліпи:
+[1] <clipId>
+  Стрімер: <broadcaster_name>, Категорія: <game_name>, Мова: <language>, Тривалість: <duration>s
+  Назва: "<title>"
+  Транскрипт: "<excerpt>"
+
+[2] ...
+(до 8 кліпів)
+
+Відповідай ТІЛЬКИ валідним JSON масивом (без markdown):
+[
+  {
+    "clipId": "...",
+    "retentionScore": 0-100,
+    "funnyScore": 0-100,
+    "payoffStrength": 0-100,
+    "contextClarity": 0-100,
+    "noveltyScore": 0-100,
+    "shortsPotential": 0-100,
+    "longFormPotential": 0-100,
+    "transitionPotential": 0-100,
+    "cooldownPotential": 0-100,
+    "musicRisk": 0-100,
+    "toxicityRisk": 0-100,
+    "singingScore": 0-100,
+    "dancingScore": 0-100,
+    "rageScore": 0-100,
+    "flags": [],
+    "reasoning": "1 речення"
+  },
+  ...
+]
+```
 
 **DDOS Score формула:**
 ```
@@ -147,6 +153,10 @@ if dancingScore > 70:
 
 ## PLAN — Claude будує план епізоду
 
+```bash
+node scripts/progress.js "projects/<runId>" 6 "Будую план епізоду"
+```
+
 Передай топ-30 scored кліпів. Claude вирішує план безпосередньо в розмові.
 
 **Planning prompt:**
@@ -164,10 +174,12 @@ if dancingScore > 70:
 - ЗАБОРОНЕНО: той самий стрімер + різна гра в одній групі
 
 ПРАВИЛА ВИБОРУ:
-- Обери 12–18 кліпів для long-form (ціль 12–15 хв, враховуй duration кожного)
+- Обери 12–18 кліпів для long-form
+- **ТРИВАЛІСТЬ**: рахувати суму `clean.mp4` тривалостей (post-trim), не raw duration. Ціль 12–15 хв після concat з intro/reconnecting/outro. Якщо сума < 12 хв — додати більше кліпів.
+- **КАТЕГОРІЇ**: мінімум 50% кліпів мусять бути з Just Chatting (509658) або IRL (509672). Максимум 2 кліпи з однієї ігрової категорії. Якщо не виходить — повернутись і перебрати кліпи.
 - Перша група: сильний, захоплюючий контент (opener)
-- reconnectingClipId: кліп з першої групи з найвищим funnyScore або rageScore
-- Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець
+- **reconnectingClipId**: обирати кліп де є ЧІТКИЙ пік — раптова реакція, вигук, смішний момент в середині кліпу. Ідеально: кліп з `rageScore > 60` або `funnyScore > 75` І transcript показує short sharp moment. НЕ брати довгі спокійні кліпи.
+- Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець як `chillPlan`. Ці кліпи НЕ включати в основні групи — вони підуть через chill-finale.mp4.
 - Обери 5–10 кліпів для Shorts (найвищий shortsPotential)
 
 Відповідай ТІЛЬКИ JSON:
@@ -195,6 +207,10 @@ if dancingScore > 70:
 ---
 
 ## HOOKS — текстові хуки
+
+```bash
+node scripts/progress.js "projects/<runId>" 8 "Генерую хуки для кліпів"
+```
 
 Для кожного кліпу з episode-plan.json згенеруй хук:
 

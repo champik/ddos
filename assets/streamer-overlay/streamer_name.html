@@ -156,7 +156,6 @@
         max-width: 540px;
 
         /* Entrance animation lifecycle */
-        opacity: 0;
         animation: overlay-lifecycle 3s ease forwards;
         --hold-ms: 3s;
       }
@@ -167,20 +166,16 @@
 
       @keyframes overlay-lifecycle {
         0% {
-          opacity: 0;
-          transform: translateX(-18px);
+          transform: translateX(-150%);
         }
         15% {
-          opacity: 1;
           transform: translateX(0);
         }
         85% {
-          opacity: 1;
           transform: translateX(0);
         }
         100% {
-          opacity: 0;
-          transform: translateX(-10px);
+          transform: translateX(-150%);
         }
       }
 

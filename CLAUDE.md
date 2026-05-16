@@ -5,8 +5,22 @@
 Щоденна автоматична система для YouTube каналу "Daily Dose Of Stream" (DDOS).
 Твич кліпи → готовий YouTube епізод + Shorts + thumbnail + metadata.
 
-**Output:** `projects/<runId>/exports/episode-NNN.mp4` + shorts/ + thumbnail.png + metadata.json  
+**Output:** `projects/Episode_N_YYYY_MM_DD/exports/episode-NNN.mp4` + shorts/ + thumbnail.png + metadata.json  
 **Публікація:** ручна через YouTube Studio або автоматична після `/ddos approve`.
+
+### Іменування папок проектів
+- Формат: `Episode_N_YYYY_MM_DD` де N — номер епізоду, дата — дата запуску
+- Приклад: `Episode_1_2026_05_16`, `Episode_2_2026_05_17`
+- Тестові/невдалі запуски: `Test_N_YYYY_MM_DD`
+
+### Іменування завантажених кліпів
+- Формат: `{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4`
+- category = game_name sanitized (lowercase, пробіли→underscore, тільки [a-z0-9_])
+- streamer = broadcaster_name lowercase  
+- views = view_count (ціле число)
+- Приклад: `just_chatting_xqc_45000_2026_05_15.mp4`
+- Зберігається у `downloads/` в папці проекту
+- Поле `localPath` у `downloaded-clips.json` вказує на фактичний файл
 
 ---
 
@@ -115,7 +129,7 @@ projects/<runId>/
 │   ├── filtered-clips.json
 │   ├── downloaded-clips.json
 │   └── scored-clips.json
-├── downloads/<clipId>.mp4
+├── downloads/{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4  # ім'я кліпу
 ├── processed/<clipId>/
 │   ├── transcript.json
 │   ├── score.json

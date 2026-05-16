@@ -6,6 +6,10 @@
 
 ## THUMBNAIL
 
+```bash
+node scripts/progress.js "projects/<runId>" 13 "Thumbnail (Puppeteer рендер)"
+```
+
 ### Крок 1 — Витягни найкращий кадр
 
 З openerClipId (з episode-plan.json) витягни кадр на позиції 60% тривалості:
@@ -83,6 +87,10 @@ node scripts/render-thumbnail.js \
 
 ## METADATA — Claude генерація
 
+```bash
+node scripts/progress.js "projects/<runId>" 14 "YouTube метадані (Claude)"
+```
+
 Передай список кліпів Claude:
 
 ```
@@ -120,4 +128,23 @@ node scripts/render-thumbnail.js \
 ```
 
 Зберегти у `exports/metadata.json`.
+
+### Після збереження metadata.json — вставити YouTube timecodes в description
+
+Claude генерує description БЕЗ timecodes (тільки вступ + теги). Timecodes рахуються окремо з реальних тривалостей кліпів:
+
+```javascript
+// Порядок: 00:00 Intro → кожен кліп з groups[].clipIds → Chill Outro (якщо є)
+// INTRO_DUR = 1.25s, RECONNECT_DUR = 1.0s
+// fmt(secs): "MM:SS" або "H:MM:SS" для відео >1 год
+// YouTube вимоги: перший timestamp = 00:00, мінімум 3 глави, зростаючий порядок
+
+const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
+const tags = meta.tags.map(t => '#' + t).join(' ');
+
+// Фінальний формат description:
+// "Your daily dose of the best Twitch moments.\n\n{chapters}\n\n{hashtags}"
+meta.description = 'Your daily dose of the best Twitch moments.\n\n' + chaptersStr + '\n\n' + tags;
+```
+
 Оновити `state.stages.thumbnail = "done"`, `state.stages.metadata = "done"`.

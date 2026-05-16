@@ -1,5 +1,7 @@
 auth/
+cache/
 .env
+.twitch_token
 .worktrees/
 projects/*/downloads/
 projects/*/exports/*.mp4

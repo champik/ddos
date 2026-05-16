@@ -13,7 +13,7 @@ def transcribe(video_path, output_path, clip_id):
 
     try:
         from faster_whisper import WhisperModel
-        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        model = WhisperModel("large-v3", device="cuda", compute_type="float16")
         segments, info = model.transcribe(video_path, word_timestamps=True)
 
         words = []

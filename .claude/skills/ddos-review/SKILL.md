@@ -6,6 +6,10 @@
 
 ## Генерація review.html
 
+```bash
+node scripts/progress.js "projects/<runId>" 15 "Генерую review.html"
+```
+
 Зчитай:
 - `state.json` — runId, episodeNumber, outputs
 - `edit/episode-plan.json` — clipOrder, segments
@@ -65,6 +69,10 @@ Description і hashtags.
 ```
 ✓ Review page готова
 Відкрий: projects/<runId>/review/review.html
+```
+
+```bash
+node scripts/progress.js "projects/<runId>" summary
 ```
 
 Оновити `state.stages.review = "done"`.

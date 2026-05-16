@@ -1,19 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ffmpeg:*)",
-      "Bash(ffprobe:*)",
-      "Bash(yt-dlp:*)",
-      "Bash(python3:*)",
-      "Bash(python:*)",
-      "Bash(node:*)",
-      "Bash(curl:*)",
-      "Bash(mkdir:*)",
-      "Bash(cp:*)",
-      "Bash(mv:*)",
-      "Bash(cat:*)",
-      "Bash(ls:*)",
-      "Bash(rm:*)"
+      "Bash(*)",
+      "PowerShell(*)"
     ]
   }
 }

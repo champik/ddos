@@ -6,12 +6,19 @@
 
 ## TRIM — Silence Detection + Re-encode
 
+```bash
+node scripts/progress.js "projects/<runId>" 7 "Обрізка кліпів (FFmpeg trim + loudnorm)"
+```
+
 Для кожного кліпу з episode-plan.json clipOrder:
 
 ### 1. Знайти точки обрізання через silencedetect
 
+Шлях до завантаженого файлу: читати з `clips/downloaded-clips.json` → `clip.localPath` (не конструювати з clipId).
+
 ```bash
-SILENCE_OUT=$(ffmpeg -i "downloads/<clipId>.mp4" \
+LOCAL_PATH=$(node -e "const c=require('./clips/downloaded-clips.json').find(c=>c.id==='<clipId>'); console.log(c.localPath)")
+SILENCE_OUT=$(ffmpeg -i "$LOCAL_PATH" \
   -af "silencedetect=noise=-40dB:duration=0.3" \
   -f null - 2>&1)
 ```
@@ -45,185 +52,60 @@ ffmpeg -i "downloads/<clipId>.mp4" -ss $START -to $END \
 
 ---
 
-## OVERLAYS — WebM Alpha з кешуванням
+## OVERLAYS — Puppeteer frame-by-frame → FFV1 MKV
 
-### Reconnecting panel (pre-render один раз на початку)
-
-```bash
-mkdir -p edit
-if [ ! -f "edit/reconnecting-panel.webm" ]; then
-  node scripts/render-overlay.js reconnecting "edit/reconnecting-panel.webm"
-fi
-```
-
-### Streamer name overlay (per clip, з кешуванням)
-
-Для кожного кліпу з episode-plan.json:
+> VP9/VP8 WebM alpha is broken on Windows FFmpeg — FFV1 in MKV correctly preserves alpha.
+> Drawtext/drawbox cannot replicate the designed animation — use Puppeteer capture.
 
 ```bash
-BROADCASTER="<broadcaster_name_lowercase>"
-CACHE="cache/overlays/${BROADCASTER}.webm"
-
-mkdir -p cache/overlays
-if [ ! -f "$CACHE" ]; then
-  node scripts/render-overlay.js streamer "<broadcaster_name>" "$CACHE"
-fi
-
-# Burn animated WebM overlay (показується перші 3с кліпу)
-ffmpeg -i "processed/<clipId>/clean.mp4" \
-  -i "$CACHE" \
-  -filter_complex "
-    [0:v][1:v]overlay=20:H-h-120:eof_action=pass:format=auto[out]
-  " \
-  -map "[out]" -map "0:a" \
-  -c:v libx264 -preset fast -crf 23 \
-  -c:a copy \
-  -y "processed/<clipId>/overlayed.mp4"
+node scripts/apply-overlays.js "projects/<runId>"
 ```
 
-Якщо `overlayed.mp4` вже існує → пропустити.
+Скрипт:
+- Читає `edit/episode-plan.json` і `clips/scored-clips.json`
+- Для кожного кліпу: `clean.mp4` → `overlayed.mp4` з animated streamer name banner (перші 3с)
+- Банер рендериться через `scripts/render-overlay.js streamer <name> <out.mkv>` (Puppeteer → FFV1 MKV)
+- Кешується в `cache/overlays/<slug>.mkv` (повторно використовується між епізодами)
+- Consecutивні кліпи від одного стрімера: банер не показується (лише `-c copy`)
+- Рендерить `edit/reconnecting.mp4` через render-overlay.js reconnecting → `cache/overlays/reconnecting-panel.mkv`
+- FFmpeg overlay: `[0:v][1:v]overlay=0:0:eof_action=pass:format=auto`
 
-Оновити `state.stages.overlays = "done"`.
+Якщо треба переробити overlay — видалити `cache/overlays/<slug>.mkv` вручну, потім запустити знову.
+
+Оновити `state.stages.overlays = "done"`, `state.stages.reconnecting = "done"`.
+
+**render-overlay.js modes:**
+```bash
+node scripts/render-overlay.js streamer "<broadcaster_name>" "<out.mkv>"
+node scripts/render-overlay.js reconnecting "<out.mkv>"
+```
+
+Streamer overlay HTML: `assets/streamer-overlay/streamer_name.html`
+Reconnecting overlay HTML: `assets/overlays/reconnecting.html`
 
 ---
 
-## RECONNECTING — Glitch Moment + Panel Overlay (1 секунда)
+## EFFECTS — DISABLED
 
-Виконується після OVERLAYS.
-
-### Вибір моменту
-
-Читати `episode-plan.json.reconnectingClipId`.
-Читати `processed/<reconnectingClipId>/score.json` → `peakMoment.start`.
-
-### Рендер
-
-```bash
-CLIP="processed/<reconnectingClipId>/overlayed.mp4"
-# Якщо overlayed не існує → використати clean.mp4
-[ -f "$CLIP" ] || CLIP="processed/<reconnectingClipId>/clean.mp4"
-
-PEAK_START=<peakMoment.start>
-PANEL="edit/reconnecting-panel.webm"
-
-ffmpeg -ss $PEAK_START -t 1.1 -i "$CLIP" \
-  -i "$PANEL" \
-  -filter_complex "
-    [0:v]setpts=PTS-STARTPTS,
-         noise=alls=15:allf=t+u,
-         eq=contrast=1.3:saturation=0.6[glitch];
-    [glitch][1:v]overlay=W-w-44:44:eof_action=pass:format=auto[out]
-  " \
-  -map "[out]" -map "0:a" \
-  -t 1.0 \
-  -c:v libx264 -preset fast -crf 22 \
-  -c:a aac -b:a 192k -ar 48000 -r 30 \
-  -y "edit/reconnecting.mp4"
-```
-
-Оновити `state.stages.reconnecting = "done"`.
-
-**Примітка:** Один і той самий `edit/reconnecting.mp4` вставляється між ВСІМА групами в concat-list — глядач вже бачив цей момент у першій групі, тому він впізнаваний.
+Zoom punch та color punch effects вимкнені — реалізація виявилась занадто жорстокою і псує відео.
+Встановити `state.stages.effects = "skip"` і продовжити без змін у overlayed.mp4.
 
 ---
 
-## EFFECTS — Динамічний монтаж
+## CAPTIONS — ASS субтитри
 
-Для кожного кліпу з episode-plan.json де `score.json.editingNotes` непорожній:
-
-**Input:** `processed/<clipId>/overlayed.mp4`
-
-### Zoom punch (якщо punchZoomAt != null)
+Виконується після TRIM і перед RENDER LONG.
 
 ```bash
-PUNCH_S=<editingNotes.punchZoomAt>
-PUNCH_F=$(echo "$PUNCH_S * 30" | bc | cut -d. -f1)  # frame number
-DUR=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/<clipId>/overlayed.mp4")
-TOTAL_F=$(echo "$DUR * 30" | bc | cut -d. -f1)
-
-ffmpeg -i "processed/<clipId>/overlayed.mp4" \
-  -vf "
-    zoompan=
-      z='if(between(on,${PUNCH_F}-9,${PUNCH_F}),
-           1+0.15*(on-${PUNCH_F}+9)/9,
-         if(between(on,${PUNCH_F},${PUNCH_F}+6),
-           1.15,
-         if(between(on,${PUNCH_F}+6,${PUNCH_F}+15),
-           1.15-0.15*(on-${PUNCH_F}-6)/9,1)))':
-      d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':fps=30,
-    scale=1920:1080
-  " \
-  -c:v libx264 -preset fast -crf 23 -c:a copy \
-  -y "processed/<clipId>/overlayed_fx.mp4"
-mv "processed/<clipId>/overlayed_fx.mp4" "processed/<clipId>/overlayed.mp4"
+node scripts/gen-captions.js "projects/<runId>"
 ```
 
-### Color punch (якщо colorPunchAt непорожній)
+Скрипт:
+- Генерує `processed/<clipId>/captions-longform.ass` (тільки емоційні фрази, Impact 72px жовтий)
+- Генерує `processed/<clipId>/captions-vertical.ass` (всі фрази, word-by-word reveal, Impact 82px)
+- Генерує `edit/episode.ass` (merged з time offsets для all clips)
 
-```bash
-# Застосовується до всього відео але eq=saturation=1.3 тільки в потрібні моменти
-# Для простоти: якщо є colorPunchAt → легкий color boost всього кліпу
-ffmpeg -i "processed/<clipId>/overlayed.mp4" \
-  -vf "eq=saturation=1.2:contrast=1.05" \
-  -c:v libx264 -preset fast -crf 23 -c:a copy \
-  -y "processed/<clipId>/overlayed_fx.mp4"
-mv "processed/<clipId>/overlayed_fx.mp4" "processed/<clipId>/overlayed.mp4"
-```
-
-### Перевірка чи потрібні effects
-
-Якщо `editingNotes.punchZoomAt == null` І `editingNotes.colorPunchAt == []` І `editingNotes.rageMoments == []` → пропустити clip (overlayed.mp4 залишається без змін).
-
-Оновити `state.stages.effects = "done"`.
-
----
-
-## CAPTIONS MERGE — Об'єднати субтитри з time offsets
-
-Виконується після TRIM і перед RENDER LONG. Збирає всі per-clip ASS файли в один `edit/episode.ass`.
-
-### Розрахунок cumulative offsets
-
-```javascript
-const plan = require('./edit/episode-plan.json');
-const { execSync } = require('child_process');
-
-const INTRO_DUR = 1.25;     // assets/intro/intro.mp4
-const RECONNECT_DUR = 1.0;  // edit/reconnecting.mp4
-
-function getClipDuration(clipId) {
-  const out = execSync(
-    `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/${clipId}/clean.mp4"`
-  ).toString().trim();
-  return parseFloat(out) || 0;
-}
-
-let offset = INTRO_DUR;
-const segments = [];
-
-for (let gi = 0; gi < plan.groups.length; gi++) {
-  const group = plan.groups[gi];
-  for (const clipId of group.clipIds) {
-    const assFile = `processed/${clipId}/captions-longform.ass`;
-    segments.push({ assFile, offset });
-    offset += getClipDuration(clipId);
-  }
-  // Додати reconnecting між групами (не після останньої)
-  if (gi < plan.groups.length - 1) {
-    offset += RECONNECT_DUR;
-  }
-}
-
-require('fs').writeFileSync('edit/captions-segments.json', JSON.stringify(segments, null, 2));
-```
-
-### Запуск merge
-
-```bash
-node scripts/merge-captions.js "edit/captions-segments.json" "edit/episode.ass"
-```
-
-Якщо жоден кліп не має `captions-longform.ass` → пропустити (episode.ass не буде, render без субтитрів).
+Якщо жоден кліп не має transcript.json → episode.ass не буде, render без субтитрів.
 
 Оновити `state.stages.captions = "done"`.
 
@@ -341,23 +223,33 @@ CLIP_COUNT=$(node -e "const p=require('./edit/episode-plan.json'); console.log(p
 
 ### Крок 2: Побудова concat-list.txt
 
-Порядок (абсолютні шляхи):
+**ВАЖЛИВО — уникнути дублювання chill-finale:**
+
+Якщо `chillPlan.type != "skip"` і `edit/chill-finale.mp4` існує:
+- Clips з `chillPlan.dancingClipIds` (та `chillPlan.singingClipId`) НЕ додавати до concat з груп — вони вже є в chill-finale.mp4
+- Остання група в episode-plan.json може містити ці самі кліпи — пропустити її з concat, замінити на chill-finale.mp4
+
+Порядок (абсолютні шляхи, форвард-слеші):
 ```
-file '/abs/path/assets/intro/intro.mp4'
+file '/abs/path/assets/intro/intro_30fps.mp4'
 [кліпи GROUP 1: overlayed.mp4, або clean.mp4 якщо overlay не існує]
 file '/abs/path/edit/reconnecting.mp4'
 [кліпи GROUP 2]
 file '/abs/path/edit/reconnecting.mp4'
 ...
-[кліпи GROUP N]
-[file '/abs/path/edit/chill-finale.mp4' — тільки якщо файл існує]
-file '/abs/path/assets/outro/outro.mp4'
+[кліпи GROUP N-1]               ← всі групи крім тих що містять chill clips
+file '/abs/path/edit/reconnecting.mp4'
+[file '/abs/path/edit/chill-finale.mp4' — якщо існує, замість останньої групи]
+[або кліпи GROUP N якщо chill-finale.mp4 не існує]
+file '/abs/path/assets/outro/outro_30fps.mp4'
 ```
 
-Групи беремо з `episode-plan.json` поля `groups[].clipIds`, в порядку груп.
+**ВАЖЛИВО:** Використовувати `intro_30fps.mp4` і `outro_30fps.mp4` (re-encoded 30fps версії), НЕ оригінальні. Оригінали (60fps, без SAR) викликають обрізання у склеєному відео.
+
+Групи беремо з `episode-plan.json.groups[].clipIds`, в порядку груп.
 Reconnecting.mp4 вставляємо після кожної групи КРІМ останньої (до chill/outro).
 
-Всі файли в concat-list МАЮТЬ бути у форматі: H.264, 30fps, 1920×1080, AAC 48kHz — це гарантується TRIM стадією. Якщо файл відсутній → skip з попередженням.
+Всі файли в concat-list МАЮТЬ бути у форматі: H.264, 30fps, 1920×1080, AAC 48kHz — гарантується TRIM стадією. Якщо файл відсутній → skip з попередженням.
 
 ### Крок 3: Concat (без re-encode — всі файли однакового формату)
 
@@ -370,20 +262,16 @@ ffmpeg -f concat -safe 0 \
 
 ### Крок 4: Burn captions (якщо episode.ass існує)
 
-```bash
-# Якщо edit/episode.ass існує:
-ffmpeg -i "edit/raw-episode.mp4" \
-  -vf "ass=edit/episode.ass" \
-  -c:v libx264 -preset medium -crf 22 \
-  -c:a copy \
-  -movflags +faststart \
-  -y "exports/episode-<N>.mp4"
+Використовувати Node скрипт — він обробляє Windows path escaping для ASS filter:
 
-# Якщо episode.ass НЕ існує:
-ffmpeg -i "edit/raw-episode.mp4" \
-  -c copy \
-  -movflags +faststart \
-  -y "exports/episode-<N>.mp4"
+```bash
+node scripts/render-final.js "projects/<runId>" <episodeNumber>
 ```
+
+Скрипт автоматично:
+- Бере `edit/raw-episode.mp4`
+- Якщо `edit/episode.ass` існує → `-vf ass=<escaped path>` + re-encode libx264 crf22
+- Якщо немає → `-c copy`
+- Виводить в `exports/episode-NNN.mp4`
 
 Оновити `state.outputs.longformPath` і `state.stages.renderLong = "done"`.
