@@ -58,12 +58,14 @@
 **Порядок:**
 1. Прочитай `.claude/skills/ddos-analytics/SKILL.md` → виконай analytics (якщо є попередні runs з youtubeVideoId)
 2. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай ingest + filter + prescore + download
-3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score + plan + hooks
-4. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай trim + overlays + reconnecting + chill finale + render long-form
-5. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions (--shorts-only) + render shorts
-6. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
-7. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
-8. Прочитай `.claude/skills/ddos-publish/SKILL.md` → виконай upload YouTube
+3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score (оцінка по контенту, clean.mp4 ще не потрібен)
+4. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай TRIM --incremental (використовує ddosScore для пріоритизації, зупиняється коли сума clean.mp4 ≥ 720s або ddosScore < 45)
+5. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай plan (з реальними clean.mp4 тривалостями) + hooks
+6. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай overlays + reconnecting + chill finale + render long-form
+7. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions (--shorts-only) + render shorts
+8. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
+9. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
+10. Прочитай `.claude/skills/ddos-publish/SKILL.md` → виконай upload YouTube
 
 ### Крок 3 — Фінальний звіт
 

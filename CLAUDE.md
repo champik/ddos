@@ -53,11 +53,11 @@
 ```
 1.  INGEST      Twitch API → raw-clips.json (гібридний sampling)
 2.  FILTER      відсіяти RU / gambling / занадто короткі / занадто довгі
-3.  DOWNLOAD    yt-dlp → downloads/<clipId>.mp4
+3.  DOWNLOAD    yt-dlp → downloads/<clipId>.mp4 (100 кліпів)
 4.  TRANSCRIBE  faster-whisper (Python) → transcript.json (word timestamps)
 5.  SCORE       Claude аналізує кожен кліп → score.json (DDOS Score 0–100)
-6.  PLAN        Claude будує порядок епізоду, вибирає Shorts кандидатів
-7.  TRIM        FFmpeg обрізка dead air на початку/кінці кожного кліпу
+6.  TRIM        FFmpeg incremental: топ-30 за ddosScore → перевір суму → +10 поки не 12–15хв
+7.  PLAN        Claude будує план по ТРИВАЛОСТІ 12–15 хв (сума clean.mp4)
 8.  HOOKS       Claude генерує текстовий хук для кожного кліпу (2–5 слів)
 9.  CAPTIONS    ASS субтитри (word-by-word Shorts / selective long-form)
 10. OVERLAYS    Puppeteer → streamer name PNG + reconnecting PNG → FFmpeg burn
@@ -67,6 +67,11 @@
 14. METADATA    Claude → title options / description / hashtags / shorts captions
 15. REVIEW      Генерувати review.html з превью всього
 ```
+
+> **Чому TRIM перед PLAN:** plan використовує реальні тривалості clean.mp4 для точного
+> таргетингу 12–15 хв. Raw duration з Twitch API може бути на 30–70% довшим за фактичну
+> тривалість після обрізки тиші. Incremental підхід: trim топ-30 → якщо < 12хв → trim ще 10 → ...
+> Зупинка якщо ddosScore наступного кліпу < 45 (якісна підлога).
 
 ---
 
@@ -84,14 +89,14 @@
   { "name": "World of Warcraft",  "gameId": "18122",  "weight": 0.05 },
   { "name": "League of Legends",  "gameId": "21779",  "weight": 0.08 },
   { "name": "Minecraft",          "gameId": "27471",  "weight": 0.06 },
-  { "name": "Fortnite",           "gameId": "33214",  "weight": 0.08 }
+  { "name": "Fortnite",           "gameId": "33214",  "weight": 0.08 },
+  { "name": "Music",              "gameId": "26936",  "weight": 0.04 }
 ]
 ```
 
 ### Ліміти
 - maxClipCandidates: 500
-- maxDownloads: 80
-- maxClipsPerEpisode: 12–18
+- maxDownloads: 100
 - maxClipsPerStreamer: 3 (у episode plan)
 - minDuration: 6s / maxDuration: 90s
 - targetEpisodeMin: 720с (12 хв)
@@ -104,7 +109,28 @@
 - language in ["ja", "ko", "zh", "th"] — азійські мови: переглядів багато але незрозуміло без контексту. Максимум 1 кліп на епізод тільки якщо момент суто візуальний (без діалогу) або міжнародно відомий стрімер
 - title містить: русский, россия, russian, путін, рф
 - category: Slots, Casino, Gambling, Sports Betting
-- стрімер у blacklist: (порожній за замовчуванням)
+- стрімер у blacklist: Lyasyaa
+
+### Детекція російських стрімерів (багатошарова)
+Окрім `language == "ru"`, перевіряти додатково при FILTER stage:
+
+**1. Blacklist (ручний список)**
+Стрімери додані вручну — відхиляти одразу.  
+Поточний список: `Lyasyaa`
+
+**2. Сигнали з Twitch API (metadata)**
+- `broadcaster_language == "ru"` — мова каналу
+- `broadcaster_name` або `display_name` містить кирилицю
+- `title` або `description` каналу містить кирилицю або слова зі списку: россия, русский, рф, путін, москва, питер
+- `stream_language == "ru"` у полі clips endpoint
+
+**3. Транскрипт (після TRANSCRIBE)**
+- `detected_language == "ru"` від Whisper — відхиляти навіть якщо Twitch сказав інше
+- Якщо >30% слів кирилиця — відхиляти
+
+**4. Логіка при конфлікті**
+Якщо будь-який з сигналів = RU → відхиляти без винятків.  
+Принцип: краще пропустити хороший кліп, ніж включити RU контент.
 
 ### DDOS Score формула
 ```

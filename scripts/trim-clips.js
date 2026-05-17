@@ -4,14 +4,54 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const projectDir = process.argv[2];
-if (!projectDir) { console.error('Usage: node trim-clips.js <projectDir>'); process.exit(1); }
+// Modes:
+//   (default)        trim clips from episode-plan.json clipOrder
+//   --incremental    trim top clips by ddosScore until episode duration >= target
+//                    expands in batches of 10, stops if ddosScore drops below floor
+//   --all            trim every clip in downloaded-clips.json
 
-const plan = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
+const TARGET_MIN = 720;   // 12 min minimum episode duration
+const TARGET_MAX = 900;   // 15 min cap
+const BATCH_INIT = 30;    // first batch: top 30 by ddosScore
+const BATCH_SIZE = 10;    // expand by 10 each round
+const SCORE_FLOOR = 45;   // never add clips below this ddosScore
+
+const projectDir = process.argv[2];
+const trimAll = process.argv.includes('--all');
+const incremental = process.argv.includes('--incremental');
+if (!projectDir) { console.error('Usage: node trim-clips.js <projectDir> [--incremental|--all]'); process.exit(1); }
+
 const downloads = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/downloaded-clips.json'), 'utf8'));
 
-const allIds = [...plan.clipOrder];
-if (plan.chillPlan && plan.chillPlan.singingClipId) allIds.push(plan.chillPlan.singingClipId);
+let allIds;
+if (trimAll) {
+  allIds = downloads.map(c => c.id);
+  console.log(`--all: trimming all ${allIds.length} downloaded clips`);
+} else if (incremental) {
+  // Load scored clips sorted by ddosScore descending
+  const scoredPath = path.join(projectDir, 'clips/scored-clips.json');
+  const scored = JSON.parse(fs.readFileSync(scoredPath, 'utf8'))
+    .sort((a, b) => (b.ddosScore || 0) - (a.ddosScore || 0));
+
+  console.log(`--incremental: target ${TARGET_MIN}–${TARGET_MAX}s, floor ddosScore≥${SCORE_FLOOR}`);
+  console.log(`  Starting with top ${BATCH_INIT} clips, expanding by ${BATCH_SIZE} if needed\n`);
+
+  // Incrementally build allIds until enough duration or floor hit
+  allIds = [];
+  let cursor = 0;
+  const batchSize = (cursor === 0) ? BATCH_INIT : BATCH_SIZE;
+
+  // We'll trim incrementally below — just build the full candidate list here,
+  // then the trim loop checks total duration after each batch
+  const candidates = scored.filter(c => (c.ddosScore || 0) >= SCORE_FLOOR);
+  const belowFloor = scored.filter(c => (c.ddosScore || 0) < SCORE_FLOOR);
+  console.log(`  Candidates above floor: ${candidates.length}, below floor: ${belowFloor.length}`);
+  allIds = candidates.map(c => c.id); // trim loop will handle batching
+} else {
+  const plan = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
+  allIds = [...plan.clipOrder];
+  if (plan.chillPlan && plan.chillPlan.singingClipId) allIds.push(plan.chillPlan.singingClipId);
+}
 
 function getLocalPath(clipId) {
   const clip = downloads.find(c => c.id === clipId);
@@ -46,19 +86,20 @@ function detectSilence(filePath) {
 
 let done = 0, skipped = 0, errors = 0;
 
-for (const clipId of allIds) {
+function trimClip(clipId) {
   const localPath = getLocalPath(clipId);
   if (!localPath || !fs.existsSync(localPath)) {
     console.log(`  [SKIP] ${clipId.slice(0, 30)} — no video file`);
     errors++;
-    continue;
+    return 0;
   }
 
   const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
   if (fs.existsSync(cleanPath)) {
-    console.log(`  [CACHE] ${clipId.slice(0, 30)}`);
+    const d = getDuration(cleanPath);
+    console.log(`  [CACHE] ${clipId.slice(0, 30)} ${d.toFixed(1)}s`);
     skipped++;
-    continue;
+    return d;
   }
 
   process.stdout.write(`  [TRIM] ${clipId.slice(0, 30).padEnd(30)} `);
@@ -69,7 +110,7 @@ for (const clipId of allIds) {
   if (trimDur < 2) {
     console.log(`SKIP (trimDur=${trimDur.toFixed(1)}s too short)`);
     errors++;
-    continue;
+    return 0;
   }
 
   fs.mkdirSync(path.dirname(cleanPath), { recursive: true });
@@ -90,11 +131,42 @@ for (const clipId of allIds) {
     const cleanDur = getDuration(cleanPath);
     console.log(`OK ${start.toFixed(1)}s-${end.toFixed(1)}s/${totalDur.toFixed(1)}s → ${cleanDur.toFixed(1)}s`);
     done++;
+    return cleanDur;
   } else {
     const err = (r.stderr || '').split('\n').filter(l => /error/i.test(l)).slice(-2).join(' ');
     console.log(`FAIL: ${err.slice(0, 100)}`);
     errors++;
+    return 0;
   }
+}
+
+if (incremental) {
+  // Incremental mode: trim in batches, stop when target duration reached
+  let totalDur = 0;
+  let cursor = 0;
+
+  const firstBatch = allIds.slice(0, BATCH_INIT);
+  cursor = BATCH_INIT;
+  console.log(`  Batch 1: trimming top ${firstBatch.length} clips...`);
+  for (const id of firstBatch) totalDur += trimClip(id);
+  console.log(`  → Total so far: ${totalDur.toFixed(0)}s / ${TARGET_MIN}s needed\n`);
+
+  while (totalDur < TARGET_MIN && cursor < allIds.length) {
+    const batch = allIds.slice(cursor, cursor + BATCH_SIZE);
+    if (batch.length === 0) break;
+    cursor += BATCH_SIZE;
+    console.log(`  Expanding: trimming next ${batch.length} clips (total trimmed: ${cursor})...`);
+    for (const id of batch) totalDur += trimClip(id);
+    console.log(`  → Total so far: ${totalDur.toFixed(0)}s / ${TARGET_MIN}s needed\n`);
+  }
+
+  if (totalDur < TARGET_MIN) {
+    console.log(`  ⚠ WARNING: only reached ${totalDur.toFixed(0)}s after exhausting clips above score floor ${SCORE_FLOOR}`);
+  } else {
+    console.log(`  ✓ Target reached: ${totalDur.toFixed(0)}s total clean duration available`);
+  }
+} else {
+  for (const clipId of allIds) trimClip(clipId);
 }
 
 // Update state

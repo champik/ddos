@@ -152,9 +152,9 @@ function renderReconnecting() {
 
   if (!panelMkv) {
     const ok = ffrun([
-      '-ss', String(peakStart), '-t', '1.1', '-i', src,
+      '-ss', String(Math.max(0, peakStart - 1.0)), '-t', '2.1', '-i', src,
       '-vf', `${bwFilter},${glitchFilter}`,
-      '-t', '1.0',
+      '-t', '2.0',
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-r', '30', '-y', out
     ]);
@@ -163,7 +163,7 @@ function renderReconnecting() {
   }
 
   const ok = ffrun([
-    '-ss', String(peakStart), '-t', '1.1', '-i', src,
+    '-ss', String(Math.max(0, peakStart - 1.0)), '-t', '2.1', '-i', src,
     '-i', panelMkv,
     '-filter_complex', [
       `[0:v]${bwFilter}[bw]`,
@@ -171,7 +171,7 @@ function renderReconnecting() {
       `[composite]${glitchFilter}[out]`
     ].join(';'),
     '-map', '[out]', '-map', '0:a',
-    '-t', '1.0',
+    '-t', '2.0',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-r', '30', '-y', out
   ]);

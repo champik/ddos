@@ -157,14 +157,25 @@ if dancingScore > 70:
 node scripts/progress.js "projects/<runId>" 6 "Будую план епізоду"
 ```
 
-Передай топ-30 scored кліпів. Claude вирішує план безпосередньо в розмові.
+Передай топ-40 scored кліпів з реальними post-trim тривалостями. Claude вирішує план безпосередньо в розмові.
+
+**Підготовка даних перед плануванням:**
+```javascript
+// Зчитати clean.mp4 тривалість для кожного кліпу з топ-40
+const cleanDur = {};
+scored.slice(0, 40).forEach(c => {
+  const r = spawnSync('ffprobe', ['-v','quiet','-show_entries','format=duration',
+    '-of','csv=p=0', path.join(projectDir,'processed',c.id,'clean.mp4')], {encoding:'utf8'});
+  cleanDur[c.id] = parseFloat(r.stdout) || 0;
+});
+```
 
 **Planning prompt:**
 ```
 Ти директор епізоду "Daily Dose Of Stream" #<N>.
 
-Кліпи (відсортовані за ddosScore):
-<clipId | стрімер | категорія | ddosScore | funnyScore | rageScore | singingScore | dancingScore | shortsPotential | duration>
+Кліпи (відсортовані за ddosScore, тривалість — після обрізки тиші):
+<clipId | стрімер | категорія | ddosScore | funnyScore | rageScore | singingScore | dancingScore | shortsPotential | cleanDuration(s)>
 
 ПРАВИЛА ГРУПУВАННЯ:
 - GAME_GROUP: та сама гра, різні стрімери → підряд (до 5 кліпів)
@@ -174,11 +185,12 @@ node scripts/progress.js "projects/<runId>" 6 "Будую план епізод�
 - ЗАБОРОНЕНО: той самий стрімер + різна гра в одній групі
 
 ПРАВИЛА ВИБОРУ:
-- Обери 12–18 кліпів для long-form
-- **ТРИВАЛІСТЬ**: рахувати суму `clean.mp4` тривалостей (post-trim), не raw duration. Ціль 12–15 хв після concat з intro/reconnecting/outro. Якщо сума < 12 хв — додати більше кліпів.
-- **КАТЕГОРІЇ**: мінімум 50% кліпів мусять бути з Just Chatting (509658) або IRL (509672). Максимум 2 кліпи з однієї ігрової категорії. Якщо не виходить — повернутись і перебрати кліпи.
+- **ТРИВАЛІСТЬ** (головний критерій): сума cleanDuration вибраних кліпів = 720–900с (12–15 хв).
+  До суми додай: intro 1.25с + (кількість груп - 1) × 1с reconnecting + outro 1.25с.
+  Додавай кліпи поки не досягнеш мінімум 720с. Не виходь за 900с.
+- **КАТЕГОРІЇ**: мінімум 50% кліпів мусять бути з Just Chatting (509658) або IRL (509672). Максимум 2 кліпи з однієї ігрової категорії.
 - Перша група: сильний, захоплюючий контент (opener)
-- **reconnectingClipId**: обирати кліп де є ЧІТКИЙ пік — раптова реакція, вигук, смішний момент в середині кліпу. Ідеально: кліп з `rageScore > 60` або `funnyScore > 75` І transcript показує short sharp moment. НЕ брати довгі спокійні кліпи.
+- **reconnectingClipId**: обирати кліп де є ЧІТКИЙ пік — раптова реакція, вигук, смішний момент в середині кліпу. Ідеально: кліп з `rageScore > 60` або `funnyScore > 75`. НЕ брати довгі спокійні кліпи.
 - Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець як `chillPlan`. Ці кліпи НЕ включати в основні групи — вони підуть через chill-finale.mp4.
 - Обери 5–10 кліпів для Shorts (найвищий shortsPotential)
 

@@ -10,7 +10,23 @@
 node scripts/progress.js "projects/<runId>" 7 "Обрізка кліпів (FFmpeg trim + loudnorm)"
 ```
 
-Для кожного кліпу з episode-plan.json clipOrder:
+> **TRIM запускається ДО PLAN** — trimить кліпи incremental батчами поки не набереться
+> 12–15 хв чистого контенту. Так plan завжди має точні post-trim тривалості.
+
+```bash
+node scripts/trim-clips.js "projects/<runId>" --incremental
+```
+
+**Incremental логіка:**
+- Кліпи відсортовані за ddosScore (scored-clips.json)
+- Batch 1: топ **30** кліпів
+- Якщо сума clean durations < 720s → trim ще **10**, повторити
+- Зупинитись якщо:
+  - сума ≥ 720s (ціль досягнута), або
+  - наступний кліп ddosScore < **45** (підлога якості)
+- Після completion: всі trimmed кліпи доступні для plan з реальними тривалостями
+
+Для кожного кліпу з черги:
 
 ### 1. Знайти точки обрізання через silencedetect
 
@@ -223,11 +239,21 @@ ffmpeg -f concat -safe 0 -i edit/dancing-list.txt \
 ### Крок 1: Валідація episode-plan.json
 
 ```bash
-CLIP_COUNT=$(node -e "const p=require('./edit/episode-plan.json'); console.log(p.clipOrder.length)")
+TOTAL_DUR=$(node -e "
+const fs=require('fs'),path=require('path'),{spawnSync}=require('child_process');
+const plan=JSON.parse(fs.readFileSync('edit/episode-plan.json','utf8'));
+let t=0;
+plan.clipOrder.forEach(id=>{
+  const r=spawnSync('ffprobe',['-v','quiet','-show_entries','format=duration','-of','csv=p=0',
+    path.join('processed',id,'clean.mp4')],{encoding:'utf8'});
+  t+=parseFloat(r.stdout)||0;
+});
+console.log(Math.round(t));
+")
 ```
 
-Якщо `CLIP_COUNT < 12` або `CLIP_COUNT > 18`:
-→ Записати `state.stages.renderLong = "failed"` з поясненням і ЗУПИНИТИСЬ.
+Якщо `TOTAL_DUR < 600` (менше 10 хв) — попередження в консоль, але **не зупинятись**.
+Якщо `TOTAL_DUR > 1200` (більше 20 хв) — попередження, але **не зупинятись**.
 
 ### Крок 2: Побудова concat-list.txt
 

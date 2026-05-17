@@ -79,3 +79,50 @@ node scripts/progress.js "projects/<runId>" summary
 ```
 
 Оновити `state.stages.review = "done"`.
+
+---
+
+## Оновлення projects/index.html
+
+Після генерації review.html — оновити `projects/index.html`:
+
+1. Зчитай `projects/index.html`
+2. Перевір чи картка цього епізоду вже існує (шукай `EP #N` де N = episodeNumber) — якщо так, пропусти
+3. Якщо не існує — вставити новий `<div class="episode-card">` одразу після рядка `<div class="subtitle">...</div>`, перед усіма існуючими картками (щоб новий епізод був першим)
+
+### Шаблон картки
+
+```html
+<!-- EPISODE N -->
+<div class="episode-card">
+  <div class="thumb-wrap">
+    <a href="<projectFolder>/review/review.html">
+      <img src="<projectFolder>/exports/thumbnail.png" alt="Episode N thumbnail">
+    </a>
+    <div class="ep-badge">EP #N</div>
+  </div>
+  <div class="info">
+    <div class="info-top">
+      <div class="episode-num">Episode N &nbsp;·&nbsp; YYYY-MM-DD</div>
+      <div class="title"><titleOptions[0]></div>
+      <div class="title-alts">
+        <span><titleOptions[1]></span>
+        <span><titleOptions[2]></span>
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="meta-row">
+      <span class="date"><runId></span>
+      <span class="status-pending">⏳ pending</span>
+      <span class="shorts-count"><shortsCount> shorts</span>
+    </div>
+    <div class="links-row">
+      <a class="btn btn-review" href="<projectFolder>/review/review.html">Review</a>
+    </div>
+  </div>
+</div>
+```
+
+- `status-pending` → буде замінено на `status-published` при `/ddos approve`
+- `shortsCount` = кількість шортів з `edit/shorts-selection.json` (або 0 якщо файл відсутній)
+- YouTube посилання додаються при `/ddos approve` (після отримання `youtubeVideoId`)

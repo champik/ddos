@@ -29,6 +29,7 @@ curl -s -X POST "https://id.twitch.tv/oauth2/token" \
 509672 = IRL
 32399  = Counter-Strike 2
 516575 = Valorant
+26936  = Music (стрімери грають на інструментах; Twitch auto-мютить ліцензовану музику → musicRisk нижчий)
 ```
 
 **Dynamic (запитати щоразу):**
@@ -153,22 +154,22 @@ const scored = filteredClips.map(clip => {
 }).sort((a, b) => b.preScore - a.preScore);
 ```
 
-**Hybrid sampling для download (80 кліпів):**
+**Hybrid sampling для download (100 кліпів):**
 ```
-N = 80
-top35  = scored.slice(0, Math.floor(N * 0.35))              // топ 28
+N = 100
+top35  = scored.slice(0, Math.floor(N * 0.35))              // топ 35
 mid35  = scored.slice(Math.floor(scored.length * 0.30),
                       Math.floor(scored.length * 0.70))
-         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.35))  // mid 28
+         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.35))  // mid 35
 gems15 = scored.slice(Math.floor(scored.length * 0.70),
                       Math.floor(scored.length * 0.90))
-         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.15))  // gems 12
+         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.15))  // gems 15
 small10 = scored.filter(c => c.view_count < 10000)
-          .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.10)) // small 8
+          .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.10)) // small 10
 trending5 = scored.filter(c => !coreIds.includes(c.game_id))
-            .slice(0, Math.floor(N * 0.05))                              // trending 4
+            .slice(0, Math.floor(N * 0.05))                              // trending 5
 
-toDownload = dedup([...top35, ...mid35, ...gems15, ...small10, ...trending5]).slice(0, 80)
+toDownload = dedup([...top35, ...mid35, ...gems15, ...small10, ...trending5]).slice(0, 100)
 ```
 
 Зберегти у `clips/prescore-candidates.json`. Оновити `state.stages.prescore = "done"`.

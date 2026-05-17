@@ -18,21 +18,35 @@ function add(p) {
 add('assets/intro/intro_30fps.mp4');
 
 const groups = plan.groups;
+const chillType = plan.chillPlan && plan.chillPlan.type !== 'skip' ? plan.chillPlan.type : null;
+const chillIds = new Set([
+  ...(plan.chillPlan?.dancingClipIds || []),
+  ...(plan.chillPlan?.singingClipId ? [plan.chillPlan.singingClipId] : [])
+]);
+
 for (let gi = 0; gi < groups.length; gi++) {
   const g = groups[gi];
-  for (const clipId of g.clipIds) {
+  const clipsToAdd = g.clipIds.filter(id => !chillType || !chillIds.has(id));
+  if (clipsToAdd.length === 0) continue;
+
+  for (const clipId of clipsToAdd) {
     const ov = path.join(base, 'processed', clipId, 'overlayed.mp4');
     const cl = path.join(base, 'processed', clipId, 'clean.mp4');
     add(fs.existsSync(ov) ? ov : cl);
   }
+
   const isLast = gi === groups.length - 1;
-  const isFirst = gi === 0;
-  if (!isLast && !isFirst) {
-    add(path.join(projectDir, 'edit/reconnecting.mp4'));
+  if (!isLast) {
+    add(path.join(base, 'edit/reconnecting.mp4'));
   }
 }
 
-add(path.join(projectDir, 'edit/chill-finale.mp4'));
+const chillFinalePath = path.join(base, 'edit/chill-finale.mp4');
+if (chillType && fs.existsSync(chillFinalePath)) {
+  add(path.join(base, 'edit/reconnecting.mp4')); // transition into chill finale
+  add(chillFinalePath);
+}
+
 add('assets/outro/outro_30fps.mp4');
 
 const outPath = path.join(projectDir, 'edit/concat-list.txt');

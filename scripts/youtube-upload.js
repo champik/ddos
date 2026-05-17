@@ -106,15 +106,12 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
 }
 
 // Build short description: link to full video is the first line so YouTube picks it up
-function buildShortDescription(mainVideoId, clipMeta) {
+function buildShortDescription(_mainVideoId, clipMeta) {
   const hashtags = (clipMeta && clipMeta.hashtags)
     ? clipMeta.hashtags.join(' ')
     : '#DailyDoseOfStream #TwitchClips #Shorts';
   const caption = (clipMeta && clipMeta.caption) ? clipMeta.caption + '\n\n' : '';
-  const link = mainVideoId
-    ? `Full episode ▶ https://youtu.be/${mainVideoId}\n\n`
-    : '';
-  return `${link}${caption}${hashtags}`;
+  return `${caption}${hashtags}`;
 }
 
 // publishAt — optional ISO string. If provided, video is scheduled (private until that time).
@@ -259,8 +256,11 @@ async function publishAll(runId, publishNowISO) {
   console.log(`   Main:   https://youtu.be/${mainVideoId}`);
   console.log(`   Shorts: published every 1hr starting ${new Date(mainPublishTime.getTime() + 3600000).toLocaleTimeString()}`);
 
-  state.stages.publish = 'done';
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  // Re-read state to avoid overwriting youtubeShortsIds written by uploadShort
+  const finalState = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  finalState.stages.publish = 'done';
+  finalState.status = 'published';
+  fs.writeFileSync(statePath, JSON.stringify(finalState, null, 2));
 }
 
 const [,, cmd, ...args] = process.argv;
