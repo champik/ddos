@@ -1,127 +1,205 @@
-'use strict';
-const fs   = require('fs');
+// gen-review.js <projectDir>
+const fs = require('fs');
 const path = require('path');
 
 const projectDir = process.argv[2];
 if (!projectDir) { console.error('Usage: node gen-review.js <projectDir>'); process.exit(1); }
 
-require('./progress').step(projectDir, 15, 'Генерую review.html');
-
-const state  = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
-const plan   = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
-const meta   = JSON.parse(fs.readFileSync(path.join(projectDir, 'exports/metadata.json'), 'utf8'));
+const plan = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
+const meta = JSON.parse(fs.readFileSync(path.join(projectDir, 'exports/metadata.json'), 'utf8'));
 const scored = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/scored-clips.json'), 'utf8'));
 
-const scoreMap = {};
-for (const c of scored) scoreMap[c.id] = c;
+const ep = plan.episodeNumber;
+const runId = path.basename(projectDir);
+const epPad = String(ep).padStart(3, '0');
 
-const ep = String(state.episodeNumber).padStart(3, '0');
-const runId = state.runId || path.basename(projectDir);
-
-// Build clips table rows
-let clipRows = '';
-plan.clipOrder.forEach((id, i) => {
-  const c = scoreMap[id] || {};
-  const flags = (c.flags || []).join(', ') || '—';
-  const musicWarn = (c.musicRisk || 0) > 60 ? '⚠️' : '';
-  const cleanPath = path.relative(path.join(projectDir, 'review'), path.join(projectDir, 'processed', id, 'clean.mp4')).replace(/\\/g, '/');
-  const ovPath    = path.relative(path.join(projectDir, 'review'), path.join(projectDir, 'processed', id, 'overlayed.mp4')).replace(/\\/g, '/');
-  const hasOv = fs.existsSync(path.join(projectDir, 'processed', id, 'overlayed.mp4'));
-  const videoLink = hasOv ? ovPath : cleanPath;
-  const views = c.view_count ? (c.view_count >= 1000 ? (c.view_count/1000).toFixed(1)+'k' : String(c.view_count)) : '—';
-  clipRows += `<tr>
-    <td>${i+1}</td>
-    <td><a href="${videoLink}" style="color:#f5ff3d;text-decoration:none" target="_blank">▶ ${c.broadcaster_name || '?'}</a></td>
-    <td>${c.game_name || '?'}</td>
-    <td style="max-width:220px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${c.title || id.slice(0,30)}</td>
-    <td style="color:#f5ff3d;font-weight:700">${Math.round(c.ddosScore||0)}</td>
-    <td>${Math.round(c.funnyScore||0)}</td>
-    <td>${Math.round(c.shortsPotential||0)}</td>
-    <td>${musicWarn}${Math.round(c.musicRisk||0)}</td>
-    <td style="color:#aaa">${views}</td>
-    <td style="font-size:11px;color:#aaa">${flags}</td>
-  </tr>`;
-});
-
-// Shorts grid
-const shortClipIds = plan.shortClipIds || [];
-let shortsGrid = '';
-for (const id of shortClipIds) {
-  const c = scoreMap[id] || {};
-  const exists = fs.existsSync(path.join(projectDir, 'exports/shorts', id + '.mp4'));
-  if (!exists) continue;
-  shortsGrid += `<div style="display:inline-block;margin:6px;vertical-align:top;text-align:center">
-    <video src="../exports/shorts/${id}.mp4" controls width="180" style="border-radius:8px;display:block"></video>
-    <div style="font-size:11px;margin-top:4px;color:#aaa;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">@${c.broadcaster_name||'?'}</div>
-  </div>`;
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Title cards
-let titleCards = '';
-meta.titleOptions.forEach((t, i) => {
-  titleCards += `<div style="background:#18181b;border:2px solid ${i===0?'#f5ff3d':'#333'};border-radius:8px;padding:14px 18px;margin-bottom:10px;cursor:pointer;font-size:15px" onclick="this.style.border='2px solid #f5ff3d'">
-    <span style="color:#f5ff3d;font-weight:700;margin-right:10px">${i+1}</span>${t}
-  </div>`;
-});
+function fmtViews(v) {
+  if (v == null) return '—';
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+  return String(v);
+}
+
+function shortCat(name) {
+  return (name || '?')
+    .replace('Just Chatting', 'JC')
+    .replace('Counter-Strike 2', 'CS2')
+    .replace('Grand Theft Auto V', 'GTA V')
+    .replace('World of Warcraft', 'WoW')
+    .replace('Subnautica 2', 'Sub2');
+}
+
+function scoreColor(v) {
+  if (v == null || v === '—') return '#f4f0e6';
+  if (v >= 60) return '#00ff88';
+  if (v >= 45) return '#f5ff3d';
+  return '#f4f0e6';
+}
+
+const rows = plan.clipOrder.map((id, i) => {
+  const s = scored.find(x => x.id === id) || {};
+  let score = {};
+  try { score = JSON.parse(fs.readFileSync(path.join(projectDir, 'processed', id, 'score.json'), 'utf8')); } catch (e) {}
+  const views = fmtViews(s.view_count);
+  const hasOverlayed = fs.existsSync(path.join(projectDir, 'processed', id, 'overlayed.mp4'));
+  const vidSrc = '../processed/' + id + '/' + (hasOverlayed ? 'overlayed' : 'clean') + '.mp4';
+  const flags = (score.flags || []).join(', ') || '';
+  const music = flags.includes('music') ? '<span style="color:#ff6b6b">⚠</span>' : '';
+  const ddos = score.ddosScore != null ? score.ddosScore : '—';
+  const funny = score.funnyScore != null ? score.funnyScore : '—';
+  const shorts = score.shortsPotential != null ? score.shortsPotential : '—';
+  const inShorts = plan.shortClipIds.includes(id) ? ' <span style="color:#f5ff3d">★</span>' : '';
+  return `  <tr>
+    <td>${i + 1}</td>
+    <td><a href="${vidSrc}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
+    <td>${esc(shortCat(s.game_name))}</td>
+    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
+    <td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>
+    <td>${funny}</td>
+    <td>${shorts}${inShorts}</td>
+    <td>${music}</td>
+    <td>${views}</td>
+    <td style="color:#666;font-size:11px">${esc(flags)}</td>
+  </tr>`;
+}).join('\n');
+
+const titleCards = meta.titleOptions.map((t, i) =>
+  `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
+).join('\n');
+
+const shortsGrid = (meta.shortsMetadata || []).map(sm =>
+  `  <div class="short-card">
+    <video src="../exports/shorts/${sm.clipId}.mp4" controls></video>
+    <div class="short-title">${esc(sm.title)}</div>
+    <div class="short-caption">${esc(sm.caption)}</div>
+  </div>`
+).join('\n');
+
+const descEscaped = esc(meta.description);
+const tagsStr = esc(meta.tags.join(' · '));
+const shortsCount = (meta.shortsMetadata || []).length;
 
 const html = `<!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>DDOS Review · Episode #${state.episodeNumber}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DDOS EP #${ep} Review</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0e0e10; color: #f4f0e6; font-family: 'Space Grotesk', sans-serif; padding: 32px 24px; max-width: 1100px; margin: 0 auto; }
-h1, h2 { font-family: 'Anton', sans-serif; letter-spacing: 1px; }
-h1 { font-size: 42px; color: #f5ff3d; margin-bottom: 4px; }
-h2 { font-size: 22px; color: #f5ff3d; margin: 32px 0 14px; }
-.meta { color: #888; font-size: 13px; margin-bottom: 28px; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { background: #18181b; color: #f5ff3d; text-align: left; padding: 8px 10px; }
-td { padding: 7px 10px; border-bottom: 1px solid #1f1f23; }
-tr:hover td { background: #18181b; }
-code { font-family: 'JetBrains Mono', monospace; font-size: 14px; }
-.desc { background: #111113; padding: 14px 18px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; line-height: 1.7; color: #ccc; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { background: #0e0e10; color: #f4f0e6; font-family: 'Space Grotesk', sans-serif; margin: 0; padding: 32px 24px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { font-family: 'Anton', sans-serif; color: #f5ff3d; letter-spacing: 3px; font-size: 52px; margin: 0 0 6px; }
+  h2 { font-family: 'Anton', sans-serif; color: #f5ff3d; letter-spacing: 2px; font-size: 22px; margin: 0 0 16px; }
+  .subtitle { color: #666; font-size: 13px; font-family: 'JetBrains Mono', monospace; margin-bottom: 40px; }
+  .status-ok { color: #00ff88; font-weight: 600; }
+  .section { margin-bottom: 48px; border-top: 1px solid #1e1e22; padding-top: 32px; }
+  .section:first-of-type { border-top: none; }
+  .video-wrap { background: #000; border-radius: 10px; overflow: hidden; display: inline-block; max-width: 100%; }
+  .video-wrap video { display: block; width: 100%; max-width: 960px; height: auto; }
+  .thumb-wrap img { max-width: 640px; width: 100%; border-radius: 10px; border: 2px solid #222; display: block; }
+  .title-cards { display: flex; flex-direction: column; gap: 10px; max-width: 800px; }
+  .title-card { background: #1a1a1e; padding: 14px 18px; border-radius: 8px; border: 2px solid #2a2a2e; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.15s; }
+  .title-card:hover { border-color: #f5ff3d; }
+  .title-num { font-family: 'Anton', sans-serif; color: #f5ff3d; font-size: 20px; min-width: 20px; }
+  .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #222; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #1a1a1e; color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; border-bottom: 1px solid #333; text-align: left; white-space: nowrap; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid #1a1a1e; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #141416; }
+  td a { color: #f5ff3d; text-decoration: none; font-weight: 500; }
+  td a:hover { text-decoration: underline; }
+  td:nth-child(3) { color: #888; font-size: 11px; }
+  .shorts-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+  .short-card { display: flex; flex-direction: column; gap: 8px; }
+  .short-card video { width: 155px; border-radius: 8px; background: #000; aspect-ratio: 9 / 16; }
+  .short-title { font-size: 11px; font-weight: 600; color: #f5ff3d; max-width: 155px; line-height: 1.3; }
+  .short-caption { font-size: 11px; color: #888; max-width: 155px; }
+  .meta-block { background: #1a1a1e; border-radius: 10px; padding: 20px 24px; }
+  .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
+  .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
+  .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; }
+  .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
+  code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
 </style>
 </head>
 <body>
+<div class="container">
 
-<h1>DDOS · EPISODE #${state.episodeNumber}</h1>
-<div class="meta">Run: ${runId} · ${new Date().toISOString().slice(0,10)} · <span style="color:#4ade80">✓ Ready for review</span></div>
+<h1>DDOS · EPISODE #${ep}</h1>
+<div class="subtitle">${runId} &nbsp;·&nbsp; 2026-05-18 &nbsp;·&nbsp; <span class="status-ok">✓ Ready for review</span> &nbsp;·&nbsp; ${plan.clipOrder.length} clips</div>
 
+<div class="section">
 <h2>Long-form</h2>
-<video src="../exports/episode-${ep}.mp4" controls width="960" style="border-radius:8px;max-width:100%"></video>
-
-<h2>Thumbnail</h2>
-<img src="../exports/thumbnail.png" style="max-width:640px;border-radius:8px;display:block">
-
-<h2>Title Options</h2>
-${titleCards}
-
-<h2>Clips (${plan.clipOrder.length})</h2>
-<table>
-  <thead><tr><th>#</th><th>Стрімер ▶</th><th>Категорія</th><th>Назва</th><th>DDOS</th><th>Funny</th><th>Shorts</th><th>Music</th><th>Views</th><th>Flags</th></tr></thead>
-  <tbody>${clipRows}</tbody>
-</table>
-
-<h2>Shorts (${shortClipIds.length})</h2>
-<div>${shortsGrid || '<p style="color:#888">No shorts rendered</p>'}</div>
-
-<h2>Description & Tags</h2>
-<div class="desc">${meta.description.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>
-
-<h2>Approve</h2>
-<div style="background:#1a1a1e;padding:20px;border-radius:8px;margin-top:8px">
-  <p style="margin-bottom:12px">Перевір все вище. Коли готово — виконай команду:</p>
-  <code style="color:#f5ff3d">/ddos approve ${runId}</code>
+<div class="video-wrap">
+  <video src="../exports/episode-${epPad}.mp4" controls></video>
+</div>
 </div>
 
+<div class="section">
+<h2>Thumbnail</h2>
+<div class="thumb-wrap">
+  <img src="../exports/thumbnail.png" alt="Thumbnail">
+</div>
+</div>
+
+<div class="section">
+<h2>Title Options</h2>
+<div class="title-cards">
+${titleCards}
+</div>
+</div>
+
+<div class="section">
+<h2>Clips (${plan.clipOrder.length})</h2>
+<div class="table-wrap">
+<table>
+<thead>
+  <tr>
+    <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th>
+    <th>DDOS</th><th>Funny</th><th>Shorts</th><th>♪</th><th>Views</th><th>Flags</th>
+  </tr>
+</thead>
+<tbody>
+${rows}
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="section">
+<h2>Shorts (${shortsCount})</h2>
+<div class="shorts-grid">
+${shortsGrid}
+</div>
+</div>
+
+<div class="section">
+<h2>Metadata</h2>
+<div class="meta-block">
+  <div class="meta-desc">${descEscaped}</div>
+  <div class="meta-tags">Tags: ${tagsStr}</div>
+</div>
+</div>
+
+<div class="approve-box">
+  <p>Перевір все вище. Коли готово — виконай команду:</p>
+  <code>/ddos approve ${runId}</code>
+</div>
+
+</div>
 </body>
 </html>`;
 
 fs.mkdirSync(path.join(projectDir, 'review'), { recursive: true });
-fs.writeFileSync(path.join(projectDir, 'review/review.html'), html, 'utf8');
-console.log('\n✓ Review page готова');
-console.log('Відкрий: ' + path.join(projectDir, 'review/review.html'));
+fs.writeFileSync(path.join(projectDir, 'review/review.html'), html);
+console.log('✓ review.html ->', path.join(projectDir, 'review/review.html'));

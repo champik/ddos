@@ -134,13 +134,15 @@
 
 ### DDOS Score формула
 ```
+viralityScore = min(100, sqrt(viralityRatio) * 35)
+  // viralityRatio = view_count / hours_alive / avg_viewers (TwitchTracker cache)
+
 ddosScore =
-  retentionScore * 0.30
-  + funnyScore   * 0.25
-  + payoffStrength * 0.20
-  + contextClarity * 0.15
-  + noveltyScore * 0.10
-  - (musicRisk > 60 ? (musicRisk - 60) * 0.3 : 0)
+  viralityScore  * 0.30
+  + retentionScore * 0.25
+  + funnyScore   * 0.20
+  + payoffStrength * 0.15
+  + contextClarity * 0.10
   - (toxicityRisk > 40 ? (toxicityRisk - 40) * 0.5 : 0)
 ```
 

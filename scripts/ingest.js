@@ -228,7 +228,8 @@ async function downloadClip(clip, runId) {
     return outPath;
   }
   const url = clip.url;
-  const result = spawnSync('yt-dlp', [
+  const result = spawnSync('python', [
+    '-m', 'yt_dlp',
     '--no-playlist',
     '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
     '--merge-output-format', 'mp4',

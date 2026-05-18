@@ -170,9 +170,8 @@ async function main() {
     return clips;
   }
 
-  // random 4 categories for hidden gems
-  const gemCategories = [...allCategories].sort(() => Math.random() - 0.5).slice(0, 4);
-  const gemCatIds = new Set(gemCategories.map(c => c.id));
+  // fixed gem categories for deep-range fetching (JC + IRL + Music)
+  const gemCatIds = new Set(['509658', '509672', '26936']);
 
   for (const cat of allCategories) {
     process.stdout.write(`    ${cat.name}...`);
@@ -207,8 +206,6 @@ async function main() {
 
   const filtered = [];
   const rejected = [];
-  let asianIncluded = 0;
-
   const ASIAN_LANGS = new Set(['ja', 'ko', 'zh', 'th']);
 
   function rejectClip(clip, reason) {
@@ -231,99 +228,81 @@ async function main() {
     if (clip.duration < 6 || clip.duration > 90) { rejectClip(clip, 'duration'); continue; }
     if (broadcaster === 'lyasyaa') { rejectClip(clip, 'blacklist'); continue; }
 
-    if (ASIAN_LANGS.has(lang)) {
-      // Allow max 1 visual-only asian clip
-      clip._asianCandidate = true;
-    }
+    if (ASIAN_LANGS.has(lang)) { rejectClip(clip, 'asian_language'); continue; }
 
     filtered.push(clip);
   }
-
-  // Handle asian language exception - keep only 1 best by preScore (placeholder, pre-score below)
-  // Mark asian candidates, we'll resolve after pre-scoring
 
   console.log(`  Filtered: ${filtered.length} (rejected: ${rejected.length})`);
   fs.writeFileSync(path.join(CLIPS_DIR, 'filtered-clips.json'), JSON.stringify(filtered, null, 2));
   fs.writeFileSync(path.join(CLIPS_DIR, 'rejected-clips.json'), JSON.stringify(rejected, null, 2));
   updateState({ stages: { ingest: 'done', filter: 'done' }, counts: { filtered: filtered.length } });
 
-  // ── 5. PRE-SCORE ─────────────────────────────────────────────────
-  console.log('\n[PRESCORE] Розраховую pre-scores...');
+  // ── 5. VIRALITY — розрахунок для всіх відфільтрованих кліпів ────
+  console.log('\n[VIRALITY] Отримую статистику стрімерів...');
+  const { fetchStreamerStats } = require('./fetch-streamer-stats');
+  const uniqueBroadcasters = [...new Set(filtered.map(c => c.broadcaster_name))];
+  const statsMap = await fetchStreamerStats(uniqueBroadcasters, TOKEN, CLIENT_ID);
 
-  function calcPreScore(clip, seenBroadcasters) {
-    const viewsScore = Math.min(100, Math.log10(clip.view_count + 1) / Math.log10(500000) * 100);
-    const coreIds = ['509658','509672','32399','516575'];
-    const categoryScore = coreIds.includes(clip.game_id) ? 88 : 60;
-    const d = clip.duration;
-    const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
-    const seen = seenBroadcasters.get(clip.broadcaster_name) || 0;
-    const diversityScore = seen === 0 ? 100 : seen === 1 ? 75 : seen === 2 ? 45 : 0;
-    const ageH = (Date.now() - new Date(clip.created_at)) / 3600000;
-    const noveltyScore = ageH <= 24 ? 100 : ageH <= 48 ? 65 : 35;
-    const languageScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 90 : 50;
-    const title = (clip.title || '').toLowerCase();
-    const riskPenalty = (title.includes('music') || title.includes('song')) ? 15 : 0;
+  const withVirality = filtered.map(clip => {
+    const avgViewers = statsMap.get(clip.broadcaster_name) || 1000;
+    const hoursAlive = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 1);
+    const viralityRatio = Math.round((clip.view_count / hoursAlive / avgViewers) * 1000) / 1000;
+    return { ...clip, viralityRatio, avgViewers };
+  });
+  console.log(`  Virality calculated for ${withVirality.length} clips`);
 
-    return (
-      viewsScore    * 0.30 +
-      categoryScore * 0.20 +
-      durationScore * 0.15 +
-      diversityScore* 0.20 +
-      noveltyScore  * 0.10 +
-      languageScore * 0.05 -
-      riskPenalty
-    );
-  }
+  // ── 6. DOWNLOAD SELECTION — 50 JC/IRL + 5 Music + ~45 gaming ──────────
+  const JC_IRL_IDS = new Set(['509658', '509672']);
+  const MUSIC_ID   = '26936';
+  const MAX_PER_STREAMER = 3;
+  const MAX_PER_GAME     = 5;
 
-  const broadcasterCount = new Map();
-  const scored = filtered.map(clip => {
-    const score = calcPreScore(clip, broadcasterCount);
-    broadcasterCount.set(clip.broadcaster_name, (broadcasterCount.get(clip.broadcaster_name) || 0) + 1);
-    return { ...clip, preScore: Math.round(score * 10) / 10 };
-  }).sort((a, b) => b.preScore - a.preScore);
+  const nonAsian = withVirality;
 
-  // Asian language exception: keep at most 1 (best preScore among asian candidates)
-  let asianKept = false;
-  const finalScored = [];
-  for (const clip of scored) {
-    if (clip._asianCandidate) {
-      if (!asianKept) {
-        asianKept = true;
-        finalScored.push(clip);
-      } else {
-        // reject remaining asian clips
-      }
-    } else {
-      finalScored.push(clip);
+  const selectedIds  = new Set();
+  const streamerCount = new Map();
+  const gameCount     = new Map();
+
+  function tryAdd(clip, bucket, perGameLimit) {
+    if (selectedIds.has(clip.id)) return false;
+    const sc = streamerCount.get(clip.broadcaster_name) || 0;
+    if (sc >= MAX_PER_STREAMER) return false;
+    if (perGameLimit) {
+      const gc = gameCount.get(clip.game_id) || 0;
+      if (gc >= MAX_PER_GAME) return false;
+      gameCount.set(clip.game_id, gc + 1);
     }
+    streamerCount.set(clip.broadcaster_name, sc + 1);
+    selectedIds.add(clip.id);
+    bucket.push(clip);
+    return true;
   }
 
-  // ── 6. Hybrid sampling for download ──────────────────────────────
-  const N = 100;
-  const nonAsian = finalScored.filter(c => !c._asianCandidate);
-  const asian = finalScored.filter(c => c._asianCandidate);
+  const byVirality   = [...nonAsian].sort((a, b) => b.viralityRatio - a.viralityRatio);
+  const byPopularity = [...nonAsian].sort((a, b) => b.view_count   - a.view_count);
 
-  const top35 = nonAsian.slice(0, Math.floor(N * 0.35));
-  const midPool = nonAsian.slice(Math.floor(nonAsian.length * 0.30), Math.floor(nonAsian.length * 0.70));
-  const mid35 = midPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.35));
-  const gemsPool = nonAsian.slice(Math.floor(nonAsian.length * 0.70), Math.floor(nonAsian.length * 0.90));
-  const gems15 = gemsPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.15));
-  const smallPool = nonAsian.filter(c => c.view_count < 10000);
-  const small10 = smallPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.10));
-  const trendingPool = nonAsian.filter(c => !CORE_IDS.has(c.game_id));
-  const trending5 = trendingPool.slice(0, Math.floor(N * 0.05));
+  const jcIrlClips   = (arr) => arr.filter(c =>  JC_IRL_IDS.has(c.game_id));
+  const musicClips   = (arr) => arr.filter(c =>  c.game_id === MUSIC_ID);
+  const gamingClips  = (arr) => arr.filter(c => !JC_IRL_IDS.has(c.game_id) && c.game_id !== MUSIC_ID);
 
-  const seen = new Set();
-  const toDownload = [];
-  for (const clip of [...top35, ...mid35, ...gems15, ...small10, ...trending5, ...asian]) {
-    if (!seen.has(clip.id)) {
-      seen.add(clip.id);
-      toDownload.push(clip);
-      if (toDownload.length >= N) break;
-    }
-  }
+  // JC/IRL: 40 virality + 10 popularity
+  const poolJcIrl = [];
+  for (const clip of jcIrlClips(byVirality))   { if (poolJcIrl.length >= 40) break; tryAdd(clip, poolJcIrl, false); }
+  for (const clip of jcIrlClips(byPopularity))  { if (poolJcIrl.length >= 50) break; tryAdd(clip, poolJcIrl, false); }
 
-  console.log(`  Pre-scored: ${finalScored.length}, selected for download: ${toDownload.length}`);
+  // Music: 2 virality + 3 popularity
+  const poolMusic = [];
+  for (const clip of musicClips(byVirality))    { if (poolMusic.length >= 2) break; tryAdd(clip, poolMusic, false); }
+  for (const clip of musicClips(byPopularity))  { if (poolMusic.length >= 5) break; tryAdd(clip, poolMusic, false); }
+
+  // Gaming: 35 virality + 10 popularity
+  const poolGaming = [];
+  for (const clip of gamingClips(byVirality))   { if (poolGaming.length >= 35) break; tryAdd(clip, poolGaming, true); }
+  for (const clip of gamingClips(byPopularity)) { if (poolGaming.length >= 45) break; tryAdd(clip, poolGaming, true); }
+
+  const toDownload = [...poolJcIrl, ...poolMusic, ...poolGaming];
+  console.log(`  Selected: ${poolJcIrl.length} JC/IRL + ${poolMusic.length} Music + ${poolGaming.length} gaming = ${toDownload.length} clips`);
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
   updateState({ stages: { prescore: 'done' } });
 
@@ -352,7 +331,7 @@ async function main() {
       }
 
       const url = clip.url;
-      const cmd = `yt-dlp --no-playlist --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --output "${outPath}" --quiet "${url}"`;
+      const cmd = `python -m yt_dlp --no-playlist --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --output "${outPath}" --quiet "${url}"`;
 
       exec(cmd, { timeout: 120000 }, (err) => {
         if (err || !fs.existsSync(outPath)) {

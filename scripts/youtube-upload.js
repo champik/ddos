@@ -197,9 +197,11 @@ async function publishVideo(videoId) {
   console.log(`Published: https://youtu.be/${videoId}`);
 }
 
-// publish-all: publish main video now + schedule shorts at +1hr, +2hr, ...
+// publish-all: publish main video now + schedule shorts at +Xhr, +2Xhr, ...
 // publishNowISO — optional, when to make main video public (default: now)
-async function publishAll(runId, publishNowISO) {
+// shortIntervalMinutes — optional, minutes between shorts (default: 60)
+async function publishAll(runId, publishNowISO, shortIntervalMinutes) {
+  const intervalMs = (parseFloat(shortIntervalMinutes) || 60) * 60 * 1000;
   const statePath = path.join('projects', runId, 'state.json');
   if (!fs.existsSync(statePath)) throw new Error(`state.json not found for runId: ${runId}`);
   const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -242,8 +244,7 @@ async function publishAll(runId, publishNowISO) {
       console.log(`[SKIP] Short not found: ${clipId}`);
       continue;
     }
-    // +1hr per short after main publish time (minimum 5 min in future from now)
-    const shortPublishTime = new Date(mainPublishTime.getTime() + (i + 1) * 60 * 60 * 1000);
+    const shortPublishTime = new Date(mainPublishTime.getTime() + (i + 1) * intervalMs);
     // YouTube requires publishAt to be at least 5 minutes in the future
     const minTime = new Date(Date.now() + 5 * 60 * 1000);
     const actualPublishTime = shortPublishTime < minTime ? minTime : shortPublishTime;
@@ -268,7 +269,7 @@ const cmds = {
   'upload-video':  () => uploadVideo(...args),
   'upload-short':  () => uploadShort(...args),
   'publish-video': () => publishVideo(args[0]),
-  'publish-all':   () => publishAll(args[0], args[1])
+  'publish-all':   () => publishAll(args[0], args[1], args[2])
 };
 if (!cmds[cmd]) { console.error('Unknown command:', cmd, '\nValid: upload-video, upload-short, publish-video, publish-all'); process.exit(1); }
 cmds[cmd]().catch(e => { console.error('Error:', e.message); process.exit(1); });
