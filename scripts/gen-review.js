@@ -75,7 +75,7 @@ function getHook(clipId) {
   } catch { return ''; }
 }
 
-const COLS = 10;
+const COLS = 11;
 const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="${COLS}">⟳ reconnect</td></tr>`;
 
 function makeClipRow(id, num) {
