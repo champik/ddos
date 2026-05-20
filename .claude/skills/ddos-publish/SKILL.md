@@ -99,3 +99,9 @@ node scripts/youtube-upload.js publish-all "<runId>"
 ✅ Епізод #N опублікований: https://youtu.be/<videoId>
 📱 Shorts заплановані: +1год, +2год, +3год...
 ```
+
+Після publish — перегенерувати review.html:
+```bash
+node scripts/gen-review.js "projects/<runId>"
+```
+Це оновить статус на "✓ Published" і додасть посилання на YouTube + Shorts одразу під заголовком.

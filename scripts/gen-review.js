@@ -146,17 +146,10 @@ const descEscaped = esc(meta.description);
 const tagsStr = esc(meta.tags.join(' · '));
 const shortsCount = (meta.shortsMetadata || []).length;
 
-// Bottom box: approve command or published links
 const youtubeVideoId = state.outputs?.youtubeVideoId;
 const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof x === 'string' ? x : x.shortId).filter(Boolean);
 const approveBox = isPublished
-  ? `<div class="approve-box published-box">
-  <div class="published-status">✅ Published</div>
-  <div class="links-row">
-    ${youtubeVideoId ? `<a class="btn btn-youtube" href="https://youtu.be/${youtubeVideoId}" target="_blank">YouTube ↗</a>` : ''}
-    ${youtubeShortsIds.map((id, i) => `<a class="btn btn-shorts" href="https://youtube.com/shorts/${id}" target="_blank">Short ${i + 1} ↗</a>`).join('\n    ')}
-  </div>
-</div>`
+  ? ''
   : `<div class="approve-box">
   <p>Перевір все вище. Коли готово — виконай команду:</p>
   <code>/ddos approve ${runId}</code>
@@ -225,7 +218,7 @@ const html = `<!DOCTYPE html>
   </a>
   <div style="font-family:'Anton',sans-serif;font-size:52px;color:#f5ff3d;letter-spacing:3px;line-height:1">EPISODE #${ep}</div>
 </div>
-<div class="subtitle">${runId} &nbsp;·&nbsp; ${dateStr} &nbsp;·&nbsp; <span class="status-ok">✓ Ready for review</span> &nbsp;·&nbsp; ${plan.clipOrder.length} clips</div>
+<div class="subtitle">${runId} &nbsp;·&nbsp; ${dateStr} &nbsp;·&nbsp; <span class="status-ok">${isPublished ? '✓ Published' : '✓ Ready for review'}</span> &nbsp;·&nbsp; ${plan.clipOrder.length} clips</div>
 ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="links-row" style="margin-bottom:32px">
   ${youtubeVideoId ? `<a class="btn btn-youtube" href="https://youtu.be/${youtubeVideoId}" target="_blank">YouTube ↗</a>` : ''}
   ${youtubeShortsIds.map((id, i) => `<a class="btn btn-shorts" href="https://youtube.com/shorts/${id}" target="_blank">Short ${i + 1} ↗</a>`).join('\n  ')}
