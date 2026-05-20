@@ -1,6 +1,7 @@
 // gen-review.js <projectDir>
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const projectDir = process.argv[2];
 if (!projectDir) { console.error('Usage: node gen-review.js <projectDir>'); process.exit(1); }
@@ -15,6 +16,7 @@ const runId = path.basename(projectDir);
 const epPad = String(ep).padStart(3, '0');
 const dateMatch = runId.match(/(\d{4})_(\d{2})_(\d{2})$/);
 const dateStr = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : '—';
+const isPublished = state.status === 'published' || state.stages?.publish === 'done';
 
 function esc(str) {
   return String(str)
@@ -27,6 +29,11 @@ function fmtViews(v) {
   if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
   if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
   return String(v);
+}
+
+function fmtDur(s) {
+  if (s == null || s === 0) return '—';
+  return Math.round(s) + 's';
 }
 
 function shortCat(name) {
@@ -45,30 +52,64 @@ function scoreColor(v) {
   return '#f4f0e6';
 }
 
-const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="10">⟳ reconnect</td></tr>`;
+function getCleanDuration(clipId) {
+  // 1. Saved in score.json by trim-clips.js
+  const scorePath = path.join(projectDir, 'processed', clipId, 'score.json');
+  try {
+    const sc = JSON.parse(fs.readFileSync(scorePath, 'utf8'));
+    if (sc.trimmedDuration) return sc.trimmedDuration;
+  } catch {}
+  // 2. Fallback: ffprobe on clean.mp4 if still exists
+  const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
+  if (fs.existsSync(cleanPath)) {
+    const r = spawnSync('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', cleanPath], { encoding: 'utf8' });
+    const d = parseFloat(r.stdout);
+    if (!isNaN(d)) return d;
+  }
+  return null;
+}
+
+function getHook(clipId) {
+  try {
+    return fs.readFileSync(path.join(projectDir, 'processed', clipId, 'hook.txt'), 'utf8').trim();
+  } catch { return ''; }
+}
+
+const COLS = 11;
+const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="${COLS}">⟳ reconnect</td></tr>`;
 
 function makeClipRow(id, num) {
   const s = scored.find(x => x.id === id) || {};
   let score = {};
-  try { score = JSON.parse(fs.readFileSync(path.join(projectDir, 'processed', id, 'score.json'), 'utf8')); } catch (e) {}
+  try { score = JSON.parse(fs.readFileSync(path.join(projectDir, 'processed', id, 'score.json'), 'utf8')); } catch {}
+
   const views = fmtViews(s.view_count);
-  const hasOverlayed = fs.existsSync(path.join(projectDir, 'processed', id, 'overlayed.mp4'));
-  const vidSrc = '../processed/' + id + '/' + (hasOverlayed ? 'overlayed' : 'clean') + '.mp4';
+  const twitchUrl = s.url || `https://clips.twitch.tv/${id}`;
   const flags = (score.flags || []).join(', ') || '';
-  const music = flags.includes('music') ? '<span style="color:#ff6b6b">⚠</span>' : '';
   const ddos = score.ddosScore != null ? score.ddosScore : '—';
   const funny = score.funnyScore != null ? score.funnyScore : '—';
   const shorts = score.shortsPotential != null ? score.shortsPotential : '—';
   const inShorts = plan.shortClipIds.includes(id) ? ' <span style="color:#f5ff3d">★</span>' : '';
+  const reasoning = esc(score.reasoning || '');
+
+  const origDur = s.duration || score.duration;
+  const cleanDur = getCleanDuration(id);
+  const durStr = cleanDur != null
+    ? `${fmtDur(cleanDur)}<span style="color:#555">/${fmtDur(origDur)}</span>`
+    : fmtDur(origDur);
+
+  const hook = esc(getHook(id));
+
   return `  <tr>
     <td>${num}</td>
-    <td><a href="${vidSrc}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
+    <td><a href="${esc(twitchUrl)}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
     <td>${esc(shortCat(s.game_name))}</td>
-    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
-    <td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>
+    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
+    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;font-size:12px">${hook}</td>
+    <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px">${durStr}</td>
+    <td style="font-weight:600;color:${scoreColor(ddos)}" title="${reasoning}">${ddos}</td>
     <td>${funny}</td>
     <td>${shorts}${inShorts}</td>
-    <td>${music}</td>
     <td>${views}</td>
     <td style="color:#666;font-size:11px">${esc(flags)}</td>
   </tr>`;
@@ -105,6 +146,22 @@ const descEscaped = esc(meta.description);
 const tagsStr = esc(meta.tags.join(' · '));
 const shortsCount = (meta.shortsMetadata || []).length;
 
+// Bottom box: approve command or published links
+const youtubeVideoId = state.outputs?.youtubeVideoId;
+const youtubeShortsIds = state.outputs?.youtubeShortsIds || [];
+const approveBox = isPublished
+  ? `<div class="approve-box published-box">
+  <div class="published-status">✅ Published</div>
+  <div class="links-row">
+    ${youtubeVideoId ? `<a class="btn btn-youtube" href="https://youtu.be/${youtubeVideoId}" target="_blank">YouTube ↗</a>` : ''}
+    ${youtubeShortsIds.map((id, i) => `<a class="btn btn-shorts" href="https://youtube.com/shorts/${id}" target="_blank">Short ${i + 1} ↗</a>`).join('\n    ')}
+  </div>
+</div>`
+  : `<div class="approve-box">
+  <p>Перевір все вище. Коли готово — виконай команду:</p>
+  <code>/ddos approve ${runId}</code>
+</div>`;
+
 const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,7 +174,6 @@ const html = `<!DOCTYPE html>
   *, *::before, *::after { box-sizing: border-box; }
   body { background: #0e0e10; color: #f4f0e6; font-family: 'Space Grotesk', sans-serif; margin: 0; padding: 32px 24px; }
   .container { max-width: 1200px; margin: 0 auto; }
-  h1 { font-family: 'Anton', sans-serif; color: #f5ff3d; letter-spacing: 3px; font-size: 52px; margin: 0 0 6px; }
   h2 { font-family: 'Anton', sans-serif; color: #f5ff3d; letter-spacing: 2px; font-size: 22px; margin: 0 0 16px; }
   .subtitle { color: #666; font-size: 13px; font-family: 'JetBrains Mono', monospace; margin-bottom: 40px; }
   .status-ok { color: #00ff88; font-weight: 600; }
@@ -148,9 +204,16 @@ const html = `<!DOCTYPE html>
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
   .reconnect-row td { background: #111113; color: #383838; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #1e1e22; }
-  .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; }
+  .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; margin-top: 48px; }
   .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
   code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
+  .published-box { border-color: #1a3a2a; }
+  .published-status { font-family: 'Anton', sans-serif; font-size: 22px; color: #4ade80; letter-spacing: 2px; margin-bottom: 14px; }
+  .links-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  a.btn { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; transition: opacity 0.15s; }
+  a.btn:hover { opacity: 0.8; }
+  .btn-youtube { background: #ff0000; color: #fff; }
+  .btn-shorts  { background: #333; color: #f4f0e6; border: 1px solid #444; }
 </style>
 </head>
 <body>
@@ -191,8 +254,8 @@ ${titleCards}
 <table>
 <thead>
   <tr>
-    <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th>
-    <th>DDOS</th><th>Funny</th><th>Shorts</th><th>♪</th><th>Views</th><th>Flags</th>
+    <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th><th>Hook</th><th>Dur</th>
+    <th title="Hover for reasoning">DDOS</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Flags</th>
   </tr>
 </thead>
 <tbody>
@@ -217,10 +280,7 @@ ${shortsGrid}
 </div>
 </div>
 
-<div class="approve-box">
-  <p>Перевір все вище. Коли готово — виконай команду:</p>
-  <code>/ddos approve ${runId}</code>
-</div>
+${approveBox}
 
 </div>
 </body>

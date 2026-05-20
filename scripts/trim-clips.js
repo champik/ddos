@@ -130,6 +130,13 @@ function trimClip(clipId) {
   if (r.status === 0 && fs.existsSync(cleanPath)) {
     const cleanDur = getDuration(cleanPath);
     console.log(`OK ${start.toFixed(1)}s-${end.toFixed(1)}s/${totalDur.toFixed(1)}s → ${cleanDur.toFixed(1)}s`);
+    // Save trimmed duration for review and analytics
+    const scorePath = path.join(processedDir, clipId, 'score.json');
+    try {
+      const sc = JSON.parse(fs.readFileSync(scorePath, 'utf8'));
+      sc.trimmedDuration = Math.round(cleanDur * 10) / 10;
+      fs.writeFileSync(scorePath, JSON.stringify(sc, null, 2));
+    } catch {}
     done++;
     return cleanDur;
   } else {
