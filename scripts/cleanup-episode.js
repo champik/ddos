@@ -67,8 +67,4 @@ totalFreed += deleteFile(path.join(editDir, 'reconnecting.mp4'));
 totalFreed += deleteGlob(editDir, /^chill-.+\.mp4$/i);
 totalFreed += deleteGlob(editDir, /^reconnecting-panel\.webm$/i);
 
-// 4. cache/overlays — regeneratable WebMs
-console.log('\n[cache]');
-totalFreed += deleteGlob(path.join(projectDir, 'cache', 'overlays'), /\.webm$/i);
-
 console.log(`\nFreed: ${fmtMB(totalFreed)} total`);
