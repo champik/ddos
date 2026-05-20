@@ -36,7 +36,7 @@ for (let gi = 0; gi < groups.length; gi++) {
   }
 
   const isLast = gi === groups.length - 1;
-  if (!isLast) {
+  if (!isLast && !g.noTrailingReconnect) {
     add(path.join(base, 'edit/reconnecting.mp4'));
   }
 }

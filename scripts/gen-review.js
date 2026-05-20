@@ -8,10 +8,13 @@ if (!projectDir) { console.error('Usage: node gen-review.js <projectDir>'); proc
 const plan = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
 const meta = JSON.parse(fs.readFileSync(path.join(projectDir, 'exports/metadata.json'), 'utf8'));
 const scored = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/scored-clips.json'), 'utf8'));
+const state = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
 
-const ep = plan.episodeNumber;
+const ep = plan.episodeNumber || state.episodeNumber;
 const runId = path.basename(projectDir);
 const epPad = String(ep).padStart(3, '0');
+const dateMatch = runId.match(/(\d{4})_(\d{2})_(\d{2})$/);
+const dateStr = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : '—';
 
 function esc(str) {
   return String(str)
@@ -42,7 +45,9 @@ function scoreColor(v) {
   return '#f4f0e6';
 }
 
-const rows = plan.clipOrder.map((id, i) => {
+const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="10">⟳ reconnect</td></tr>`;
+
+function makeClipRow(id, num) {
   const s = scored.find(x => x.id === id) || {};
   let score = {};
   try { score = JSON.parse(fs.readFileSync(path.join(projectDir, 'processed', id, 'score.json'), 'utf8')); } catch (e) {}
@@ -56,7 +61,7 @@ const rows = plan.clipOrder.map((id, i) => {
   const shorts = score.shortsPotential != null ? score.shortsPotential : '—';
   const inShorts = plan.shortClipIds.includes(id) ? ' <span style="color:#f5ff3d">★</span>' : '';
   return `  <tr>
-    <td>${i + 1}</td>
+    <td>${num}</td>
     <td><a href="${vidSrc}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
     <td>${esc(shortCat(s.game_name))}</td>
     <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
@@ -67,7 +72,22 @@ const rows = plan.clipOrder.map((id, i) => {
     <td>${views}</td>
     <td style="color:#666;font-size:11px">${esc(flags)}</td>
   </tr>`;
-}).join('\n');
+}
+
+const rowParts = [];
+let clipNum = 0;
+for (let gi = 0; gi < plan.groups.length; gi++) {
+  const group = plan.groups[gi];
+  for (const id of group.clipIds) {
+    clipNum++;
+    rowParts.push(makeClipRow(id, clipNum));
+  }
+  const isLast = gi === plan.groups.length - 1;
+  if (!isLast && !group.noTrailingReconnect) {
+    rowParts.push(RECONNECT_ROW);
+  }
+}
+const rows = rowParts.join('\n');
 
 const titleCards = meta.titleOptions.map((t, i) =>
   `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
@@ -127,6 +147,7 @@ const html = `<!DOCTYPE html>
   .meta-block { background: #1a1a1e; border-radius: 10px; padding: 20px 24px; }
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
+  .reconnect-row td { background: #111113; color: #383838; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #1e1e22; }
   .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; }
   .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
   code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
@@ -135,8 +156,13 @@ const html = `<!DOCTYPE html>
 <body>
 <div class="container">
 
-<h1>DDOS · EPISODE #${ep}</h1>
-<div class="subtitle">${runId} &nbsp;·&nbsp; 2026-05-18 &nbsp;·&nbsp; <span class="status-ok">✓ Ready for review</span> &nbsp;·&nbsp; ${plan.clipOrder.length} clips</div>
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:4px">
+  <a href="../../index.html" style="display:inline-block;text-decoration:none;flex-shrink:0">
+    <img src="../../../assets/thumbnail-template/logo.svg" alt="DDOS" style="height:56px;display:block">
+  </a>
+  <div style="font-family:'Anton',sans-serif;font-size:52px;color:#f5ff3d;letter-spacing:3px;line-height:1">EPISODE #${ep}</div>
+</div>
+<div class="subtitle">${runId} &nbsp;·&nbsp; ${dateStr} &nbsp;·&nbsp; <span class="status-ok">✓ Ready for review</span> &nbsp;·&nbsp; ${plan.clipOrder.length} clips</div>
 
 <div class="section">
 <h2>Long-form</h2>

@@ -189,9 +189,12 @@ for (const group of plan.groups) {
   }
 }
 
+const noOverlayIds = new Set(plan.noOverlayClipIds || []);
+
 let prevBroadcaster = null;
 for (const { clipId, broadcaster } of orderedClips) {
-  applyStreamerOverlay(clipId, broadcaster, broadcaster === prevBroadcaster);
+  const skipBanner = broadcaster === prevBroadcaster || noOverlayIds.has(clipId);
+  applyStreamerOverlay(clipId, broadcaster, skipBanner);
   prevBroadcaster = broadcaster;
 }
 

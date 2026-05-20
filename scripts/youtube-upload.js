@@ -77,7 +77,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
       },
       status: { privacyStatus: 'unlisted', selfDeclaredMadeForKids: false }
     },
-    media: { body: fs.createReadStream(videoPath) }
+    media: { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) }
   }, {
     onUploadProgress: e => {
       const pct = Math.round(e.bytesRead / size * 100);
@@ -90,7 +90,8 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
   console.log(`Uploaded (unlisted): https://youtu.be/${videoId}`);
 
   if (thumbnailPath && fs.existsSync(thumbnailPath)) {
-    await yt.thumbnails.set({ videoId, media: { body: fs.createReadStream(thumbnailPath) } });
+    const thumbMime = thumbnailPath.endsWith('.jpg') || thumbnailPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+    await yt.thumbnails.set({ videoId, media: { mimeType: thumbMime, body: fs.createReadStream(thumbnailPath) } });
     console.log('Thumbnail set.');
   }
 
@@ -160,7 +161,7 @@ async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publ
       },
       status: statusBody
     },
-    media: { body: fs.createReadStream(shortPath) }
+    media: { mimeType: 'video/mp4', body: fs.createReadStream(shortPath) }
   }, {
     onUploadProgress: e => {
       const pct = Math.round(e.bytesRead / size * 100);

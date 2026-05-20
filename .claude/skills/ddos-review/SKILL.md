@@ -46,6 +46,14 @@ node scripts/progress.js "projects/<runId>" summary
 
 ### Шаблон картки
 
+Перед вставкою — виміряй тривалість фінального відео:
+```bash
+DURATION_S=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "projects/<runId>/exports/episode-<NNN>.mp4")
+# Форматувати як M:SS (наприклад 501s → "8:21")
+```
+
+Стрімери — унікальні broadcaster_name з chapters опису metadata.json (порядок зліва направо).
+
 ```html
 <!-- EPISODE N -->
 <div class="episode-card">
@@ -56,19 +64,12 @@ node scripts/progress.js "projects/<runId>" summary
     <div class="ep-badge">EP #N</div>
   </div>
   <div class="info">
-    <div class="info-top">
-      <div class="episode-num">Episode N &nbsp;·&nbsp; YYYY-MM-DD</div>
-      <div class="title"><titleOptions[0]></div>
-      <div class="title-alts">
-        <span><titleOptions[1]></span>
-        <span><titleOptions[2]></span>
+    <div>
+      <div class="episode-meta">
+        Episode #N <span class="sep">·</span> M:SS <span class="sep">·</span> YYYY-MM-DD <span class="sep">·</span> <span class="status-pending">⏳ pending</span>
       </div>
-    </div>
-    <hr class="divider">
-    <div class="meta-row">
-      <span class="date"><runId></span>
-      <span class="status-pending">⏳ pending</span>
-      <span class="shorts-count"><shortsCount> shorts</span>
+      <div class="title"><titleOptions[0]></div>
+      <div class="streamers"><streamer1> · <streamer2> · ...</div>
     </div>
     <div class="links-row">
       <a class="btn btn-review" href="<projectFolder>/review/review.html">Review</a>
@@ -77,6 +78,7 @@ node scripts/progress.js "projects/<runId>" summary
 </div>
 ```
 
-- `status-pending` → буде замінено на `status-published` при `/ddos approve`
-- `shortsCount` = кількість шортів з `edit/shorts-selection.json` (або 0 якщо файл відсутній)
-- YouTube посилання додаються при `/ddos approve` (після отримання `youtubeVideoId`)
+- `status-pending` → замінюється на `status-published` при `/ddos approve`
+- `M:SS` — реальна тривалість episode-NNN.mp4 (ffprobe), не з Twitch API
+- Стрімери беруться з chapters у metadata.json description (унікальні, через ` · `)
+- YouTube + shorts посилання додаються при `/ddos approve`

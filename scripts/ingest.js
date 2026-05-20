@@ -78,12 +78,18 @@ function httpsPost(url, body) {
 }
 
 async function getTwitchToken() {
+  const tokenFile = '.twitch_token';
+  if (fs.existsSync(tokenFile)) {
+    const cached = fs.readFileSync(tokenFile, 'utf8').trim();
+    if (cached) return cached;
+  }
   const res = await httpsPost('https://id.twitch.tv/oauth2/token', {
     client_id: process.env.TWITCH_CLIENT_ID,
     client_secret: process.env.TWITCH_CLIENT_SECRET,
     grant_type: 'client_credentials'
   });
   if (!res.access_token) throw new Error('No access token: ' + JSON.stringify(res));
+  fs.writeFileSync(tokenFile, res.access_token);
   return res.access_token;
 }
 

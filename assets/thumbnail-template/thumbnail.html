@@ -87,7 +87,7 @@
         background: #f5ff3d;
         color: #0e0e10;
         font-family: 'Anton', sans-serif;
-        font-size: 52px;
+        font-size: 96px;
         letter-spacing: -1px;
         padding: 3px 12px 2px;
         line-height: 1.1;
@@ -111,7 +111,7 @@
         position: absolute;
         left: 40px;
         bottom: 52px;
-        right: 280px;
+        right: 40px;
         z-index: 12;
         font-family: 'Anton', sans-serif;
         letter-spacing: -3px;
@@ -125,13 +125,13 @@
       /* DDOS watermark — bottom-right */
       #va .wm {
         position: absolute;
-        bottom: 52px;
-        right: 32px;
+        top: 46px;
+        left: 32px;
         z-index: 12;
       }
 
       #va .wm img {
-        max-width: 200px;
+        max-width: 250px;
       }
     </style>
   </head>
@@ -183,7 +183,7 @@
         document.getElementById('va-ep').textContent = ep;
         var hlEl = document.getElementById('va-hl');
         hlEl.textContent = hl;
-        hlEl.style.fontSize = hlSize(hl.length, 148, 80) + 'px';
+        hlEl.style.fontSize = hlSize(hl.length, 250, 105) + 'px';
       }
 
       // Auto-render with default config on page load
