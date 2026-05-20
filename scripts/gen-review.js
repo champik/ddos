@@ -75,7 +75,7 @@ function getHook(clipId) {
   } catch { return ''; }
 }
 
-const COLS = 12;
+const COLS = 10;
 const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="${COLS}">⟳ reconnect</td></tr>`;
 
 function makeClipRow(id, num) {
@@ -99,21 +99,23 @@ function makeClipRow(id, num) {
     ? `${fmtDur(cleanDur)}<span style="color:#555">/${fmtDur(origDur)}</span>`
     : fmtDur(origDur);
 
-  const hook = esc(getHook(id));
+  const hook = getHook(id);
+  const hookLine = hook ? `<div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#f4f0e6;text-transform:uppercase;margin-bottom:3px">${esc(hook)}</div>` : '';
+  const reasoningLine = reasoning ? `<div style="font-size:11px;color:#666;font-style:italic;margin-bottom:2px">${reasoning}</div>` : '';
+  const flagsLine = flags ? `<div style="font-size:11px;color:#ff6b6b;font-weight:600">${esc(flags)}</div>` : '';
 
   return `  <tr>
     <td>${num}</td>
     <td><a href="${esc(twitchUrl)}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
     <td>${esc(shortCat(s.game_name))}</td>
     <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
-    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;font-size:12px">${hook}</td>
     <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px">${durStr}</td>
     <td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>
     <td style="color:#888">${viral}</td>
     <td>${funny}</td>
     <td>${shorts}${inShorts}</td>
     <td>${views}</td>
-    <td class="reasoning">${reasoning}</td>
+    <td style="min-width:200px;max-width:300px">${hookLine}${reasoningLine}${flagsLine}</td>
   </tr>`;
 }
 
@@ -199,7 +201,7 @@ const html = `<!DOCTYPE html>
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
   .reconnect-row td { background: #111113; color: #383838; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #1e1e22; }
-  .reasoning { color: #666; font-size: 11px; font-style: italic; max-width: 280px; }
+
   .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; margin-top: 48px; }
   .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
   code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
@@ -254,8 +256,8 @@ ${titleCards}
 <table>
 <thead>
   <tr>
-    <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th><th>Hook</th><th>Dur</th>
-    <th>DDOS</th><th>Viral</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Reasoning</th>
+    <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th><th>Dur</th>
+    <th>DDOS</th><th>Viral</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Hook / Reasoning / Flags</th>
   </tr>
 </thead>
 <tbody>
