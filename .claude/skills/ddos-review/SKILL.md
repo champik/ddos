@@ -16,9 +16,41 @@ node scripts/progress.js "projects/<runId>" 15 "Генерую review.html"
 node scripts/gen-review.js "projects/<runId>"
 ```
 
-Скрипт читає episode-plan.json, metadata.json, scored-clips.json і генерує повну сторінку review/review.html.
+Скрипт читає episode-plan.json, metadata.json, scored-clips.json, state.json і генерує повну сторінку review/review.html.
 
-**Секції сторінки:** header, long-form video, thumbnail, title options (клікабельні картки), таблиця кліпів (DDOS/Funny/Shorts/Views/Flags), shorts grid (9:16 vertical), metadata block, approve box.
+**Секції сторінки:**
+1. Header (лого + "EPISODE #N")
+2. Subtitle: runId · дата · статус · кількість кліпів
+3. Якщо опубліковано — рядок з кнопками YouTube ↗ та Short 1 ↗ Short 2 ↗ ... одразу під subtitle
+4. Long-form video (episode-NNN.mp4)
+5. Thumbnail
+6. Title options (клікабельні картки)
+7. Таблиця кліпів — деталі нижче
+8. Shorts grid (9:16 vertical відео + title + caption)
+9. Metadata block (description + tags)
+10. Approve box: команда `/ddos approve <runId>` якщо ще не опубліковано; порожньо якщо опубліковано
+
+**Таблиця кліпів — колонки (11 шт, colspan=11 для reconnect row):**
+
+| Колонка | Вміст |
+|---|---|
+| # | порядковий номер |
+| Streamer | посилання на оригінальний кліп на Twitch (`s.url`) |
+| Cat | скорочена категорія (JC, CS2, GTA V...) |
+| Title | назва кліпу з Twitch (обрізана) |
+| Dur | `trimmedDuration/originalDuration` у секундах (напр. `15s/32s`); оригінал сірим; якщо trimmedDuration відсутній — тільки оригінал |
+| DDOS | ddosScore, колір: зелений ≥60, жовтий ≥45, білий <45 |
+| Viral | viralityScore, сірим |
+| Funny | funnyScore |
+| Shorts | shortsPotential + ★ якщо в shortClipIds |
+| Views | view_count (форматовано: 1.4k, 2.1M) |
+| Hook / Reasoning / Flags | об'єднана клітинка: **HOOK** капсом жирним зверху; *reasoning* курсивом сірим; Flags червоним (тільки якщо є) |
+
+**Reconnect рядки:** між групами (якщо `!group.noTrailingReconnect`) — `<tr class="reconnect-row"><td colspan="11">⟳ reconnect</td></tr>`
+
+**Статус subtitle:**
+- До публікації: `✓ Ready for review`
+- Після публікації: `✓ Published`
 
 **Стиль:** #0e0e10 фон, #f4f0e6 текст, #f5ff3d акцент, Anton/Space Grotesk/JetBrains Mono.
 
