@@ -101,10 +101,6 @@ function makeClipRow(id, num) {
 
   const hook = esc(getHook(id));
 
-  const ddosCell = reasoning
-    ? `<td class="tip-cell" style="font-weight:600;color:${scoreColor(ddos)}"><span class="tip-anchor">${ddos}<span class="tip-box">${reasoning}</span></span></td>`
-    : `<td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>`;
-
   return `  <tr>
     <td>${num}</td>
     <td><a href="${esc(twitchUrl)}" target="_blank">${esc(s.broadcaster_name || '?')}</a></td>
@@ -112,12 +108,12 @@ function makeClipRow(id, num) {
     <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
     <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aaa;font-size:12px">${hook}</td>
     <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px">${durStr}</td>
-    ${ddosCell}
+    <td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>
     <td style="color:#888">${viral}</td>
     <td>${funny}</td>
     <td>${shorts}${inShorts}</td>
     <td>${views}</td>
-    <td style="color:#666;font-size:11px">${esc(flags)}</td>
+    <td class="reasoning">${reasoning}</td>
   </tr>`;
 }
 
@@ -203,10 +199,7 @@ const html = `<!DOCTYPE html>
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
   .reconnect-row td { background: #111113; color: #383838; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #1e1e22; }
-  .tip-cell { position: relative; }
-  .tip-anchor { cursor: help; border-bottom: 1px dashed #555; }
-  .tip-box { display: none; position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); background: #2a2a2e; color: #f4f0e6; font-size: 12px; font-weight: 400; font-family: 'Space Grotesk', sans-serif; padding: 8px 12px; border-radius: 6px; border: 1px solid #444; white-space: normal; width: 260px; z-index: 100; line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
-  .tip-anchor:hover .tip-box { display: block; }
+  .reasoning { color: #666; font-size: 11px; font-style: italic; max-width: 280px; }
   .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; margin-top: 48px; }
   .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
   code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
@@ -262,7 +255,7 @@ ${titleCards}
 <thead>
   <tr>
     <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th><th>Hook</th><th>Dur</th>
-    <th>DDOS</th><th>Viral</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Flags</th>
+    <th>DDOS</th><th>Viral</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Reasoning</th>
   </tr>
 </thead>
 <tbody>
