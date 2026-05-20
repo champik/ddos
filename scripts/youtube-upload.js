@@ -263,6 +263,15 @@ async function publishAll(runId, publishNowISO, shortIntervalMinutes) {
   finalState.stages.publish = 'done';
   finalState.status = 'published';
   fs.writeFileSync(statePath, JSON.stringify(finalState, null, 2));
+
+  // Cleanup large intermediate files
+  const { execFileSync } = require('child_process');
+  try {
+    console.log('\n[cleanup] Removing intermediate files...');
+    execFileSync(process.execPath, ['scripts/cleanup-episode.js', runId], { stdio: 'inherit' });
+  } catch (e) {
+    console.warn('[cleanup] Warning:', e.message);
+  }
 }
 
 const [,, cmd, ...args] = process.argv;
