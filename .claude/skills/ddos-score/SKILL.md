@@ -35,26 +35,47 @@ node scripts/progress.js "projects/<runId>" 5 "Оцінювання кліпів
 **Батчинг обов'язковий** — ніколи не оцінювати по одному кліпу. Групувати по 8 і відправляти один запит.
 
 Для кожної групи 8 кліпів:
-1. Прочитати `processed/<clipId>/transcript.json` якщо існує (перші 400 символів)
+1. Прочитати `processed/<clipId>/transcript.json` якщо існує. Підготувати три поля:
+   - `excerptStart` — перші **1000 символів** тексту (більше контексту)
+   - `excerptEnd` — **останні 200 символів** (payoff майже завжди в кінці)
+   - `speechDensity` — `(words.length / clip.duration).toFixed(1)` слів/сек; 3+ = action/reaction, < 1 = спокійна розмова
 2. Відправити один batch prompt:
 
 **Scoring prompt (batch):**
 ```
-Ти оцінюєш Twitch кліпи для "Daily Dose Of Stream".
-Канал: смішний, комфортний, курований. Не токсичний.
+You are scoring Twitch clips for "Daily Dose Of Stream" — a daily English-language compilation channel.
+Target audience: general English-speaking viewers who may NOT know the streamer.
+Tone: funny, comfortable, curated. Not toxic.
 
-Оціни кожен кліп від 0 до 100. Будь строгим — більшість кліпів 40-70, лише справді видатні 80+.
+Be strict — most clips score 40-70. Only truly outstanding clips score 80+.
 
-Кліпи:
+THE 5-SECOND TEST: Would someone who has never seen this streamer laugh or say "WTF" within the first 5 seconds? If no → contextClarity should be low (under 50).
+
+WHAT WORKS FOR THIS AUDIENCE (score higher):
+- Surprise/shock — something goes wrong, or streamer reacts to something completely unexpected
+- Cringe/awkward — streamer ends up in an embarrassing live moment (secondhand embarrassment)
+- Genuine emotional moment — unexpected donation, streamer cries, something wholesome
+- Fail/disaster — something breaks, falls, or goes catastrophically wrong
+- Divine timing — two unrelated things coincide perfectly in one second
+
+PENALIZE HEAVILY:
+- Clip requires 2+ minutes of context to understand → contextClarity < 30
+- Lots of talking about something that happened earlier, no real-time reaction → retentionScore < 40
+- Inside joke only regulars of that community would understand → contextClarity < 35, noveltyScore < 30
+- No visible face or facial emotion → thumbnailPotential < 30
+
+Clips:
 [1] <clipId>
-  Стрімер: <broadcaster_name>, Категорія: <game_name>, Мова: <language>, Тривалість: <duration>s
-  Назва: "<title>"
-  Транскрипт: "<excerpt>"
+  Streamer: <broadcaster_name>, Category: <game_name>, Language: <language>, Duration: <duration>s
+  Title: "<title>"
+  Speech density: <speechDensity> words/sec
+  Transcript start: "<excerptStart>"
+  Transcript end: "<excerptEnd>"
 
 [2] ...
-(до 8 кліпів)
+(up to 8 clips)
 
-Відповідай ТІЛЬКИ валідним JSON масивом (без markdown):
+Respond ONLY with a valid JSON array (no markdown):
 [
   {
     "clipId": "...",
@@ -71,11 +92,18 @@ node scripts/progress.js "projects/<runId>" 5 "Оцінювання кліпів
     "singingScore": 0-100,
     "dancingScore": 0-100,
     "rageScore": 0-100,
+    "thumbnailPotential": 0-100,
+    "emotionalCategory": "surprise|cringe|emotional|fail|divine_timing|gameplay|other",
     "flags": [],
-    "reasoning": "1 речення"
+    "reasoning": "1 sentence — what happens and why it does or doesn't work for a general audience"
   },
   ...
 ]
+
+Field definitions:
+- contextClarity: does a viewer with NO knowledge of this streamer understand what's happening within 5 seconds?
+- thumbnailPotential: high (70+) if streamer face shows strong emotion (shock, laughing, panic, rage). Low if gameplay without face or static/dark frame.
+- emotionalCategory: pick the single best fit from the list above.
 ```
 
 **DDOS Score формула:**

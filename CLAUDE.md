@@ -63,8 +63,8 @@
 10. OVERLAYS    Puppeteer → streamer name PNG + reconnecting PNG → FFmpeg burn
 11. RENDER LONG FFmpeg concat: intro + кліпи + transitions + outro → 1920×1080
 12. RENDER SHORTS FFmpeg vertical crop → 1080×1920 + captions
-13. THUMBNAIL   Puppeteer рендер thumbnail.html → best frame + текст + епізод №
-14. METADATA    Claude → title options / description / hashtags / shorts captions
+13. METADATA    Claude → title options / description / hashtags / shorts captions
+14. THUMBNAIL   Puppeteer рендер thumbnail.html → best frame + текст + епізод №
 15. REVIEW      Генерувати review.html з превью всього
 ```
 
