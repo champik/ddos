@@ -92,7 +92,7 @@ function isEmotional(phraseWords) {
 
 // ASS color for #f5ff3d (yellow): R=F5 G=FF B=3D → ASS &HAABBGGRR = &H003DFFF5
 const YELLOW = '&H003DFFF5';
-const WHITE  = '&H00F4F0E6';
+const WHITE  = '&H00E6F0F4';
 
 // Longform header — 1920×1080, Impact 72px, yellow, heavy outline
 const LONGFORM_HEADER = `[Script Info]

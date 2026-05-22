@@ -121,7 +121,7 @@ function trimClip(clipId) {
     '-to', String(end),
     '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
     '-af', 'asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11',
-    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
     '-r', '30',
     '-y', cleanPath

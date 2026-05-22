@@ -183,7 +183,7 @@ if dancingScore > 70:
 ## PLAN — Claude будує план епізоду
 
 ```bash
-node scripts/progress.js "projects/<runId>" 6 "Будую план епізоду"
+node scripts/progress.js "projects/<runId>" 7 "Будую план епізоду"
 ```
 
 Передай топ-40 scored кліпів з реальними post-trim тривалостями. Claude вирішує план безпосередньо в розмові.
@@ -204,9 +204,27 @@ scored.slice(0, 40).forEach(c => {
 Ти директор епізоду "Daily Dose Of Stream" #<N>.
 
 Кліпи (відсортовані за ddosScore, тривалість — після обрізки тиші):
-<clipId | стрімер | категорія | ddosScore | funnyScore | rageScore | singingScore | dancingScore | shortsPotential | cleanDuration(s)>
+<clipId | стрімер | категорія | ddosScore | funnyScore | payoffStrength | retentionScore | contextClarity | rageScore | singingScore | dancingScore | shortsPotential | cleanDuration(s)>
 
-ПРАВИЛА ГРУПУВАННЯ:
+**Перед плануванням — два кроки підготовки:**
+
+**Крок 1 — обрати reconnectingClipId:**
+```
+reconnectScore = funnyScore × 0.35 + payoffStrength × 0.30 + retentionScore × 0.20 + contextClarity × 0.15
+```
+Кандидати: reconnectScore ≥ 55, тільки JC/IRL/Specialty (не ігровий), toxicityRisk < 40.
+Обрати кандидата з найвищим reconnectScore. Якщо немає — знизити поріг до 45.
+
+**Крок 2 — обрати openerClipId:**
+Найсильніший кліп за ddosScore серед НЕ-reconnect, НЕ-chill кліпів.
+
+**Крок 3 — побудувати group[0]:**
+- openerClipId — перший кліп у group[0]
+- reconnectingClipId — будь-яка позиція в group[0] крім останньої (після нього ≥1 кліп)
+- Якщо opener і reconnect природно не групуються (різні ігри/стрімери) → group[0] = VIBE_GROUP за тоном
+- Решта кліпів group[0] добираються за спорідненістю вайбу або тематики
+
+ПРАВИЛА ГРУПУВАННЯ (для решти груп):
 - GAME_GROUP: та сама гра, різні стрімери → підряд (до 5 кліпів)
 - STREAMER_GROUP: той самий стрімер, та сама гра → підряд (до 3 кліпів)
 - VIBE_GROUP: схожий тон chaos/wholesome/rage → підряд
@@ -218,8 +236,6 @@ scored.slice(0, 40).forEach(c => {
   До суми додай: intro 1.25с + (кількість груп - 1) × 1с reconnecting + outro 1.25с.
   Додавай кліпи поки не досягнеш мінімум 720с. Не виходь за 900с.
 - **КАТЕГОРІЇ**: мінімум 50% кліпів мусять бути з Just Chatting (509658) або IRL (509672). Максимум 2 кліпи з однієї ігрової категорії.
-- Перша група: сильний, захоплюючий контент (opener)
-- **reconnectingClipId**: обирати кліп де є ЧІТКИЙ пік — раптова реакція, вигук, смішний момент в середині кліпу. Ідеально: кліп з `rageScore > 60` або `funnyScore > 75`. НЕ брати довгі спокійні кліпи.
 - Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець як `chillPlan`. Ці кліпи НЕ включати в основні групи — вони підуть через chill-finale.mp4.
 - Обери 5–10 кліпів для Shorts (найвищий shortsPotential)
 
@@ -230,7 +246,7 @@ scored.slice(0, 40).forEach(c => {
     {"type":"GAME_GROUP","label":"CS2 Chaos","clipIds":["id1","id2"],"tone":"chaotic"}
   ],
   "openerClipId": "id",
-  "reconnectingClipId": "id",
+  "reconnectingClipId": "id",   // кліп з найвищим reconnectScore; його група — перша в groups[]
   "chillPlan": {
     "type": "singing_then_dancing|dancing_montage|skip",
     "singingClipId": "id or null",
@@ -270,4 +286,4 @@ projects/<runId>/processed/<clipId>/hook.txt
 
 **НЕ** викликати Anthropic API або будь-який зовнішній сервіс — хуки генеруються Claude безпосередньо в розмові.
 
-Оновити `state.stages.score = "done"`, `state.stages.plan = "done"`, `state.stages.hooks = "done"`.
+Оновити `state.stages.score = "done"`, `state.stages.hooks = "done"`.

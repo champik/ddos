@@ -90,7 +90,7 @@ function applyStreamerOverlay(clipId, broadcasterName, skipBanner) {
     '-i', bannerMkv,
     '-filter_complex', "[0:v][1:v]overlay=0:0:enable='between(t,0,3)':format=auto[out]",
     '-map', '[out]', '-map', '0:a',
-    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
     '-c:a', 'copy',
     '-y', out
   ]);

@@ -35,6 +35,16 @@ function fmt(seconds) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function reconnectingDuration() {
+  const file = path.join(projectDir, 'edit/reconnecting.mp4');
+  if (!fs.existsSync(file)) return 1.0;
+  const result = spawnSync('ffprobe', [
+    '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', file
+  ], { encoding: 'utf8' });
+  return parseFloat(result.stdout) || 1.0;
+}
+
+const rcDur = reconnectingDuration();
 const chapters = [{ t: 0, label: 'Intro' }];
 let offset = 1.25;
 
@@ -42,7 +52,7 @@ for (let i = 0; i < plan.groups.length; i++) {
   const group = plan.groups[i];
   chapters.push({ t: Math.round(offset), label: group.label });
   for (const clipId of group.clipIds) offset += duration(clipId);
-  if (i < plan.groups.length - 1) offset += 2;
+  if (i < plan.groups.length - 1) offset += rcDur;
 }
 
 if (plan.chillPlan && plan.chillPlan.type !== 'skip') {

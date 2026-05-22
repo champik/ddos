@@ -182,8 +182,8 @@ for (const clipId of clipIds) {
     '-filter_complex', filterParts.join(';'),
     '-map', '[out]',
     '-map', '0:a',
-    '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
-    '-c:a', 'aac', '-b:a', '128k', '-ar', '48000',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
     '-movflags', '+faststart',
     ...extraArgs,
     '-y', output

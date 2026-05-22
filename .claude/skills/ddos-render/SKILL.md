@@ -7,7 +7,7 @@
 ## TRIM — Silence Detection + Re-encode
 
 ```bash
-node scripts/progress.js "projects/<runId>" 7 "Обрізка кліпів (FFmpeg trim + loudnorm)"
+node scripts/progress.js "projects/<runId>" 6 "Обрізка кліпів (FFmpeg trim + loudnorm)"
 ```
 
 > **TRIM запускається ДО PLAN** — trimить кліпи incremental батчами поки не набереться
@@ -48,13 +48,12 @@ SILENCE_OUT=$(ffmpeg -i "$LOCAL_PATH" \
 ### 2. Re-encode з виправленими timestamps (НІКОЛИ не використовувати -c copy після -ss)
 
 ```bash
-DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "downloads/<clipId>.mp4")
-# START і END вже розраховані з silencedetect або 0/DURATION
+# LOCAL_PATH вже встановлено вище з downloaded-clips.json → clip.localPath
 
-ffmpeg -i "downloads/<clipId>.mp4" -ss $START -to $END \
+ffmpeg -i "$LOCAL_PATH" -ss $START -to $END \
   -vf "setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
   -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
-  -c:v libx264 -preset fast -crf 23 \
+  -c:v libx264 -preset fast -crf 22 \
   -c:a aac -b:a 192k -ar 48000 \
   -r 30 \
   -y "processed/<clipId>/clean.mp4"

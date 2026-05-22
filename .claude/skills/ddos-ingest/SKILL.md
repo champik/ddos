@@ -114,7 +114,7 @@ weplay_esports, faceit, dreamhack, esltv, iem
 Для кожного filtered кліпу розрахувати `preScore` (0–100):
 
 ```javascript
-const coreIds = ['509658', '509672', '32399', '516575'];
+const coreIds = ['509658', '509672', '26936', '509667', '509671', '116747788', '417752'];
 
 // Pass 1: build broadcasterMaxViews for ratio signal
 const broadcasterMaxViews = new Map();
@@ -142,19 +142,21 @@ function calcPreScore(clip, seenStreamers, seenCategories) {
   const d = clip.duration;
   const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-  // languageScore
-  const languageScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 90 : 50;
+  // languageScore: viral bypass — якщо velocityScore > 85, мова не важлива
+  const isViralLang = velocityScore > 85;
+  const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
+  const languageScore = isViralLang ? 100 : rawLangScore;
 
   // riskPenalty
   const title = (clip.title || '').toLowerCase();
   const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
 
   const baseScore = (
-    velocityScore * 0.35 +
+    velocityScore * 0.25 +
     ratioScore    * 0.15 +
     categoryScore * 0.25 +
     durationScore * 0.20 +
-    languageScore * 0.05
+    languageScore * 0.15
   ) - riskPenalty;
 
   // Diversity: soft cap multipliers, applied per streamer AND per category independently

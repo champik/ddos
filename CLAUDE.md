@@ -78,20 +78,27 @@
 ## Конфігурація
 
 ### Twitch категорії
-```json
-[
-  { "name": "Just Chatting",      "gameId": "509658", "weight": 0.25 },
-  { "name": "IRL",                "gameId": "509672", "weight": 0.10 },
-  { "name": "Counter-Strike 2",   "gameId": "32399",  "weight": 0.12 },
-  { "name": "PUBG",               "gameId": "493057", "weight": 0.06 },
-  { "name": "Valorant",           "gameId": "516575", "weight": 0.10 },
-  { "name": "Grand Theft Auto V", "gameId": "32982",  "weight": 0.10 },
-  { "name": "World of Warcraft",  "gameId": "18122",  "weight": 0.05 },
-  { "name": "League of Legends",  "gameId": "21779",  "weight": 0.08 },
-  { "name": "Minecraft",          "gameId": "27471",  "weight": 0.06 },
-  { "name": "Fortnite",           "gameId": "33214",  "weight": 0.08 },
-  { "name": "Music",              "gameId": "26936",  "weight": 0.04 }
-]
+
+**Core (завжди фетчаться, categoryScore=88 у pre-score):**
+
+| Бакет | Категорія | gameId |
+|-------|-----------|--------|
+| JC/IRL | Just Chatting | 509658 |
+| JC/IRL | IRL | 509672 |
+| Specialty | Music | 26936 |
+| Specialty | Food & Drink | 509667 |
+| Specialty | Fitness & Health | 509671 |
+| Specialty | Pools, Hot Tubs, and Beaches | 116747788 |
+| Specialty | Talk Shows & Podcasts | 417752 |
+
+**Dynamic (топ-12 з Twitch топ-20, виключаючи core і gambling):**
+Gaming категорії що в тренді (CS2, GTA, Valorant, LoL тощо).
+
+### Download бакети (100 кліпів)
+```
+JC/IRL     → до 50  (40 по вірусності + 10 по популярності)
+Specialty  → до 15  (10 по вірусності + 5 по популярності, max 5 з однієї категорії)
+Gaming     → до 35  (25 по вірусності + 10 по популярності, max 5 з однієї гри)
 ```
 
 ### Ліміти
@@ -164,17 +171,16 @@ projects/<runId>/
 │   ├── score.json
 │   ├── hook.txt
 │   ├── clean.mp4                      # trimmed + re-encoded + loudnorm
-│   ├── overlayed.mp4                  # clean.mp4 + animated WebM broadcaster overlay
+│   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
 │   ├── captions-longform.ass
 │   └── captions-vertical.ass
-├── cache/overlays/<broadcaster>.webm  # cached animated streamer overlays
+├── cache/overlays/<broadcaster>.mkv   # cached streamer overlays (FFV1 MKV) + reconnecting-panel.mkv
 ├── edit/
 │   ├── episode-plan.json
 │   ├── shorts-selection.json
 │   ├── captions-segments.json
 │   ├── episode.ass                    # merged episode captions
-│   ├── reconnecting-panel.webm        # pre-rendered reconnecting WebM
-│   ├── reconnecting.mp4               # 1s glitch moment
+│   ├── reconnecting.mp4               # ~2s glitch moment (тривалість залежить від кліпу)
 │   ├── chill-finale.mp4               # singing + dancing finale (optional)
 │   └── concat-list.txt
 ├── exports/
