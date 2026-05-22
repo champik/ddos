@@ -131,7 +131,7 @@ function trimClip(clipId) {
     const cleanDur = getDuration(cleanPath);
     console.log(`OK ${start.toFixed(1)}s-${end.toFixed(1)}s/${totalDur.toFixed(1)}s → ${cleanDur.toFixed(1)}s`);
     // Save trimmed duration for review and analytics
-    const scorePath = path.join(processedDir, clipId, 'score.json');
+    const scorePath = path.join(projectDir, 'processed', clipId, 'score.json');
     try {
       const sc = JSON.parse(fs.readFileSync(scorePath, 'utf8'));
       sc.trimmedDuration = Math.round(cleanDur * 10) / 10;
