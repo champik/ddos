@@ -50,28 +50,32 @@
 
 ## Pipeline — порядок виконання
 
+### Stage 1 (авто — до editorial)
 ```
-1.  INGEST      Twitch API → raw-clips.json (гібридний sampling)
-2.  FILTER      відсіяти RU / gambling / занадто короткі / занадто довгі
-3.  DOWNLOAD    yt-dlp → downloads/<clipId>.mp4 (100 кліпів)
-4.  TRANSCRIBE  faster-whisper (Python) → transcript.json (word timestamps)
-5.  SCORE       Claude аналізує кожен кліп → score.json (DDOS Score 0–100)
-6.  TRIM        FFmpeg incremental: топ-30 за ddosScore → перевір суму → +10 поки не 12–15хв
-7.  PLAN        Claude будує план по ТРИВАЛОСТІ 12–15 хв (сума clean.mp4)
-8.  HOOKS       Claude генерує текстовий хук для кожного кліпу (2–5 слів)
-9.  CAPTIONS    ASS субтитри (word-by-word Shorts / selective long-form)
-10. OVERLAYS    Puppeteer → streamer name PNG + reconnecting PNG → FFmpeg burn
-11. RENDER LONG FFmpeg concat: intro + кліпи + transitions + outro → 1920×1080
-12. RENDER SHORTS FFmpeg vertical crop → 1080×1920 + captions
-13. METADATA    Claude → title options / description / hashtags / shorts captions
-14. THUMBNAIL   Puppeteer рендер thumbnail.html → best frame + текст + епізод №
-15. REVIEW      Генерувати review.html з превью всього
+1.  INGEST              Twitch API → raw-clips.json
+2.  FILTER              відсіяти RU / gambling / занадто короткі / занадто довгі
+3.  DOWNLOAD            yt-dlp → downloads/<filename>.mp4 (100 кліпів)
+4.  TRANSCRIBE          faster-whisper → transcript.json
+5.  SCORE               Claude batch оцінка → score.json + scored-clips.json
+6.  GENERATE_EDITORIAL  Claude відбирає кліпи → edit/edit.html  ← ЗУПИНКА
 ```
 
-> **Чому TRIM перед PLAN:** plan використовує реальні тривалості clean.mp4 для точного
-> таргетингу 12–15 хв. Raw duration з Twitch API може бути на 30–70% довшим за фактичну
-> тривалість після обрізки тиші. Incremental підхід: trim топ-30 → якщо < 12хв → trim ще 10 → ...
-> Зупинка якщо ddosScore наступного кліпу < 45 (якісна підлога).
+Після GENERATE_EDITORIAL: відкрити `edit/edit.html` у браузері, зробити editorial рішення, "Copy Prompt" → вставити в чат.
+
+### Stage 2 (після editorial JSON)
+```
+7.  APPLY_EDITORIAL  apply-editorial.js → clean.mp4 (trim + cuts з editorial.json)
+8.  HOOKS            Claude генерує хуки в розмові
+9.  OVERLAYS         Puppeteer → streamer overlay + reconnecting panel
+10. RENDER LONG      FFmpeg concat → episode-NNN.mp4
+11. CAPTIONS         ASS субтитри для shorts
+12. RENDER SHORTS    FFmpeg → 1080×1920 (desktop/mobile/split)
+13. METADATA         Claude → title/description/tags
+14. THUMBNAIL        Puppeteer → thumbnail.png (кадр з editorial.thumbnail.at)
+15. REVIEW           review.html + index.html
+```
+
+> **TRIM і PLAN видалені з pipeline.** Порядок кліпів і cuts задаються вручну через editorial UI.
 
 ---
 
@@ -176,7 +180,9 @@ projects/<runId>/
 │   └── captions-vertical.ass
 ├── cache/overlays/<broadcaster>.mkv   # cached streamer overlays (FFV1 MKV) + reconnecting-panel.mkv
 ├── edit/
-│   ├── episode-plan.json
+│   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
+│   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
+│   ├── episode-plan.json              # Генерується з editorial.json при resume
 │   ├── shorts-selection.json
 │   ├── captions-segments.json
 │   ├── episode.ass                    # merged episode captions
