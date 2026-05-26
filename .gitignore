@@ -8,6 +8,7 @@ projects/*/exports/*.mp4
 projects/*/exports/shorts/
 projects/
 node_modules/
+.superpowers/
 __pycache__/
 *.pyc
 .worktrees/
