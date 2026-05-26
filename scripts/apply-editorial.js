@@ -26,18 +26,11 @@ downloaded.forEach(c => { dlMap[c.id] = c; });
 
 function fmtSec(sec) { return parseFloat(sec).toFixed(3); }
 
-function buildPlan(src, inT, outT, cuts) {
-  const segments = [];
-  let cur = inT;
-  const sortedCuts = [...(cuts || [])].sort((a, b) => a[0] - b[0]);
-  for (const [from, to] of sortedCuts) {
-    const cf = Math.max(from, inT);
-    const ct = Math.min(to, outT);
-    if (ct <= cf) continue;
-    if (cf > cur) segments.push([cur, cf]);
-    cur = ct;
-  }
-  if (cur < outT) segments.push([cur, outT]);
+function buildPlan(src, inT, outT, keeps) {
+  // keeps = segments to INCLUDE; if empty → include full range
+  const segments = keeps && keeps.length > 0
+    ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
+    : [[inT, outT]];
   if (segments.length === 0) segments.push([inT, outT]);
 
   if (segments.length === 1) {
@@ -84,9 +77,9 @@ for (const clipId of editorial.clipOrder) {
   ], { encoding: 'utf8' });
   const fullDur = parseFloat(durResult.stdout) || 999;
   const outT = clipEdits.trim?.out ?? fullDur;
-  const cuts = clipEdits.cuts || [];
+  const keeps = clipEdits.keeps || [];
 
-  const plan = buildPlan(src, inT, outT, cuts);
+  const plan = buildPlan(src, inT, outT, keeps);
 
   let args;
   if (plan.simple) {
@@ -112,7 +105,7 @@ for (const clipId of editorial.clipOrder) {
     ];
   }
 
-  console.log(`PROCESS: ${clipId} (${cuts.length} cuts, trim ${fmtSec(inT)}-${fmtSec(outT)})`);
+  console.log(`PROCESS: ${clipId} (${keeps.length} keeps, range ${fmtSec(inT)}-${fmtSec(outT)})`);
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });
 
   if (result.status !== 0) { console.error('FAILED:', clipId); failed++; }

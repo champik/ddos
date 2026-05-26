@@ -45,7 +45,7 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .tl-label{display:flex;justify-content:space-between;font-size:10px;color:#555;margin-bottom:4px}
 .tl-track{height:34px;background:#161620;border-radius:6px;position:relative;cursor:pointer}
 .tl-fill{position:absolute;top:0;height:100%;background:#f5ff3d14;border-radius:4px;pointer-events:none}
-.tl-cut-zone{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,#ff4a4a22,#ff4a4a22 3px,transparent 3px,transparent 8px);border:1px solid #ff4a4a44;border-radius:3px;pointer-events:none}
+.tl-cut-zone{position:absolute;top:0;height:100%;background:#f5ff3d22;border:1px solid #f5ff3d55;border-radius:3px;pointer-events:none}
 .tl-handle{position:absolute;top:-4px;width:12px;height:42px;background:#f5ff3d;border-radius:3px;cursor:ew-resize;transform:translateX(-50%)}
 .tl-handle-out{transform:translateX(50%)}
 .tl-playhead{position:absolute;top:-5px;width:2px;height:44px;background:#fff;opacity:.45;pointer-events:none}
@@ -163,7 +163,7 @@ const CLIPS_DATA = __CLIPS_JSON__;
 const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
 const CAM_KEY = 'ddos_cam_coords';
 
-let state = { order: [], reconnect: null, thumbnail: null, clips: {} };
+let state = { order: [], reconnect: null, thumbnail: null, clips: {}, moved: [] };
 
 function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); }
 
@@ -191,9 +191,15 @@ function fmtTimeSec(sec) {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const hadSaved = loadState();
+  // Re-apply bench→selected moves so CLIPS_DATA matches saved state
+  (state.moved || []).forEach(clipId => {
+    const idx = CLIPS_DATA.bench.findIndex(c => c.id === clipId);
+    if (idx !== -1) CLIPS_DATA.selected.push(CLIPS_DATA.bench.splice(idx, 1)[0]);
+  });
   if (!hadSaved || state.order.length === 0) {
     state.order = CLIPS_DATA.selected.map(c => c.id);
     state.clips = {};
+    state.moved = [];
   }
   document.getElementById('meta-line').textContent =
     CLIPS_DATA.runId + ' · ' + allClips().length + ' кліпів scored';
@@ -229,7 +235,7 @@ function buildClipCard(clip, num) {
   const isShort = !!(cs.short);
   const isThumb = state.thumbnail && state.thumbnail.clipId === clip.id;
   const isRecon = state.reconnect && state.reconnect.clipId === clip.id;
-  const cutCount = (cs.cuts || []).length;
+  const cutCount = (cs.keeps || []).length;
   const card = document.createElement('div');
   card.className = 'clip-card';
   card.dataset.clipId = clip.id;
@@ -340,7 +346,7 @@ function updateCardInPlace(clipId) {
   const isShort = !!cs.short;
   const isThumb = state.thumbnail?.clipId === clipId;
   const isRecon = state.reconnect?.clipId === clipId;
-  const cutCount = (cs.cuts || []).length;
+  const cutCount = (cs.keeps || []).length;
 
   card.querySelector('.tag-short')?.classList.toggle('on', isShort);
   card.querySelector('.tag-thumb')?.classList.toggle('on', isThumb);
@@ -378,15 +384,10 @@ function updateCardInPlace(clipId) {
 function buildCardBody(clip) {
   return `
     <div class="video-wrap">
-      <video id="vid-${clip.id}" preload="none" src="${clip.videoPath}"></video>
-    </div>
-    <div class="play-mode-row">
-      <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
-      <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
-      <span class="playpos" id="playpos-${clip.id}">0:00.0 / ${fmtTimeSec(clip.duration)}</span>
+      <video id="vid-${clip.id}" preload="metadata" controls src="${clip.videoPath}"></video>
     </div>
     <div class="tl-wrap">
-      <div class="tl-label"><span>🟡 trim (залишити) &nbsp;·&nbsp; 🔴 cut = вирізати</span></div>
+      <div class="tl-label"><span>🟡 виділи ділянку → натисни "+ Зберегти". Без ділянок — весь кліп</span></div>
       <div class="tl-track" id="tl-${clip.id}">
         <div class="tl-fill" id="tl-fill-${clip.id}"></div>
         <div class="tl-handle tl-handle-in" id="tl-in-${clip.id}" style="left:0%"></div>
@@ -400,15 +401,11 @@ function buildCardBody(clip) {
       </div>
     </div>
     <div class="ctrl-row">
-      <span class="ctrl-lbl">+ Cut:</span>
+      <span class="ctrl-lbl">+ Keep:</span>
       <input class="ctrl-in" id="cut-from-${clip.id}" value="0:00" placeholder="from">
       <span class="ctrl-lbl">→</span>
       <input class="ctrl-in" id="cut-to-${clip.id}" value="0:05" placeholder="to">
-      <button class="ctrl-btn red" onclick="addCut('${clip.id}')">Додати ✂</button>
-      <span style="flex:1"></span>
-      <button class="ctrl-btn" onclick="seekRel('${clip.id}',-5)">⏮ −5s</button>
-      <button class="ctrl-btn" onclick="togglePlay('${clip.id}')">▶</button>
-      <button class="ctrl-btn" onclick="seekRel('${clip.id}',5)">+5s ⏭</button>
+      <button class="ctrl-btn" onclick="addCut('${clip.id}')" style="border-color:#f5ff3d44;color:#f5ff3d">+ Зберегти</button>
     </div>
     <div id="cuts-list-${clip.id}"></div>
     ${buildTagSections(clip)}`;
@@ -436,12 +433,14 @@ function initCardMedia(card) {
     fill.style.right = (100 - outPct) + '%';
     handleIn.style.left = inPct + '%';
     handleOut.style.right = (100 - outPct) + '%';
-    document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inPct / 100 * clip.duration);
-    document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outPct / 100 * clip.duration);
-    cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
-    cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
-    saveState();
-    updateDuration();
+    const inSec = inPct / 100 * clip.duration;
+    const outSec = outPct / 100 * clip.duration;
+    document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inSec);
+    document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outSec);
+    const fromIn = document.getElementById('cut-from-' + clipId);
+    const toIn = document.getElementById('cut-to-' + clipId);
+    if (fromIn) fromIn.value = fmtTime(inSec);
+    if (toIn) toIn.value = fmtTime(outSec);
   }
 
   function makeDragHandle(handle, type) {
@@ -475,22 +474,6 @@ function initCardMedia(card) {
     video.addEventListener('timeupdate', () => {
       const pct = video.currentTime / clip.duration * 100;
       playhead.style.left = pct + '%';
-      document.getElementById('playpos-' + clipId).textContent =
-        fmtTime(video.currentTime) + ' / ' + fmtTimeSec(clip.duration);
-      if (card.dataset.playMode === 'preview') {
-        for (const [cs2, ce2] of (cs.cuts || [])) {
-          if (video.currentTime >= cs2 && video.currentTime < ce2) { video.currentTime = ce2; break; }
-        }
-        if (video.currentTime >= (outPct / 100) * clip.duration) video.pause();
-      }
-    });
-    video.addEventListener('play', () => {
-      const btns = card.querySelectorAll('.ctrl-btn');
-      btns.forEach(b => { if (b.textContent === '▶') b.textContent = '⏸'; });
-    });
-    video.addEventListener('pause', () => {
-      const btns = card.querySelectorAll('.ctrl-btn');
-      btns.forEach(b => { if (b.textContent === '⏸') b.textContent = '▶'; });
     });
   }
   renderCutZones(clipId, clip);
@@ -533,9 +516,9 @@ function addCut(clipId) {
   const from = Math.max(0, parseMmSs(document.getElementById('cut-from-' + clipId).value));
   const to = Math.min(clip.duration, parseMmSs(document.getElementById('cut-to-' + clipId).value));
   if (to <= from) return;
-  if (!cs.cuts) cs.cuts = [];
-  cs.cuts.push([+from.toFixed(2), +to.toFixed(2)]);
-  cs.cuts.sort((a, b) => a[0] - b[0]);
+  if (!cs.keeps) cs.keeps = [];
+  cs.keeps.push([+from.toFixed(2), +to.toFixed(2)]);
+  cs.keeps.sort((a, b) => a[0] - b[0]);
   saveState();
   renderCutZones(clipId, clip);
   updateCardInPlace(clipId);
@@ -543,7 +526,7 @@ function addCut(clipId) {
 
 function removeCut(clipId, idx) {
   const cs = getClipState(clipId);
-  cs.cuts.splice(idx, 1);
+  cs.keeps.splice(idx, 1);
   saveState();
   renderCutZones(clipId, getClip(clipId));
   updateCardInPlace(clipId);
@@ -554,7 +537,7 @@ function renderCutZones(clipId, clip) {
   const track = document.getElementById('tl-' + clipId);
   if (!track) return;
   track.querySelectorAll('.tl-cut-zone').forEach(el => el.remove());
-  (cs.cuts || []).forEach(([from, to]) => {
+  (cs.keeps || []).forEach(([from, to]) => {
     const zone = document.createElement('div');
     zone.className = 'tl-cut-zone';
     zone.style.left = (from / clip.duration * 100) + '%';
@@ -564,12 +547,12 @@ function renderCutZones(clipId, clip) {
   const list = document.getElementById('cuts-list-' + clipId);
   if (!list) return;
   list.innerHTML = '';
-  (cs.cuts || []).forEach(([from, to], i) => {
+  (cs.keeps || []).forEach(([from, to], i) => {
     const row = document.createElement('div');
     row.className = 'ctrl-row';
     row.style.marginTop = '5px';
-    row.innerHTML = `<span style="color:#ff6b6b;font-size:11px;font-family:monospace">✂ ${fmtTime(from)} → ${fmtTime(to)}</span>
-      <button class="ctrl-btn red" style="padding:2px 8px;font-size:10px" onclick="removeCut('${clipId}',${i})">× видалити</button>`;
+    row.innerHTML = `<span style="color:#f5ff3d;font-size:11px;font-family:monospace">🟡 ${fmtTime(from)} → ${fmtTime(to)}</span>
+      <button class="ctrl-btn" style="padding:2px 8px;font-size:10px;border-color:#f5ff3d22;color:#888" onclick="removeCut('${clipId}',${i})">× прибрати</button>`;
     list.appendChild(row);
   });
 }
@@ -890,6 +873,8 @@ function addFromBench(clipId) {
   state.order.push(clipId);
   const idx = CLIPS_DATA.bench.findIndex(c => c.id === clipId);
   if (idx !== -1) { CLIPS_DATA.selected.push(CLIPS_DATA.bench.splice(idx, 1)[0]); }
+  if (!state.moved) state.moved = [];
+  if (!state.moved.includes(clipId)) state.moved.push(clipId);
   saveState();
   renderClipList();
   renderBench();
@@ -930,14 +915,12 @@ function updateDuration() {
     const clip = getClip(clipId);
     const cs = state.clips[clipId] || {};
     if (!clip) return;
-    const inT = cs.trimIn ?? 0;
-    const outT = cs.trimOut ?? clip.duration;
-    let dur = outT - inT;
-    (cs.cuts || []).forEach(([from, to]) => {
-      const cf = Math.max(from, inT), ct = Math.min(to, outT);
-      if (ct > cf) dur -= (ct - cf);
-    });
-    total += Math.max(0, dur);
+    const keeps = cs.keeps;
+    if (keeps && keeps.length > 0) {
+      keeps.forEach(([from, to]) => { total += Math.max(0, to - from); });
+    } else {
+      total += clip.duration;
+    }
   });
   const m = Math.floor(total / 60);
   const s = Math.round(total % 60).toString().padStart(2, '0');
@@ -961,7 +944,7 @@ function buildJSON() {
       if (cs.trimIn !== undefined) entry.trim.in = +cs.trimIn.toFixed(2);
       if (cs.trimOut !== undefined) entry.trim.out = +cs.trimOut.toFixed(2);
     }
-    if (cs.cuts && cs.cuts.length > 0) entry.cuts = cs.cuts;
+    if (cs.keeps && cs.keeps.length > 0) entry.keeps = cs.keeps;
     if (cs.short) entry.short = cs.short;
     if (Object.keys(entry).length > 0) out.clips[clipId] = entry;
   });
