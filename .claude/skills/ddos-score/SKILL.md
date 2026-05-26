@@ -180,110 +180,80 @@ if dancingScore > 70:
 
 ---
 
-## PLAN — Claude будує план епізоду
+## GENERATE_EDITORIAL — Відбір кліпів + генерація edit.html
 
 ```bash
-node scripts/progress.js "projects/<runId>" 7 "Будую план епізоду"
+node scripts/progress.js "projects/<runId>" 7 "Генерую editorial UI"
 ```
 
-Передай топ-40 scored кліпів з реальними post-trim тривалостями. Claude вирішує план безпосередньо в розмові.
+**Крок 1 — Відібрати кліпи для епізоду:**
 
-**Підготовка даних перед плануванням:**
-```javascript
-// Зчитати clean.mp4 тривалість для кожного кліпу з топ-40
-const cleanDur = {};
-scored.slice(0, 40).forEach(c => {
-  const r = spawnSync('ffprobe', ['-v','quiet','-show_entries','format=duration',
-    '-of','csv=p=0', path.join(projectDir,'processed',c.id,'clean.mp4')], {encoding:'utf8'});
-  cleanDur[c.id] = parseFloat(r.stdout) || 0;
-});
-```
+З `clips/scored-clips.json` відібрати кліпи. Орієнтир: сумарно 12–15 хв сирого контенту (720–900с), якість пріоритет над кількістю.
 
-**Planning prompt:**
-```
-Ти директор епізоду "Daily Dose Of Stream" #<N>.
+Логіка відбору:
+- Топ кліпи за ddosScore, мінімум 50% JC/IRL
+- Не більше 3 кліпів від одного стрімера
+- Жодних RU кліпів
+- Chill кліпи (singingScore > 70 або dancingScore > 70) включати в кінці
+- `selected` = кліпи для основного списку editorial UI
+- `bench` = всі інші scored кліпи (без фільтрації за score — редактор сам вирішить)
 
-Кліпи (відсортовані за ddosScore, тривалість — після обрізки тиші):
-<clipId | стрімер | категорія | ddosScore | funnyScore | payoffStrength | retentionScore | contextClarity | rageScore | singingScore | dancingScore | shortsPotential | cleanDuration(s)>
+**Крок 2 — Згенерувати edit.html:**
 
-**Перед плануванням — два кроки підготовки:**
-
-**Крок 1 — обрати reconnectingClipId:**
-```
-reconnectScore = funnyScore × 0.35 + payoffStrength × 0.30 + retentionScore × 0.20 + contextClarity × 0.15
-```
-Кандидати: reconnectScore ≥ 55, тільки JC/IRL/Specialty (не ігровий), toxicityRisk < 40.
-Обрати кандидата з найвищим reconnectScore. Якщо немає — знизити поріг до 45.
-
-**Крок 2 — обрати openerClipId:**
-Найсильніший кліп за ddosScore серед НЕ-reconnect, НЕ-chill кліпів.
-
-**Крок 3 — побудувати group[0]:**
-- openerClipId — перший кліп у group[0]
-- reconnectingClipId — будь-яка позиція в group[0] крім останньої (після нього ≥1 кліп)
-- Якщо opener і reconnect природно не групуються (різні ігри/стрімери) → group[0] = VIBE_GROUP за тоном
-- Решта кліпів group[0] добираються за спорідненістю вайбу або тематики
-
-ПРАВИЛА ГРУПУВАННЯ (для решти груп):
-- GAME_GROUP: та сама гра, різні стрімери → підряд (до 5 кліпів)
-- STREAMER_GROUP: той самий стрімер, та сама гра → підряд (до 3 кліпів)
-- VIBE_GROUP: схожий тон chaos/wholesome/rage → підряд
-- MICRO_GROUP: кліпи < 15с → збирати разом (до 6 кліпів) для динамічного ритму
-- ЗАБОРОНЕНО: той самий стрімер + різна гра в одній групі
-
-ПРАВИЛА ВИБОРУ:
-- **ТРИВАЛІСТЬ** (головний критерій): сума cleanDuration вибраних кліпів = 720–900с (12–15 хв).
-  До суми додай: intro 1.25с + (кількість груп - 1) × 1с reconnecting + outro 1.25с.
-  Додавай кліпи поки не досягнеш мінімум 720с. Не виходь за 900с.
-- **КАТЕГОРІЇ**: мінімум 50% кліпів мусять бути з Just Chatting (509658) або IRL (509672). Максимум 2 кліпи з однієї ігрової категорії.
-- Chill фінал: якщо є кліпи з singingScore > 70 або dancingScore > 70 → ставити в кінець як `chillPlan`. Ці кліпи НЕ включати в основні групи — вони підуть через chill-finale.mp4.
-- Обери 5–10 кліпів для Shorts (найвищий shortsPotential)
-
-Відповідай ТІЛЬКИ JSON:
+Прочитати шаблон з `assets/editorial/edit-template.html`.
+Замінити `__CLIPS_JSON__` на JSON об'єкт:
+```json
 {
-  "clipOrder": ["id1","id2",...],
-  "groups": [
-    {"type":"GAME_GROUP","label":"CS2 Chaos","clipIds":["id1","id2"],"tone":"chaotic"}
-  ],
-  "openerClipId": "id",
-  "reconnectingClipId": "id",   // кліп з найвищим reconnectScore; його група — перша в groups[]
-  "chillPlan": {
-    "type": "singing_then_dancing|dancing_montage|skip",
-    "singingClipId": "id or null",
-    "dancingClipIds": ["id1",...],
-    "extractFromVod": false
-  },
-  "shortClipIds": ["id1",...],
-  "reasoning": "..."
+  "runId": "<runId>",
+  "episodeNumber": <N>,
+  "selected": [ <відібрані кліпи> ],
+  "bench": [ <решта кліпів> ]
 }
 ```
 
-Зберегти у `edit/episode-plan.json` і `edit/shorts-selection.json`.
-Оновити `state.stages.plan = "done"`.
-
----
-
-## HOOKS — текстові хуки
-
-```bash
-node scripts/progress.js "projects/<runId>" 8 "Генерую хуки для кліпів"
+Кожен кліп:
+```json
+{
+  "id": "<clipId>",
+  "streamer": "<broadcaster_name>",
+  "category": "<game_name>",
+  "gameId": "<game_id>",
+  "duration": <seconds>,
+  "ddosScore": <0-100>,
+  "videoPath": "../downloads/<filename>.mp4",
+  "title": "<title>",
+  "viewCount": <N>
+}
 ```
 
-Хуки генеруються **в розмові** (не через API виклик). Зчитай дані кліпів і згенеруй всі хуки одним батчем:
-
-```bash
-node scripts/gen-hooks.js "<runId>"
+`videoPath` — відносний від `edit/` до файлу в `downloads/`:
+```javascript
+const videoPath = '../downloads/' + path.basename(clip.localPath);
 ```
 
-Скрипт виведе список кліпів без хуків (CACHED кліпи пропущені). Для кожного кліпу зі списку:
-- Стиль: ALL CAPS, 2–5 слів, anticipation-based, сарказм, **без спойлерів**
-- Приклади: `THIS LOOKED FINE AT FIRST` / `HE REALLY THOUGHT THIS WOULD WORK` / `WAIT FOR IT`
+Зберегти результат як `projects/<runId>/edit/edit.html`.
 
-Зберегти кожен хук напряму через Write tool:
+**Крок 3 — Оновити index.html:**
+
+У `projects/index.html` знайти картку поточного епізоду і додати/оновити кнопку Edit:
+```html
+<a class="btn btn-edit" href="<runId>/edit/edit.html">✏️ Edit</a>
 ```
-projects/<runId>/processed/<clipId>/hook.txt
+
+**Крок 4 — Оновити state:**
+```json
+{ "stages": { "generate_editorial": "done", "editorial": "pending" } }
 ```
 
-**НЕ** викликати Anthropic API або будь-який зовнішній сервіс — хуки генеруються Claude безпосередньо в розмові.
+**Показати користувачу:**
+```
+✅ Editorial UI готовий!
 
-Оновити `state.stages.score = "done"`, `state.stages.hooks = "done"`.
+Відкрий у браузері:
+  projects/<runId>/edit/edit.html
+
+Переглянь кліпи, внеси правки і натисни "Copy Prompt".
+Потім встав JSON сюди для продовження.
+```
+
+Зупинитись і чекати на JSON від користувача.
