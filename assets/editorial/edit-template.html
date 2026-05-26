@@ -163,13 +163,27 @@ const CLIPS_DATA = __CLIPS_JSON__;
 const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
 const CAM_KEY = 'ddos_cam_coords';
 
-let state = { order: [], reconnect: null, thumbnail: null, clips: {}, moved: [] };
+let state = { order: [], reconnects: {}, thumbnail: null, clips: {}, moved: [] };
 
 function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); }
 
 function loadState() {
   const saved = localStorage.getItem(STATE_KEY);
-  if (saved) { try { state = JSON.parse(saved); return true; } catch(e) {} }
+  if (saved) {
+    try {
+      state = JSON.parse(saved);
+      // Migrate old single reconnect → reconnects map
+      if (state.reconnect && !state.reconnects) {
+        state.reconnects = {};
+        if (state.reconnect.clipId) {
+          state.reconnects[state.reconnect.clipId] = { from: state.reconnect.from, to: state.reconnect.to };
+        }
+        delete state.reconnect;
+      }
+      if (!state.reconnects) state.reconnects = {};
+      return true;
+    } catch(e) {}
+  }
   return false;
 }
 
@@ -217,16 +231,10 @@ function renderClipList() {
     const clip = getClip(clipId);
     if (!clip) return;
     container.appendChild(buildClipCard(clip, idx + 1));
-    if (state.reconnect && state.reconnect.afterIndex === idx) {
-      container.appendChild(buildReconSep());
+    if (state.reconnects[clipId]) {
+      container.appendChild(buildReconSep(clipId));
     }
   });
-  if (!state.reconnect && state.order.length > 0) {
-    const firstCard = container.querySelector('.clip-card');
-    if (firstCard && firstCard.nextSibling) {
-      container.insertBefore(buildReconSep(), firstCard.nextSibling);
-    }
-  }
   initSortable();
 }
 
@@ -234,7 +242,7 @@ function buildClipCard(clip, num) {
   const cs = getClipState(clip.id);
   const isShort = !!(cs.short);
   const isThumb = state.thumbnail && state.thumbnail.clipId === clip.id;
-  const isRecon = state.reconnect && state.reconnect.clipId === clip.id;
+  const isRecon = !!state.reconnects[clip.id];
   const cutCount = (cs.keeps || []).length;
   const card = document.createElement('div');
   card.className = 'clip-card';
@@ -260,20 +268,21 @@ function buildClipCard(clip, num) {
   return card;
 }
 
-function buildReconSep() {
+function buildReconSep(clipId) {
   const sep = document.createElement('div');
   sep.className = 'recon-sep';
   sep.dataset.isSep = 'true';
-  const detail = state.reconnect
-    ? `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`
-    : 'джерело не вибрано — тегни RECONNECT на кліпі';
+  sep.dataset.reconClipId = clipId;
+  const r = state.reconnects[clipId];
+  const detail = r
+    ? `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`
+    : 'джерело не вибрано';
   sep.innerHTML = `
     <span class="recon-sep-icon">⟳</span>
     <div class="recon-sep-info">
       <div class="recon-sep-title">RECONNECT transition тут</div>
-      <div class="recon-sep-detail" id="recon-sep-detail">${detail}</div>
-    </div>
-    <span style="color:#441111;font-size:12px;cursor:grab">↕</span>`;
+      <div class="recon-sep-detail" id="recon-sep-detail-${clipId}">${detail}</div>
+    </div>`;
   return sep;
 }
 
@@ -291,21 +300,30 @@ function toggleTag(e, clipId, tag) {
   e.stopPropagation();
   const cs = getClipState(clipId);
   const clip = getClip(clipId);
+  const extraUpdates = [];
   if (tag === 'short') {
     if (cs.short) { delete cs.short; } else { cs.short = { mode: 'desktop' }; }
   } else if (tag === 'thumb') {
-    if (state.thumbnail && state.thumbnail.clipId === clipId) { state.thumbnail = null; }
-    else { state.thumbnail = { clipId, at: +((cs.trimOut ?? clip.duration) * 0.6).toFixed(2) }; }
+    if (state.thumbnail && state.thumbnail.clipId === clipId) {
+      state.thumbnail = null;
+    } else {
+      const oldId = state.thumbnail?.clipId;
+      if (oldId && oldId !== clipId) extraUpdates.push(oldId);
+      state.thumbnail = { clipId, at: +((cs.trimOut ?? clip.duration) * 0.6).toFixed(2) };
+    }
   } else if (tag === 'reconnect') {
-    if (state.reconnect && state.reconnect.clipId === clipId) { state.reconnect = null; }
-    else {
+    if (state.reconnects[clipId]) {
+      delete state.reconnects[clipId];
+    } else {
       const inT = cs.trimIn ?? 0;
       const outT = cs.trimOut ?? clip.duration;
-      state.reconnect = { clipId, from: inT, to: Math.min(inT + 3, outT), afterIndex: 0 };
+      state.reconnects[clipId] = { from: inT, to: Math.min(inT + 3, outT) };
     }
   }
   saveState();
   updateCardInPlace(clipId);
+  extraUpdates.forEach(id => updateCardInPlace(id));
+  if (tag === 'reconnect') refreshSeps();
 }
 
 // ── SORTABLE ──────────────────────────────────────────────────────────────────
@@ -313,21 +331,17 @@ function initSortable() {
   const container = document.getElementById('clip-list');
   Sortable.create(container, {
     animation: 150,
-    filter: '.card-body, [data-tag], input, button, .ctrl-btn',
-    preventOnFilter: true,
+    handle: '.card-header',
+    filter: '.recon-sep',
+    preventOnFilter: false,
     onEnd() {
       const newOrder = [];
-      let reconAfter = null;
-      container.querySelectorAll('[data-clip-id],[data-is-sep]').forEach(el => {
-        if (el.dataset.isSep) { reconAfter = newOrder.length - 1; }
-        else { newOrder.push(el.dataset.clipId); }
+      container.querySelectorAll('.clip-card').forEach(el => {
+        newOrder.push(el.dataset.clipId);
       });
       state.order = newOrder;
-      if (state.reconnect && reconAfter !== null) {
-        state.reconnect.afterIndex = Math.max(0, reconAfter);
-      }
       saveState();
-      updateNumbers();
+      refreshSeps();
     }
   });
 }
@@ -339,13 +353,23 @@ function updateNumbers() {
   });
 }
 
+function refreshSeps() {
+  const container = document.getElementById('clip-list');
+  container.querySelectorAll('[data-is-sep]').forEach(el => el.remove());
+  container.querySelectorAll('.clip-card').forEach(el => {
+    const clipId = el.dataset.clipId;
+    if (state.reconnects[clipId]) el.after(buildReconSep(clipId));
+  });
+  updateNumbers();
+}
+
 function updateCardInPlace(clipId) {
   const card = document.querySelector(`[data-clip-id="${clipId}"]`);
   if (!card) return;
   const cs = getClipState(clipId);
   const isShort = !!cs.short;
   const isThumb = state.thumbnail?.clipId === clipId;
-  const isRecon = state.reconnect?.clipId === clipId;
+  const isRecon = !!state.reconnects[clipId];
   const cutCount = (cs.keeps || []).length;
 
   card.querySelector('.tag-short')?.classList.toggle('on', isShort);
@@ -369,11 +393,12 @@ function updateCardInPlace(clipId) {
 
   if (card.dataset.mediaInited) syncTagSections(clipId);
 
-  const sepDetail = document.getElementById('recon-sep-detail');
+  const sepDetail = document.getElementById('recon-sep-detail-' + clipId);
   if (sepDetail) {
-    sepDetail.textContent = state.reconnect
-      ? `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`
-      : 'джерело не вибрано — тегни RECONNECT на кліпі';
+    const r = state.reconnects[clipId];
+    sepDetail.textContent = r
+      ? `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`
+      : 'джерело не вибрано';
   }
 
   updateTopbar();
@@ -385,6 +410,11 @@ function buildCardBody(clip) {
   return `
     <div class="video-wrap">
       <video id="vid-${clip.id}" preload="metadata" controls src="${clip.videoPath}"></video>
+    </div>
+    <div class="play-mode-row">
+      <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
+      <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
+      <span class="playpos" id="playpos-${clip.id}">0:00 / ${fmtTimeSec(clip.duration)}</span>
     </div>
     <div class="tl-wrap">
       <div class="tl-label"><span>🟡 виділи ділянку → натисни "+ Зберегти". Без ділянок — весь кліп</span></div>
@@ -446,6 +476,7 @@ function initCardMedia(card) {
   function makeDragHandle(handle, type) {
     handle.addEventListener('mousedown', e => {
       e.preventDefault();
+      e.stopPropagation();
       const rect = track.getBoundingClientRect();
       const onMove = e => {
         let pct = Math.max(0, Math.min(100, (e.clientX - rect.left) / rect.width * 100));
@@ -453,7 +484,14 @@ function initCardMedia(card) {
         else { outPct = Math.max(pct, inPct + 2); if (video) video.currentTime = outPct / 100 * clip.duration; }
         updateFill();
       };
-      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
+        cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
+        saveState();
+        updateDuration();
+      };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
@@ -470,10 +508,51 @@ function initCardMedia(card) {
     if (video) video.currentTime = pct * clip.duration;
   });
 
+  // Bidirectional input↔handle sync
+  const fromIn = document.getElementById('cut-from-' + clipId);
+  const toIn = document.getElementById('cut-to-' + clipId);
+  if (fromIn) fromIn.addEventListener('input', () => {
+    const sec = parseMmSs(fromIn.value);
+    if (isNaN(sec)) return;
+    inPct = Math.min(Math.max(0, sec / clip.duration * 100), outPct - 2);
+    handleIn.style.left = inPct + '%';
+    fill.style.left = inPct + '%';
+    document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inPct / 100 * clip.duration);
+    cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
+    if (video) video.currentTime = cs.trimIn;
+    saveState();
+  });
+  if (toIn) toIn.addEventListener('input', () => {
+    const sec = parseMmSs(toIn.value);
+    if (isNaN(sec)) return;
+    outPct = Math.max(Math.min(100, sec / clip.duration * 100), inPct + 2);
+    handleOut.style.right = (100 - outPct) + '%';
+    fill.style.right = (100 - outPct) + '%';
+    document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outPct / 100 * clip.duration);
+    cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
+    if (video) video.currentTime = cs.trimOut;
+    saveState();
+  });
+
   if (video) {
     video.addEventListener('timeupdate', () => {
       const pct = video.currentTime / clip.duration * 100;
       playhead.style.left = pct + '%';
+      const playpos = document.getElementById('playpos-' + clipId);
+      if (playpos) playpos.textContent = fmtTime(video.currentTime) + ' / ' + fmtTimeSec(clip.duration);
+      if (card.dataset.playMode === 'preview') {
+        const keeps = cs.keeps;
+        const trimOut = cs.trimOut ?? clip.duration;
+        if (keeps && keeps.length > 0) {
+          const inKeep = keeps.some(([s, e]) => video.currentTime >= s && video.currentTime < e);
+          if (!inKeep) {
+            const nextKeep = keeps.find(([s, e]) => s > video.currentTime);
+            if (nextKeep) { video.currentTime = nextKeep[0]; }
+            else { video.pause(); }
+          }
+        }
+        if (video.currentTime >= trimOut) video.pause();
+      }
     });
   }
   renderCutZones(clipId, clip);
@@ -485,10 +564,13 @@ function setPlayMode(clipId, mode, btn) {
   card.dataset.playMode = mode;
   card.querySelectorAll('.play-mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (mode === 'preview') {
-    const cs = getClipState(clipId);
-    const video = document.getElementById('vid-' + clipId);
-    if (video) { video.currentTime = cs.trimIn ?? 0; video.play(); }
+  const cs = getClipState(clipId);
+  const video = document.getElementById('vid-' + clipId);
+  if (mode === 'preview' && video) {
+    const keeps = cs.keeps;
+    const startAt = (keeps && keeps.length > 0) ? keeps[0][0] : (cs.trimIn ?? 0);
+    video.currentTime = startAt;
+    video.play();
   }
 }
 
@@ -642,7 +724,7 @@ function buildSplitEditor(clip) {
 
 function syncTagSections(clipId) {
   const cs = getClipState(clipId);
-  const isRecon = state.reconnect?.clipId === clipId;
+  const isRecon = !!state.reconnects[clipId];
   const isThumb = state.thumbnail?.clipId === clipId;
   const isShort = !!cs.short;
   const secR = document.getElementById('sec-reconnect-' + clipId);
@@ -661,11 +743,14 @@ function syncTagSections(clipId) {
       if (splitEd) splitEd.style.display = cs.short.mode === 'split' ? 'block' : 'none';
     }
   }
-  if (isRecon && state.reconnect) {
-    const fromIn = document.getElementById('recon-from-' + clipId);
-    const toIn = document.getElementById('recon-to-' + clipId);
-    if (fromIn) fromIn.value = fmtTime(state.reconnect.from);
-    if (toIn) toIn.value = fmtTime(state.reconnect.to);
+  if (isRecon) {
+    const r = state.reconnects[clipId];
+    if (r) {
+      const fromIn = document.getElementById('recon-from-' + clipId);
+      const toIn = document.getElementById('recon-to-' + clipId);
+      if (fromIn) fromIn.value = fmtTime(r.from);
+      if (toIn) toIn.value = fmtTime(r.to);
+    }
   }
 }
 
@@ -687,12 +772,13 @@ function setShortMode(clipId, mode, btn) {
 }
 
 function applyReconnectTiming(clipId) {
-  if (!state.reconnect || state.reconnect.clipId !== clipId) return;
-  state.reconnect.from = parseMmSs(document.getElementById('recon-from-' + clipId).value);
-  state.reconnect.to = parseMmSs(document.getElementById('recon-to-' + clipId).value);
+  if (!state.reconnects[clipId]) return;
+  state.reconnects[clipId].from = parseMmSs(document.getElementById('recon-from-' + clipId).value);
+  state.reconnects[clipId].to = parseMmSs(document.getElementById('recon-to-' + clipId).value);
   saveState();
-  const sepDetail = document.getElementById('recon-sep-detail');
-  if (sepDetail) sepDetail.textContent = `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`;
+  const r = state.reconnects[clipId];
+  const sepDetail = document.getElementById('recon-sep-detail-' + clipId);
+  if (sepDetail) sepDetail.textContent = `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`;
   updateTopbar();
 }
 
@@ -894,10 +980,11 @@ function updateTopbar() {
   const shortCount = state.order.filter(id => !!state.clips[id]?.short).length;
   document.getElementById('shorts-display').textContent = shortCount;
   const reconBadge = document.getElementById('reconnect-badge');
-  if (state.reconnect) {
+  const reconIds = Object.keys(state.reconnects || {});
+  if (reconIds.length > 0) {
     reconBadge.style.display = '';
     document.getElementById('reconnect-display').textContent =
-      `${getClip(state.reconnect.clipId)?.streamer || '?'} ${fmtTime(state.reconnect.from)}–${fmtTime(state.reconnect.to)}`;
+      reconIds.map(id => `${getClip(id)?.streamer || '?'} ${fmtTime(state.reconnects[id].from)}–${fmtTime(state.reconnects[id].to)}`).join(', ');
   } else { reconBadge.style.display = 'none'; }
   const thumbBadge = document.getElementById('thumb-badge');
   if (state.thumbnail) {
@@ -929,10 +1016,14 @@ function updateDuration() {
 
 // ── JSON GENERATOR ────────────────────────────────────────────────────────────
 function buildJSON() {
+  const reconnectArr = Object.entries(state.reconnects || {}).map(([clipId, r]) => ({
+    clipId, from: +r.from.toFixed(2), to: +r.to.toFixed(2)
+  }));
   const out = {
     runId: CLIPS_DATA.runId,
     clipOrder: state.order,
-    reconnect: state.reconnect || null,
+    reconnect: reconnectArr[0] || null,
+    reconnects: reconnectArr,
     thumbnail: state.thumbnail || null,
     clips: {}
   };
