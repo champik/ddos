@@ -235,7 +235,7 @@ function buildClipCard(clip, num) {
   card.dataset.clipId = clip.id;
   card.innerHTML = `
     <div class="card-header" onclick="toggleCard(event,this)">
-      <span class="drag-handle" data-handle="true">⠿⠿</span>
+      <span class="drag-handle" data-handle="true">⠿</span>
       <span class="clip-num">#${num}</span>
       <span class="clip-streamer">${clip.streamer}</span>
       <span class="clip-cat">· ${clip.category}</span>
@@ -265,9 +265,9 @@ function buildReconSep() {
     <span class="recon-sep-icon">⟳</span>
     <div class="recon-sep-info">
       <div class="recon-sep-title">RECONNECT transition тут</div>
-      <div class="recon-sep-detail">${detail}</div>
+      <div class="recon-sep-detail" id="recon-sep-detail">${detail}</div>
     </div>
-    <span class="recon-sep-move">↕ перемістити</span>`;
+    <span style="color:#441111;font-size:12px;cursor:grab">↕</span>`;
   return sep;
 }
 
@@ -299,7 +299,7 @@ function toggleTag(e, clipId, tag) {
     }
   }
   saveState();
-  renderClipList();
+  updateCardInPlace(clipId);
 }
 
 // ── SORTABLE ──────────────────────────────────────────────────────────────────
@@ -307,8 +307,8 @@ function initSortable() {
   const container = document.getElementById('clip-list');
   Sortable.create(container, {
     animation: 150,
-    handle: '.drag-handle',
-    filter: '.recon-sep',
+    filter: '.card-body, [data-tag], input, button, .ctrl-btn',
+    preventOnFilter: true,
     onEnd() {
       const newOrder = [];
       let reconAfter = null;
@@ -333,6 +333,47 @@ function updateNumbers() {
   });
 }
 
+function updateCardInPlace(clipId) {
+  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
+  if (!card) return;
+  const cs = getClipState(clipId);
+  const isShort = !!cs.short;
+  const isThumb = state.thumbnail?.clipId === clipId;
+  const isRecon = state.reconnect?.clipId === clipId;
+  const cutCount = (cs.cuts || []).length;
+
+  card.querySelector('.tag-short')?.classList.toggle('on', isShort);
+  card.querySelector('.tag-thumb')?.classList.toggle('on', isThumb);
+  card.querySelector('.tag-reconnect')?.classList.toggle('on', isRecon);
+
+  const cardTags = card.querySelector('.card-tags');
+  cardTags.querySelectorAll('.mini-badge').forEach(el => el.remove());
+  if (cutCount > 0) {
+    const b = document.createElement('span');
+    b.className = 'mini-badge mb-cut';
+    b.textContent = `✂ ${cutCount}`;
+    cardTags.appendChild(b);
+  }
+  if (isThumb && state.thumbnail) {
+    const b = document.createElement('span');
+    b.className = 'mini-badge mb-thumb';
+    b.textContent = `🖼 ${fmtTimeSec(state.thumbnail.at)}`;
+    cardTags.appendChild(b);
+  }
+
+  if (card.dataset.mediaInited) syncTagSections(clipId);
+
+  const sepDetail = document.getElementById('recon-sep-detail');
+  if (sepDetail) {
+    sepDetail.textContent = state.reconnect
+      ? `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`
+      : 'джерело не вибрано — тегни RECONNECT на кліпі';
+  }
+
+  updateTopbar();
+  updatePrompt();
+}
+
 // ── CARD BODY ─────────────────────────────────────────────────────────────────
 function buildCardBody(clip) {
   return `
@@ -345,7 +386,7 @@ function buildCardBody(clip) {
       <span class="playpos" id="playpos-${clip.id}">0:00.0 / ${fmtTimeSec(clip.duration)}</span>
     </div>
     <div class="tl-wrap">
-      <div class="tl-label"><span>✂ Trim / Cut</span></div>
+      <div class="tl-label"><span>🟡 trim (залишити) &nbsp;·&nbsp; 🔴 cut = вирізати</span></div>
       <div class="tl-track" id="tl-${clip.id}">
         <div class="tl-fill" id="tl-fill-${clip.id}"></div>
         <div class="tl-handle tl-handle-in" id="tl-in-${clip.id}" style="left:0%"></div>
@@ -497,7 +538,7 @@ function addCut(clipId) {
   cs.cuts.sort((a, b) => a[0] - b[0]);
   saveState();
   renderCutZones(clipId, clip);
-  renderClipList();
+  updateCardInPlace(clipId);
 }
 
 function removeCut(clipId, idx) {
@@ -505,7 +546,7 @@ function removeCut(clipId, idx) {
   cs.cuts.splice(idx, 1);
   saveState();
   renderCutZones(clipId, getClip(clipId));
-  renderClipList();
+  updateCardInPlace(clipId);
 }
 
 function renderCutZones(clipId, clip) {
@@ -666,13 +707,17 @@ function applyReconnectTiming(clipId) {
   if (!state.reconnect || state.reconnect.clipId !== clipId) return;
   state.reconnect.from = parseMmSs(document.getElementById('recon-from-' + clipId).value);
   state.reconnect.to = parseMmSs(document.getElementById('recon-to-' + clipId).value);
-  saveState(); renderClipList();
+  saveState();
+  const sepDetail = document.getElementById('recon-sep-detail');
+  if (sepDetail) sepDetail.textContent = `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`;
+  updateTopbar();
 }
 
 function applyThumbAt(clipId) {
   if (!state.thumbnail || state.thumbnail.clipId !== clipId) return;
   state.thumbnail.at = parseMmSs(document.getElementById('thumb-at-' + clipId).value);
-  saveState(); renderClipList();
+  saveState();
+  updateCardInPlace(clipId);
 }
 
 function setThumbFromPlayhead(clipId) {
@@ -681,7 +726,8 @@ function setThumbFromPlayhead(clipId) {
   state.thumbnail.at = +video.currentTime.toFixed(2);
   const inp = document.getElementById('thumb-at-' + clipId);
   if (inp) inp.value = fmtTime(state.thumbnail.at);
-  saveState(); renderClipList();
+  saveState();
+  updateCardInPlace(clipId);
 }
 
 // ── SPLIT EDITOR ──────────────────────────────────────────────────────────────
