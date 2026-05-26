@@ -1,6 +1,6 @@
 # Команда: /ddos run
 
-Запускає повний DDOS pipeline від ingest до review.html.
+Запускає DDOS pipeline Stage 1 — від ingest до editorial UI.
 
 ## Аргументи
 - `--hours N` — скільки годин назад шукати кліпи (default: 24)
@@ -11,7 +11,7 @@
 
 ### Крок 1 — Підготовка run
 
-Створи унікальний runId (timestamp-based: YYYYMMDD-HHMMSS).
+Створи унікальний runId у форматі `Episode_N_YYYY_MM_DD`.
 Визнач episodeNumber: читай `projects/episode-counter.json`, збільш на 1, збережи.
 Створи структуру папок для цього runId.
 Запиши початковий `state.json`:
@@ -24,14 +24,13 @@
   "stages": {
     "ingest": "pending",
     "filter": "pending",
-    "prescore": "pending",
     "download": "pending",
     "transcribe": "pending",
     "score": "pending",
-    "plan": "pending",
-    "hooks": "pending",
+    "generate_editorial": "pending",
+    "editorial": "pending",
     "trim": "pending",
-    "effects": "skip",
+    "hooks": "pending",
     "overlays": "pending",
     "captions": "pending",
     "reconnecting": "pending",
@@ -48,43 +47,32 @@
 }
 ```
 
-### Крок 2 — Виклик skills по порядку
+### Крок 2 — Stage 1 (авто)
 
 Читай skill і виконуй повністю перед переходом до наступного.
 Після кожного skill оновлюй state.json (stage → "done" або "failed").
-Якщо stage "failed" — записати помилку і **продовжувати** далі якщо можливо.
+Якщо stage "failed" — записати помилку і продовжувати далі якщо можливо.
 
 **Порядок:**
-1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай ingest + filter + prescore + download
-2. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай transcribe + score (оцінка по контенту, clean.mp4 ще не потрібен)
-3. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай TRIM --incremental (використовує ddosScore для пріоритизації, зупиняється коли сума clean.mp4 ≥ 720s або ddosScore < 45)
-4. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай plan (з реальними clean.mp4 тривалостями) + hooks
-5. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай overlays + reconnecting + chill finale + render long-form
-6. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай captions (--shorts-only) + render shorts
-7. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай thumbnail + metadata
-8. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай review.html
-9. Прочитай `.claude/skills/ddos-publish/SKILL.md` → виконай upload YouTube
+1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай INGEST + FILTER + DOWNLOAD
+2. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай TRANSCRIBE + SCORE + PEAK MOMENT + CHILL CLIP ACCUMULATION
+3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай GENERATE_EDITORIAL ← **зупинка тут**
 
-### Крок 3 — Фінальний звіт
+### Крок 3 — Показати користувачу і зупинитись
 
-Після всіх skills вивести:
 ```
-✓ DDOS Episode #NNN готовий
+✅ Editorial UI готовий!
 
-📺 Long-form:  projects/<runId>/exports/episode-NNN.mp4
-🖼  Thumbnail:  projects/<runId>/exports/thumbnail.png
-📱 Shorts:     projects/<runId>/exports/shorts/ (N файлів)
-📋 Review:     projects/<runId>/review/review.html
+Відкрий у браузері:
+  projects/<runId>/edit/edit.html
 
-Заголовки:
-  [1] ...
-  [2] ...
-  [3] ...
-
-Approve для upload: /ddos approve <runId>
+Переглянь кліпи, налаштуй порядок, обріж, вибери shorts/thumb/reconnect.
+Коли готово — натисни "Copy Prompt" і встав JSON сюди.
 ```
+
+**Зупинитись і чекати на editorial JSON від користувача.**
 
 ## Якщо --dry-run
 
-Виконати тільки ingest + filter зі skill ddos-ingest.
+Виконати тільки INGEST + FILTER зі skill ddos-ingest.
 Вивести список відфільтрованих кліпів і зупинитись.
