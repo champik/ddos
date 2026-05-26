@@ -10,19 +10,29 @@
 node scripts/progress.js "projects/<runId>" 14 "Thumbnail (Puppeteer рендер)"
 ```
 
-### Крок 1 — Витягни найкращий кадр
+### Крок 1 — Визначити кліп і момент для thumbnail
 
-З openerClipId (з episode-plan.json) витягни кадр на позиції 60% тривалості:
+Читати з `edit/editorial.json`:
+```javascript
+const editorial = JSON.parse(fs.readFileSync('edit/editorial.json'));
+const thumbClipId = editorial.thumbnail?.clipId || editorial.clipOrder[0];
+const thumbAt = editorial.thumbnail?.at ?? null;
+```
+
+Якщо `thumbAt` задано — використати цю секунду.
+Якщо `thumbAt` не задано — взяти 60% тривалості кліпу.
 
 ```bash
-DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "processed/<openerClipId>/clean.mp4")
-TIMESTAMP=$(echo "$DURATION * 0.6" | bc)
+CLIP_SRC="processed/<thumbClipId>/clean.mp4"
 
-ffmpeg \
-  -ss $TIMESTAMP \
-  -i "processed/<openerClipId>/clean.mp4" \
-  -frames:v 1 -q:v 2 \
-  -y "exports/best-frame.png"
+if [ -n "$THUMB_AT" ]; then
+  TIMESTAMP=$THUMB_AT
+else
+  DURATION=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$CLIP_SRC")
+  TIMESTAMP=$(echo "$DURATION * 0.6" | bc)
+fi
+
+ffmpeg -ss $TIMESTAMP -i "$CLIP_SRC" -frames:v 1 -q:v 2 -y "exports/best-frame.png"
 ```
 
 ### Крок 2 — Рендер через Puppeteer
