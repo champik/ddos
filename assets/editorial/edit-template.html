@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DDOS Editorial</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0e0e10;color:#f4f0e6;font-family:'Space Grotesk',system-ui,sans-serif;font-size:13px;padding:20px}
+h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spacing:1px;margin-bottom:3px}
+.meta{color:#666;font-size:11px;font-family:monospace;margin-bottom:18px}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #2a2a2f}
+.badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.badge{background:#1a1a1f;border:1px solid #2a2a2f;border-radius:6px;padding:3px 9px;font-size:11px;color:#888}
+.badge span{color:#f5ff3d}
+.badge.dur{border-color:#4ade8044}.badge.dur span{color:#4ade80;font-size:13px;font-weight:700}
+.btn-copy{background:#f5ff3d;color:#0e0e10;border:none;border-radius:8px;padding:10px 18px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.clip-card{background:#13131a;border:1px solid #2a2a2f;border-radius:10px;overflow:hidden;margin-bottom:6px}
+.clip-card.sortable-ghost{opacity:0.3}
+.card-header{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;user-select:none}
+.drag-handle{color:#2a2a3a;font-size:16px;cursor:grab;flex-shrink:0}
+.drag-handle:active{cursor:grabbing}
+.clip-num{color:#f5ff3d;font-family:monospace;font-weight:700;min-width:20px;font-size:12px}
+.clip-streamer{font-weight:600;font-size:14px}
+.clip-cat{color:#555;font-size:11px}
+.clip-dur-display{color:#888;font-family:monospace;font-size:11px}
+.clip-score{background:#f5ff3d18;color:#f5ff3d;border-radius:4px;padding:2px 6px;font-size:11px;font-family:monospace}
+.card-tags{display:flex;gap:5px;margin-left:auto;align-items:center}
+.tag{border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;opacity:0.28;border:1px solid currentColor;cursor:pointer;letter-spacing:.3px;transition:opacity .12s}
+.tag:hover{opacity:.65}.tag.on{opacity:1}
+.tag-short{color:#a78bfa}.tag-thumb{color:#4ade80}.tag-reconnect{color:#ff6b6b}
+.mini-badge{font-size:10px;padding:2px 6px;border-radius:4px;font-family:monospace}
+.mb-cut{background:#ff4a4a15;color:#ff6b6b}
+.mb-thumb{background:#4ade8015;color:#4ade80}
+.expand-icon{color:#2a2a3a;font-size:11px;margin-left:4px;flex-shrink:0}
+.card-body{padding:13px;border-top:1px solid #1a1a22;display:none}
+.card-body.open{display:block}
+.video-wrap{background:#000;border-radius:8px;aspect-ratio:16/9;width:100%;overflow:hidden;position:relative}
+.video-wrap video{width:100%;height:100%;display:block}
+.play-mode-row{display:flex;gap:6px;margin-top:7px;align-items:center}
+.play-mode-btn{background:#1a1a24;border:1px solid #2a2a2f;border-radius:6px;padding:4px 10px;color:#666;font-size:11px;cursor:pointer}
+.play-mode-btn.active{border-color:#f5ff3d;color:#f5ff3d;background:#f5ff3d0e}
+.playpos{color:#666;font-family:monospace;font-size:11px;margin-left:auto}
+.tl-wrap{margin-top:10px}
+.tl-label{display:flex;justify-content:space-between;font-size:10px;color:#555;margin-bottom:4px}
+.tl-track{height:34px;background:#161620;border-radius:6px;position:relative;cursor:pointer}
+.tl-fill{position:absolute;top:0;height:100%;background:#f5ff3d14;border-radius:4px;pointer-events:none}
+.tl-cut-zone{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,#ff4a4a22,#ff4a4a22 3px,transparent 3px,transparent 8px);border:1px solid #ff4a4a44;border-radius:3px;pointer-events:none}
+.tl-handle{position:absolute;top:-4px;width:12px;height:42px;background:#f5ff3d;border-radius:3px;cursor:ew-resize;transform:translateX(-50%)}
+.tl-handle-out{transform:translateX(50%)}
+.tl-playhead{position:absolute;top:-5px;width:2px;height:44px;background:#fff;opacity:.45;pointer-events:none}
+.tl-times{display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:4px;font-family:monospace}
+.ctrl-row{display:flex;gap:7px;margin-top:9px;align-items:center;flex-wrap:wrap}
+.ctrl-lbl{color:#555;font-size:11px}
+.ctrl-in{background:#1a1a24;border:1px solid #2a2a2f;border-radius:5px;padding:4px 7px;color:#f4f0e6;font-size:11px;font-family:monospace;width:68px}
+.ctrl-btn{background:#1a1a24;border:1px solid #2a2a2f;border-radius:6px;padding:4px 11px;color:#888;font-size:11px;cursor:pointer}
+.ctrl-btn:hover{border-color:#f5ff3d55;color:#f4f0e6}
+.ctrl-btn.red{border-color:#ff4a4a33;color:#ff6b6b}
+.sec{border-radius:8px;padding:11px;margin-top:9px}
+.sec.reconnect{background:#160a0a;border:1px solid #ff4a4a2a}
+.sec.thumb{background:#0a160a;border:1px solid #4ade802a}
+.sec.shorts{background:#100e1a;border:1px solid #a78bfa2a}
+.sec-title{font-size:11px;font-weight:700;margin-bottom:9px}
+.sec-title.red{color:#ff6b6b}.sec-title.green{color:#4ade80}.sec-title.purple{color:#a78bfa}
+.mode-row{display:flex;gap:7px;margin-bottom:10px}
+.mode-btn{flex:1;background:#1a1824;border:1px solid #2a2a2f;border-radius:8px;padding:7px 5px;text-align:center;cursor:pointer}
+.mode-btn.active{border-color:#a78bfa;background:#a78bfa14}
+.mode-icon{font-size:17px;display:block;margin-bottom:2px}
+.mode-lbl{font-size:10px;color:#666}
+.mode-btn.active .mode-lbl{color:#a78bfa}
+.split-editor{display:grid;grid-template-columns:1fr 168px;gap:14px;align-items:start}
+.split-canvas{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#0a0a12,#12122a);border-radius:6px;overflow:visible}
+.split-canvas video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none}
+.drag-box{position:absolute;border-radius:4px;cursor:move}
+.cam-box-el{border:2px solid #f5ff3d;background:rgba(245,255,61,.07)}
+.game-box-el{border:2px solid #4ade80;background:rgba(74,222,128,.06)}
+.box-label{position:absolute;top:-17px;left:0;font-size:9px;background:#0e0e10;padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
+.cam-box-el .box-label{color:#f5ff3d}
+.game-box-el .box-label{color:#4ade80}
+.resize-handle{position:absolute;bottom:-5px;right:-5px;width:9px;height:9px;background:#f5ff3d;border-radius:50%;cursor:se-resize}
+.coord-hint{font-size:10px;color:#333;font-family:monospace;margin-top:5px}
+.preview-col{display:flex;flex-direction:column;align-items:center;gap:6px}
+.preview-lbl{font-size:10px;color:#444;font-family:monospace}
+.sp-phone{width:160px;height:284px;background:#000;border-radius:14px;overflow:hidden;border:2px solid #222;display:flex;flex-direction:column}
+.sp-cam{background:#0a160a;display:flex;align-items:center;justify-content:center;font-size:10px;color:#4ade8055;cursor:grab;user-select:none;position:relative;flex-shrink:0}
+.sp-cam::after{content:'↕';position:absolute;top:3px;right:5px;font-size:9px;color:#4ade8044}
+.sp-div{height:3px;background:#f5ff3d;flex-shrink:0}
+.sp-game{flex:1;background:linear-gradient(135deg,#0a0a12,#12122a);display:flex;align-items:center;justify-content:center;font-size:10px;color:#4444aa55}
+.drag-tip{font-size:9px;color:#2a2a3a;text-align:center;width:160px;line-height:1.5}
+.recon-sep{display:flex;align-items:center;gap:8px;padding:6px 13px;background:#150808;border:1px solid #ff4a4a33;border-radius:8px;margin:5px 0;cursor:grab}
+.recon-sep.sortable-ghost{opacity:0.3}
+.recon-sep-icon{color:#ff6b6b;font-size:15px;flex-shrink:0}
+.recon-sep-info{flex:1}
+.recon-sep-title{font-size:11px;color:#ff6b6b;font-weight:700}
+.recon-sep-detail{font-size:10px;color:#662222;font-family:monospace;margin-top:1px}
+.recon-sep-move{font-size:10px;color:#441111;cursor:pointer}
+.recon-sep-move:hover{color:#ff6b6b}
+.bench-wrap{margin-top:16px}
+.bench-toggle{display:flex;align-items:center;gap:8px;padding:8px 13px;background:#0e0e16;border:1px solid #1e1e28;border-radius:8px;cursor:pointer;font-size:12px;color:#666}
+.bench-toggle:hover{color:#aaa;border-color:#2a2a3a}
+.bench-body{display:none;margin-top:8px}
+.bench-body.open{display:block}
+.bench-cat{margin-bottom:14px}
+.bench-cat-title{font-size:10px;color:#555;font-family:monospace;font-weight:700;margin-bottom:6px;padding:0 2px}
+.bench-cards{display:flex;flex-wrap:wrap;gap:6px}
+.bench-card{background:#13131a;border:1px solid #222;border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;cursor:grab;min-width:200px}
+.bench-card:hover{border-color:#2a2a3a}
+.bench-card.sortable-ghost{opacity:0.3}
+.bench-streamer{font-weight:600;font-size:13px;flex:1}
+.bench-score{color:#f5ff3d;font-size:11px;font-family:monospace}
+.bench-dur{color:#555;font-size:11px;font-family:monospace}
+.bench-add{background:#1a1a24;border:1px solid #2a2a2f;border-radius:5px;padding:3px 9px;color:#888;font-size:11px;cursor:pointer;flex-shrink:0}
+.bench-add:hover{border-color:#f5ff3d55;color:#f4f0e6}
+.prompt-block{background:#0a0a14;border:1px solid #1e1e28;border-radius:10px;padding:14px;margin-top:18px}
+.prompt-title{color:#f5ff3d;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:9px}
+.prompt-code{font-family:monospace;font-size:11px;color:#6aaa6a;line-height:1.75;white-space:pre;overflow-x:auto;max-height:300px}
+.prompt-actions{display:flex;gap:8px;margin-top:11px}
+.btn-copy-json{background:transparent;border:1px solid #f5ff3d;color:#f5ff3d;border-radius:6px;padding:7px 15px;font-size:12px;cursor:pointer}
+</style>
+</head>
+<body>
+<div style="max-width:900px;margin:0 auto" id="app">
+  <div class="topbar">
+    <div>
+      <h1>EDITORIAL</h1>
+      <div class="meta" id="meta-line">Loading...</div>
+      <div class="badges" id="badges">
+        <div class="badge dur">Episode: <span id="dur-display">—</span></div>
+        <div class="badge">кліпів: <span id="count-display">0</span></div>
+        <div class="badge">shorts: <span id="shorts-display">0</span></div>
+        <div class="badge" id="reconnect-badge" style="display:none">reconnect: <span id="reconnect-display">—</span></div>
+        <div class="badge" id="thumb-badge" style="display:none">thumb: <span id="thumb-display">—</span></div>
+      </div>
+    </div>
+    <button class="btn-copy" onclick="copyPrompt()">📋 Copy Prompt</button>
+  </div>
+  <div id="clip-list"></div>
+  <div class="bench-wrap">
+    <div class="bench-toggle" onclick="toggleBench(this)">
+      <span id="bench-arrow">▶</span>
+      <span id="bench-label">Bench — завантаження...</span>
+    </div>
+    <div class="bench-body" id="bench-body"></div>
+  </div>
+  <div class="prompt-block">
+    <div class="prompt-title">// GENERATED PROMPT</div>
+    <div class="prompt-code" id="prompt-code">{}</div>
+    <div class="prompt-actions">
+      <button class="btn-copy-json" onclick="copyPrompt()">📋 Copy JSON</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CLIPS_DATA = __CLIPS_JSON__;
+</script>
+<script>
+/*! Sortable 1.15.6 - MIT | git://github.com/SortableJS/Sortable.git */
+!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t=t||self).Sortable=e()}(this,function(){"use strict";function e(e,t){var n,o=Object.keys(e);return Object.getOwnPropertySymbols&&(n=Object.getOwnPropertySymbols(e),t&&(n=n.filter(function(t){return Object.getOwnPropertyDescriptor(e,t).enumerable})),o.push.apply(o,n)),o}function I(o){for(var t=1;t<arguments.length;t++){var i=null!=arguments[t]?arguments[t]:{};t%2?e(Object(i),!0).forEach(function(t){var e,n;e=o,t=i[n=t],n in e?Object.defineProperty(e,n,{value:t,enumerable:!0,configurable:!0,writable:!0}):e[n]=t}):Object.getOwnPropertyDescriptors?Object.defineProperties(o,Object.getOwnPropertyDescriptors(i)):e(Object(i)).forEach(function(t){Object.defineProperty(o,t,Object.getOwnPropertyDescriptor(i,t))})}return o}function o(t){return(o="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t})(t)}function a(){return(a=Object.assign||function(t){for(var e=1;e<arguments.length;e++){var n,o=arguments[e];for(n in o)Object.prototype.hasOwnProperty.call(o,n)&&(t[n]=o[n])}return t}).apply(this,arguments)}function i(t,e){if(null==t)return{};var n,o=function(t,e){if(null==t)return{};for(var n,o={},i=Object.keys(t),r=0;r<i.length;r++)n=i[r],0<=e.indexOf(n)||(o[n]=t[n]);return o}(t,e);if(Object.getOwnPropertySymbols)for(var i=Object.getOwnPropertySymbols(t),r=0;r<i.length;r++)n=i[r],0<=e.indexOf(n)||Object.prototype.propertyIsEnumerable.call(t,n)&&(o[n]=t[n]);return o}function r(t){return function(t){if(Array.isArray(t))return l(t)}(t)||function(t){if("undefined"!=typeof Symbol&&null!=t[Symbol.iterator]||null!=t["@@iterator"])return Array.from(t)}(t)||function(t,e){if(t){if("string"==typeof t)return l(t,e);var n=Object.prototype.toString.call(t).slice(8,-1);return"Map"===(n="Object"===n&&t.constructor?t.constructor.name:n)||"Set"===n?Array.from(t):"Arguments"===n||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)?l(t,e):void 0}}(t)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}()}function l(t,e){(null==e||e>t.length)&&(e=t.length);for(var n=0,o=new Array(e);n<e;n++)o[n]=t[n];return o}function t(t){if("undefined"!=typeof window&&window.navigator)return!!navigator.userAgent.match(t)}var y=t(/(?:Trident.*rv[ :]?11\.|msie|iemobile|Windows Phone)/i),w=t(/Edge/i),s=t(/firefox/i),u=t(/safari/i)&&!t(/chrome/i)&&!t(/android/i),c=t(/iP(ad|od|hone)/i),n=t(/chrome/i)&&t(/android/i),d={capture:!1,passive:!1};function h(t,e,n){t.addEventListener(e,n,!y&&d)}function p(t,e,n){t.removeEventListener(e,n,!y&&d)}function f(t,e){if(e&&(">"===e[0]&&(e=e.substring(1)),t))try{if(t.matches)return t.matches(e);if(t.msMatchesSelector)return t.msMatchesSelector(e);if(t.webkitMatchesSelector)return t.webkitMatchesSelector(e)}catch(t){return}}function g(t){return t.host&&t!==document&&t.host.nodeType?t.host:t.parentNode}function P(t,e,n,o){if(t){n=n||document;do{if(null!=e&&(">"!==e[0]||t.parentNode===n)&&f(t,e)||o&&t===n)return t}while(t!==n&&(t=g(t)))}return null}var m,v=/\s+/g;function k(t,e,n){var o;t&&e&&(t.classList?t.classList[n?"add":"remove"](e):(o=(" "+t.className+" ").replace(v," ").replace(" "+e+" "," "),t.className=(o+(n?" "+e:"")).replace(v," ")))}function R(t,e,n){var o=t&&t.style;if(o){if(void 0===n)return document.defaultView&&document.defaultView.getComputedStyle?n=document.defaultView.getComputedStyle(t,""):t.currentStyle&&(n=t.currentStyle),void 0===e?n:n[e];o[e=!(e in o||-1!==e.indexOf("webkit"))?"-webkit-"+e:e]=n+("string"==typeof n?"":"px")}}function b(t,e){var n="";if("string"==typeof t)n=t;else do{var o=R(t,"transform")}while(o&&"none"!==o&&(n=o+" "+n),!e&&(t=t.parentNode));var i=window.DOMMatrix||window.WebKitCSSMatrix||window.CSSMatrix||window.MSCSSMatrix;return i&&new i(n)}function D(t,e,n){if(t){var o=t.getElementsByTagName(e),i=0,r=o.length;if(n)for(;i<r;i++)n(o[i],i);return o}return[]}function O(){var t=document.scrollingElement;return t||document.documentElement}function X(t,e,n,o,i){if(t.getBoundingClientRect||t===window){var r,a,l,s,c,u,d=t!==window&&t.parentNode&&t!==O()?(a=(r=t.getBoundingClientRect()).top,l=r.left,s=r.bottom,c=r.right,u=r.height,r.width):(l=a=0,s=window.innerHeight,c=window.innerWidth,u=window.innerHeight,window.innerWidth);if((e||n)&&t!==window&&(i=i||t.parentNode,!y))do{if(i&&i.getBoundingClientRect&&("none"!==R(i,"transform")||n&&"static"!==R(i,"position"))){var h=i.getBoundingClientRect();a-=h.top+parseInt(R(i,"border-top-width")),l-=h.left+parseInt(R(i,"border-left-width")),s=a+r.height,c=l+r.width;break}}while(i=i.parentNode);return o&&t!==window&&(o=(e=b(i||t))&&e.a,t=e&&e.d,e&&(s=(a/=t)+(u/=t),c=(l/=o)+(d/=o))),{top:a,left:l,bottom:s,right:c,width:d,height:u}}}function Y(t,e,n){for(var o=M(t,!0),i=X(t)[e];o;){var r=X(o)[n];if(!("top"===n||"left"===n?r<=i:i<=r))return o;if(o===O())break;o=M(o,!1)}return!1}function B(t,e,n,o){for(var i=0,r=0,a=t.children;r<a.length;){if("none"!==a[r].style.display&&a[r]!==jt.ghost&&(o||a[r]!==jt.dragged)&&P(a[r],n.draggable,t,!1)){if(i===e)return a[r];i++}r++}return null}function F(t,e){for(var n=t.lastElementChild;n&&(n===jt.ghost||"none"===R(n,"display")||e&&!f(n,e));)n=n.previousElementSibling;return n||null}function j(t,e){var n=0;if(!t||!t.parentNode)return-1;for(;t=t.previousElementSibling;)"TEMPLATE"===t.nodeName.toUpperCase()||t===jt.clone||e&&!f(t,e)||n++;return n}function E(t){var e=0,n=0,o=O();if(t)do{var i=b(t),r=i.a,i=i.d}while(e+=t.scrollLeft*r,n+=t.scrollTop*i,t!==o&&(t=t.parentNode));return[e,n]}function M(t,e){if(!t||!t.getBoundingClientRect)return O();var n=t,o=!1;do{if(n.clientWidth<n.scrollWidth||n.clientHeight<n.scrollHeight){var i=R(n);if(n.clientWidth<n.scrollWidth&&("auto"==i.overflowX||"scroll"==i.overflowX)||n.clientHeight<n.scrollHeight&&("auto"==i.overflowY||"scroll"==i.overflowY)){if(!n.getBoundingClientRect||n===document.body)return O();if(o||e)return n;o=!0}}}while(n=n.parentNode);return O()}function S(t,e){return Math.round(t.top)===Math.round(e.top)&&Math.round(t.left)===Math.round(e.left)&&Math.round(t.height)===Math.round(e.height)&&Math.round(t.width)===Math.round(e.width)}function _(e,n){return function(){var t;m||(1===(t=arguments).length?e.call(this,t[0]):e.apply(this,t),m=setTimeout(function(){m=void 0},n))}}function H(t,e,n){t.scrollLeft+=e,t.scrollTop+=n}function C(t){var e=window.Polymer,n=window.jQuery||window.Zepto;return e&&e.dom?e.dom(t).cloneNode(!0):n?n(t).clone(!0)[0]:t.cloneNode(!0)}function T(t,e){R(t,"position","absolute"),R(t,"top",e.top),R(t,"left",e.left),R(t,"width",e.width),R(t,"height",e.height)}function x(t){R(t,"position",""),R(t,"top",""),R(t,"left",""),R(t,"width",""),R(t,"height","")}function L(n,o,i){var r={};return Array.from(n.children).forEach(function(t){var e;P(t,o.draggable,n,!1)&&!t.animated&&t!==i&&(e=X(t),r.left=Math.min(null!==(t=r.left)&&void 0!==t?t:1/0,e.left),r.top=Math.min(null!==(t=r.top)&&void 0!==t?t:1/0,e.top),r.right=Math.max(null!==(t=r.right)&&void 0!==t?t:-1/0,e.right),r.bottom=Math.max(null!==(t=r.bottom)&&void 0!==t?t:-1/0,e.bottom))}),r.width=r.right-r.left,r.height=r.bottom-r.top,r.x=r.left,r.y=r.top,r}var K="Sortable"+(new Date).getTime();function A(){var e,o=[];return{captureAnimationState:function(){o=[],this.options.animation&&[].slice.call(this.el.children).forEach(function(t){var e,n;"none"!==R(t,"display")&&t!==jt.ghost&&(o.push({target:t,rect:X(t)}),e=I({},o[o.length-1].rect),!t.thisAnimationDuration||(n=b(t,!0))&&(e.top-=n.f,e.left-=n.e),t.fromRect=e)})},addAnimationState:function(t){o.push(t)},removeAnimationState:function(t){o.splice(function(t,e){for(var n in t)if(t.hasOwnProperty(n))for(var o in e)if(e.hasOwnProperty(o)&&e[o]===t[n][o])return Number(n);return-1}(o,{target:t}),1)},animateAll:function(t){var c=this;if(!this.options.animation)return clearTimeout(e),void("function"==typeof t&&t());var u=!1,d=0;o.forEach(function(t){var e=0,n=t.target,o=n.fromRect,i=X(n),r=n.prevFromRect,a=n.prevToRect,l=t.rect,s=b(n,!0);s&&(i.top-=s.f,i.left-=s.e),n.toRect=i,n.thisAnimationDuration&&S(r,i)&&!S(o,i)&&(l.top-i.top)/(l.left-i.left)==(o.top-i.top)/(o.left-i.left)&&(t=l,s=r,r=a,a=c.options,e=Math.sqrt(Math.pow(s.top-t.top,2)+Math.pow(s.left-t.left,2))/Math.sqrt(Math.pow(s.top-r.top,2)+Math.pow(s.left-r.left,2))*a.animation),S(i,o)||(n.prevFromRect=o,n.prevToRect=i,e=e||c.options.animation,c.animate(n,l,i,e)),e&&(u=!0,d=Math.max(d,e),clearTimeout(n.animationResetTimer),n.animationResetTimer=setTimeout(function(){n.animationTime=0,n.prevFromRect=null,n.fromRect=null,n.prevToRect=null,n.thisAnimationDuration=null},e),n.thisAnimationDuration=e)}),clearTimeout(e),u?e=setTimeout(function(){"function"==typeof t&&t()},d):"function"==typeof t&&t(),o=[]},animate:function(t,e,n,o){var i,r;o&&(R(t,"transition",""),R(t,"transform",""),i=(r=b(this.el))&&r.a,r=r&&r.d,i=(e.left-n.left)/(i||1),r=(e.top-n.top)/(r||1),t.animatingX=!!i,t.animatingY=!!r,R(t,"transform","translate3d("+i+"px,"+r+"px,0)"),this.forRepaintDummy=t.offsetWidth,R(t,"transition","transform "+o+"ms"+(this.options.easing?" "+this.options.easing:"")),R(t,"transform","translate3d(0,0,0)"),"number"==typeof t.animated&&clearTimeout(t.animated),t.animated=setTimeout(function(){R(t,"transition",""),R(t,"transform",""),t.animated=!1,t.animatingX=!1,t.animatingY=!1},o))}}}var N=[],W={initializeByDefault:!0},z={mount:function(e){for(var t in W)!W.hasOwnProperty(t)||t in e||(e[t]=W[t]);N.forEach(function(t){if(t.pluginName===e.pluginName)throw"Sortable: Cannot mount plugin ".concat(e.pluginName," more than once")}),N.push(e)},pluginEvent:function(e,n,o){var t=this;this.eventCanceled=!1,o.cancel=function(){t.eventCanceled=!0};var i=e+"Global";N.forEach(function(t){n[t.pluginName]&&(n[t.pluginName][i]&&n[t.pluginName][i](I({sortable:n},o)),n.options[t.pluginName]&&n[t.pluginName][e]&&n[t.pluginName][e](I({sortable:n},o)))})},initializePlugins:function(n,o,i,t){for(var e in N.forEach(function(t){var e=t.pluginName;(n.options[e]||t.initializeByDefault)&&((t=new t(n,o,n.options)).sortable=n,t.options=n.options,n[e]=t,a(i,t.defaults))}),n.options){var r;n.options.hasOwnProperty(e)&&(void 0!==(r=this.modifyOption(n,e,n.options[e]))&&(n.options[e]=r))}},getEventProperties:function(e,n){var o={};return N.forEach(function(t){"function"==typeof t.eventProperties&&a(o,t.eventProperties.call(n[t.pluginName],e))}),o},modifyOption:function(e,n,o){var i;return N.forEach(function(t){e[t.pluginName]&&t.optionListeners&&"function"==typeof t.optionListeners[n]&&(i=t.optionListeners[n].call(e[t.pluginName],o))}),i}};function G(t){var e=t.sortable,n=t.rootEl,o=t.name,i=t.targetEl,r=t.cloneEl,a=t.toEl,l=t.fromEl,s=t.oldIndex,c=t.newIndex,u=t.oldDraggableIndex,d=t.newDraggableIndex,h=t.originalEvent,p=t.putSortable,f=t.extraEventProperties;if(e=e||n&&n[K]){var g,m=e.options,t="on"+o.charAt(0).toUpperCase()+o.substr(1);!window.CustomEvent||y||w?(g=document.createEvent("Event")).initEvent(o,!0,!0):g=new CustomEvent(o,{bubbles:!0,cancelable:!0}),g.to=a||n,g.from=l||n,g.item=i||n,g.clone=r,g.oldIndex=s,g.newIndex=c,g.oldDraggableIndex=u,g.newDraggableIndex=d,g.originalEvent=h,g.pullMode=p?p.lastPutMode:void 0;var v,b=I(I({},f),z.getEventProperties(o,e));for(v in b)g[v]=b[v];n&&n.dispatchEvent(g),m[t]&&m[t].call(e,g)}}function U(t,e){var n=(o=2<arguments.length&&void 0!==arguments[2]?arguments[2]:{}).evt,o=i(o,q);z.pluginEvent.bind(jt)(t,e,I({dragEl:Z,parentEl:$,ghostEl:Q,rootEl:J,nextEl:tt,lastDownEl:et,cloneEl:nt,cloneHidden:ot,dragStarted:mt,putSortable:ct,activeSortable:jt.active,originalEvent:n,oldIndex:it,oldDraggableIndex:at,newIndex:rt,newDraggableIndex:lt,hideGhostForTarget:Xt,unhideGhostForTarget:Yt,cloneNowHidden:function(){ot=!0},cloneNowShown:function(){ot=!1},dispatchSortableEvent:function(t){V({sortable:e,name:t,originalEvent:n})}},o))}var q=["evt"];function V(t){G(I({putSortable:ct,cloneEl:nt,targetEl:Z,rootEl:J,oldIndex:it,oldDraggableIndex:at,newIndex:rt,newDraggableIndex:lt},t))}var Z,$,Q,J,tt,et,nt,ot,it,rt,at,lt,st,ct,ut,dt,ht,pt,ft,gt,mt,vt,bt,yt,wt,Dt=!1,Et=!1,St=[],_t=!1,Ct=!1,Tt=[],xt=!1,Ot=[],Mt="undefined"!=typeof document,At=c,Nt=w||y?"cssFloat":"float",It=Mt&&!n&&!c&&"draggable"in document.createElement("div"),Pt=function(){if(Mt){if(y)return!1;var t=document.createElement("x");return t.style.cssText="pointer-events:auto","auto"===t.style.pointerEvents}}(),kt=function(t,e){var n=R(t),o=parseInt(n.width)-parseInt(n.paddingLeft)-parseInt(n.paddingRight)-parseInt(n.borderLeftWidth)-parseInt(n.borderRightWidth),i=B(t,0,e),r=B(t,1,e),a=i&&R(i),l=r&&R(r),s=a&&parseInt(a.marginLeft)+parseInt(a.marginRight)+X(i).width,t=l&&parseInt(l.marginLeft)+parseInt(l.marginRight)+X(r).width;if("flex"===n.display)return"column"===n.flexDirection||"column-reverse"===n.flexDirection?"vertical":"horizontal";if("grid"===n.display)return n.gridTemplateColumns.split(" ").length<=1?"vertical":"horizontal";if(i&&a.float&&"none"!==a.float){e="left"===a.float?"left":"right";return!r||"both"!==l.clear&&l.clear!==e?"horizontal":"vertical"}return i&&("block"===a.display||"flex"===a.display||"table"===a.display||"grid"===a.display||o<=s&&"none"===n[Nt]||r&&"none"===n[Nt]&&o<s+t)?"vertical":"horizontal"},Rt=function(t){function l(r,a){return function(t,e,n,o){var i=t.options.group.name&&e.options.group.name&&t.options.group.name===e.options.group.name;if(null==r&&(a||i))return!0;if(null==r||!1===r)return!1;if(a&&"clone"===r)return r;if("function"==typeof r)return l(r(t,e,n,o),a)(t,e,n,o);e=(a?t:e).options.group.name;return!0===r||"string"==typeof r&&r===e||r.join&&-1<r.indexOf(e)}}var e={},n=t.group;n&&"object"==o(n)||(n={name:n}),e.name=n.name,e.checkPull=l(n.pull,!0),e.checkPut=l(n.put),e.revertClone=n.revertClone,t.group=e},Xt=function(){!Pt&&Q&&R(Q,"display","none")},Yt=function(){!Pt&&Q&&R(Q,"display","")};Mt&&!n&&document.addEventListener("click",function(t){if(Et)return t.preventDefault(),t.stopPropagation&&t.stopPropagation(),t.stopImmediatePropagation&&t.stopImmediatePropagation(),Et=!1},!0);function Bt(t){if(Z){t=t.touches?t.touches[0]:t;var e=(i=t.clientX,r=t.clientY,St.some(function(t){var e=t[K].options.emptyInsertThreshold;if(e&&!F(t)){var n=X(t),o=i>=n.left-e&&i<=n.right+e,e=r>=n.top-e&&r<=n.bottom+e;return o&&e?a=t:void 0}}),a);if(e){var n,o={};for(n in t)t.hasOwnProperty(n)&&(o[n]=t[n]);o.target=o.rootEl=e,o.preventDefault=void 0,o.stopPropagation=void 0,e[K]._onDragOver(o)}}var i,r,a}function Ft(t){Z&&Z.parentNode[K]._isOutsideThisEl(t.target)}function jt(t,e){if(!t||!t.nodeType||1!==t.nodeType)throw"Sortable: `el` must be an HTMLElement, not ".concat({}.toString.call(t));this.el=t,this.options=e=a({},e),t[K]=this;var n,o,i={group:null,sort:!0,disabled:!1,store:null,handle:null,draggable:/^[uo]l$/i.test(t.nodeName)?">li":">*",swapThreshold:1,invertSwap:!1,invertedSwapThreshold:null,removeCloneOnHide:!0,direction:function(){return kt(t,this.options)},ghostClass:"sortable-ghost",chosenClass:"sortable-chosen",dragClass:"sortable-drag",ignore:"a, img",filter:null,preventOnFilter:!0,animation:0,easing:null,setData:function(t,e){t.setData("Text",e.textContent)},dropBubble:!1,dragoverBubble:!1,dataIdAttr:"data-id",delay:0,delayOnTouchOnly:!1,touchStartThreshold:(Number.parseInt?Number:window).parseInt(window.devicePixelRatio,10)||1,forceFallback:!1,fallbackClass:"sortable-fallback",fallbackOnBody:!1,fallbackTolerance:0,fallbackOffset:{x:0,y:0},supportPointer:!1!==jt.supportPointer&&"PointerEvent"in window&&(!u||c),emptyInsertThreshold:5};for(n in z.initializePlugins(this,t,i),i)n in e||(e[n]=i[n]);for(o in Rt(e),this)"_"===o.charAt(0)&&"function"==typeof this[o]&&(this[o]=this[o].bind(this));this.nativeDraggable=!e.forceFallback&&It,this.nativeDraggable&&(this.options.touchStartThreshold=1),e.supportPointer?h(t,"pointerdown",this._onTapStart):(h(t,"mousedown",this._onTapStart),h(t,"touchstart",this._onTapStart)),this.nativeDraggable&&(h(t,"dragover",this),h(t,"dragenter",this)),St.push(this.el),e.store&&e.store.get&&this.sort(e.store.get(this)||[]),a(this,A())}jt.prototype={constructor:jt,_isOutsideThisEl:function(t){this.el.contains(t)||t===this.el||(vt=null)},_getDirection:function(t,e){return"function"==typeof this.options.direction?this.options.direction.call(this,t,e,Z):this.options.direction},_onTapStart:function(e){if(e.cancelable){var n=this,o=this.el,t=this.options,i=t.preventOnFilter,r=e.type,a=e.touches&&e.touches[0]||e.pointerType&&"touch"===e.pointerType&&e,l=(a||e).target,s=e.target.shadowRoot&&(e.path&&e.path[0]||e.composedPath&&e.composedPath()[0])||l,c=t.filter;if(!function(t){Ot.length=0;var e=t.getElementsByTagName("input"),n=e.length;for(;n--;){var o=e[n];o.checked&&Ot.push(o)}}(o),!Z&&!(/mousedown|pointerdown/.test(r)&&0!==e.button||t.disabled)&&!s.isContentEditable&&(this.nativeDraggable||!u||!l||"SELECT"!==l.tagName.toUpperCase())&&!((l=P(l,t.draggable,o,!1))&&l.animated||et===l)){if(it=j(l),at=j(l,t.draggable),"function"==typeof c){if(c.call(this,e,l,this))return V({sortable:n,rootEl:s,name:"filter",targetEl:l,toEl:o,fromEl:o}),U("filter",n,{evt:e}),void(i&&e.preventDefault())}else if(c=c&&c.split(",").some(function(t){if(t=P(s,t.trim(),o,!1))return V({sortable:n,rootEl:t,name:"filter",targetEl:l,fromEl:o,toEl:o}),U("filter",n,{evt:e}),!0}))return void(i&&e.preventDefault());t.handle&&!P(s,t.handle,o,!1)||this._prepareDragStart(e,a,l)}}},_prepareDragStart:function(t,e,n){var o,i=this,r=i.el,a=i.options,l=r.ownerDocument;n&&!Z&&n.parentNode===r&&(o=X(n),J=r,$=(Z=n).parentNode,tt=Z.nextSibling,et=n,st=a.group,ut={target:jt.dragged=Z,clientX:(e||t).clientX,clientY:(e||t).clientY},ft=ut.clientX-o.left,gt=ut.clientY-o.top,this._lastX=(e||t).clientX,this._lastY=(e||t).clientY,Z.style["will-change"]="all",o=function(){U("delayEnded",i,{evt:t}),jt.eventCanceled?i._onDrop():(i._disableDelayedDragEvents(),!s&&i.nativeDraggable&&(Z.draggable=!0),i._triggerDragStart(t,e),V({sortable:i,name:"choose",originalEvent:t}),k(Z,a.chosenClass,!0))},a.ignore.split(",").forEach(function(t){D(Z,t.trim(),Lt)}),h(l,"dragover",Bt),h(l,"mousemove",Bt),h(l,"touchmove",Bt),a.supportPointer?(h(l,"pointerup",i._onDrop),this.nativeDraggable||h(l,"pointercancel",i._onDrop)):(h(l,"mouseup",i._onDrop),h(l,"touchend",i._onDrop),h(l,"touchcancel",i._onDrop)),s&&this.nativeDraggable&&(this.options.touchStartThreshold=4,Z.draggable=!0),U("delayStart",this,{evt:t}),!a.delay||a.delayOnTouchOnly&&!e||this.nativeDraggable&&(w||y)?o():jt.eventCanceled?this._onDrop():(a.supportPointer?(h(l,"pointerup",i._disableDelayedDrag),h(l,"pointercancel",i._disableDelayedDrag)):(h(l,"mouseup",i._disableDelayedDrag),h(l,"touchend",i._disableDelayedDrag),h(l,"touchcancel",i._disableDelayedDrag)),h(l,"mousemove",i._delayedDragTouchMoveHandler),h(l,"touchmove",i._delayedDragTouchMoveHandler),a.supportPointer&&h(l,"pointermove",i._delayedDragTouchMoveHandler),i._dragStartTimer=setTimeout(o,a.delay)))},_delayedDragTouchMoveHandler:function(t){t=t.touches?t.touches[0]:t;Math.max(Math.abs(t.clientX-this._lastX),Math.abs(t.clientY-this._lastY))>=Math.floor(this.options.touchStartThreshold/(this.nativeDraggable&&window.devicePixelRatio||1))&&this._disableDelayedDrag()},_disableDelayedDrag:function(){Z&&Lt(Z),clearTimeout(this._dragStartTimer),this._disableDelayedDragEvents()},_disableDelayedDragEvents:function(){var t=this.el.ownerDocument;p(t,"mouseup",this._disableDelayedDrag),p(t,"touchend",this._disableDelayedDrag),p(t,"touchcancel",this._disableDelayedDrag),p(t,"pointerup",this._disableDelayedDrag),p(t,"pointercancel",this._disableDelayedDrag),p(t,"mousemove",this._delayedDragTouchMoveHandler),p(t,"touchmove",this._delayedDragTouchMoveHandler),p(t,"pointermove",this._delayedDragTouchMoveHandler)},_triggerDragStart:function(t,e){e=e||"touch"==t.pointerType&&t,!this.nativeDraggable||e?this.options.supportPointer?h(document,"pointermove",this._onTouchMove):h(document,e?"touchmove":"mousemove",this._onTouchMove):(h(Z,"dragend",this),h(J,"dragstart",this._onDragStart));try{document.selection?Wt(function(){document.selection.empty()}):window.getSelection().removeAllRanges()}catch(t){}},_dragStarted:function(t,e){var n;Dt=!1,J&&Z?(U("dragStarted",this,{evt:e}),this.nativeDraggable&&h(document,"dragover",Ft),n=this.options,t||k(Z,n.dragClass,!1),k(Z,n.ghostClass,!0),jt.active=this,t&&this._appendGhost(),V({sortable:this,name:"start",originalEvent:e})):this._nulling()},_emulateDragOver:function(){if(dt){this._lastX=dt.clientX,this._lastY=dt.clientY,Xt();for(var t=document.elementFromPoint(dt.clientX,dt.clientY),e=t;t&&t.shadowRoot&&(t=t.shadowRoot.elementFromPoint(dt.clientX,dt.clientY))!==e;)e=t;if(Z.parentNode[K]._isOutsideThisEl(t),e)do{if(e[K])if(e[K]._onDragOver({clientX:dt.clientX,clientY:dt.clientY,target:t,rootEl:e})&&!this.options.dragoverBubble)break}while(e=g(t=e));Yt()}},_onTouchMove:function(t){if(ut){var e=this.options,n=e.fallbackTolerance,o=e.fallbackOffset,i=t.touches?t.touches[0]:t,r=Q&&b(Q,!0),a=Q&&r&&r.a,l=Q&&r&&r.d,e=At&&wt&&E(wt),a=(i.clientX-ut.clientX+o.x)/(a||1)+(e?e[0]-Tt[0]:0)/(a||1),l=(i.clientY-ut.clientY+o.y)/(l||1)+(e?e[1]-Tt[1]:0)/(l||1);if(!jt.active&&!Dt){if(n&&Math.max(Math.abs(i.clientX-this._lastX),Math.abs(i.clientY-this._lastY))<n)return;this._onDragStart(t,!0)}Q&&(r?(r.e+=a-(ht||0),r.f+=l-(pt||0)):r={a:1,b:0,c:0,d:1,e:a,f:l},r="matrix(".concat(r.a,",").concat(r.b,",").concat(r.c,",").concat(r.d,",").concat(r.e,",").concat(r.f,")"),R(Q,"webkitTransform",r),R(Q,"mozTransform",r),R(Q,"msTransform",r),R(Q,"transform",r),ht=a,pt=l,dt=i),t.cancelable&&t.preventDefault()}},_appendGhost:function(){if(!Q){var t=this.options.fallbackOnBody?document.body:J,e=X(Z,!0,At,!0,t),n=this.options;if(At){for(wt=t;"static"===R(wt,"position")&&"none"===R(wt,"transform")&&wt!==document;)wt=wt.parentNode;wt!==document.body&&wt!==document.documentElement?(wt===document&&(wt=O()),e.top+=wt.scrollTop,e.left+=wt.scrollLeft):wt=O(),Tt=E(wt)}k(Q=Z.cloneNode(!0),n.ghostClass,!1),k(Q,n.fallbackClass,!0),k(Q,n.dragClass,!0),R(Q,"transition",""),R(Q,"transform",""),R(Q,"box-sizing","border-box"),R(Q,"margin",0),R(Q,"top",e.top),R(Q,"left",e.left),R(Q,"width",e.width),R(Q,"height",e.height),R(Q,"opacity","0.8"),R(Q,"position",At?"absolute":"fixed"),R(Q,"zIndex","100000"),R(Q,"pointerEvents","none"),jt.ghost=Q,t.appendChild(Q),R(Q,"transform-origin",ft/parseInt(Q.style.width)*100+"% "+gt/parseInt(Q.style.height)*100+"%")}},_onDragStart:function(t,e){var n=this,o=t.dataTransfer,i=n.options;U("dragStart",this,{evt:t}),jt.eventCanceled?this._onDrop():(U("setupClone",this),jt.eventCanceled||((nt=C(Z)).removeAttribute("id"),nt.draggable=!1,nt.style["will-change"]="",this._hideClone(),k(nt,this.options.chosenClass,!1),jt.clone=nt),n.cloneId=Wt(function(){U("clone",n),jt.eventCanceled||(n.options.removeCloneOnHide||J.insertBefore(nt,Z),n._hideClone(),V({sortable:n,name:"clone"}))}),e||k(Z,i.dragClass,!0),e?(Et=!0,n._loopId=setInterval(n._emulateDragOver,50)):(p(document,"mouseup",n._onDrop),p(document,"touchend",n._onDrop),p(document,"touchcancel",n._onDrop),o&&(o.effectAllowed="move",i.setData&&i.setData.call(n,o,Z)),h(document,"drop",n),R(Z,"transform","translateZ(0)")),Dt=!0,n._dragStartId=Wt(n._dragStarted.bind(n,e,t)),h(document,"selectstart",n),mt=!0,window.getSelection().removeAllRanges(),u&&R(document.body,"user-select","none"))},_onDragOver:function(n){var o,i,r,t,e,a=this.el,l=n.target,s=this.options,c=s.group,u=jt.active,d=st===c,h=s.sort,p=ct||u,f=this,g=!1;if(!xt){if(void 0!==n.preventDefault&&n.cancelable&&n.preventDefault(),l=P(l,s.draggable,a,!0),jt.eventCanceled)return g;if(Z.contains(n.target)||l.animated&&l.animatingX&&l.animatingY||f._ignoreWhileAnimating===l)return A(!1);if(Et=!1,u&&!s.disabled&&(d?h||(i=$!==J):ct===this||(this.lastPutMode=st.checkPull(this,u,Z,n))&&c.checkPut(this,u,Z,n))){if(r="vertical"===this._getDirection(n,l),o=X(Z),jt.eventCanceled)return g;if(i)return $=J,this._hideClone(),jt.eventCanceled||(tt?J.insertBefore(Z,tt):J.appendChild(Z)),A(!0);var m=F(a,s.draggable);if(!m||!S(n,m)){if(m){var v=X(F(a,s.draggable));if(1===kt(a,s))return A(!1)}if(l.parentNode===a){var b=X(l),y=kt(a,s),w=j(Z),D=j(l);if(0!==function(t,e,n,o,i,r,a,l){var s=o?t.clientY:t.clientX,c=o?n.height:n.width,t=o?n.top:n.left,o=o?n.bottom:n.right,n=!1;if(!a){if(l&&yt<c*i){if(_t=!_t&&(1===bt?t+c*r/2<s:s<o-c*r/2)?!0:_t)n=!0;else if(1===bt?s<t+yt:o-yt<s)return-bt}else if(t+c*(1-i)/2<s&&s<o-c*(1-i)/2)return function(t){return j(Z)<j(t)?1:-1}(e)}if((n=n||a)&&(s<t+c*r/2||o-c*r/2<s))return t+c/2<s?1:-1;return 0}(n,l,b,"vertical"===y,!(_t||Ct)||s.invertSwap,null==s.invertedSwapThreshold?s.swapThreshold:s.invertedSwapThreshold,Ct,vt===l)){var T=$;if($=a,T!=$){for(var x=w;(w=T.children[x-=1])&&("none"===R(w,"display")||w===Q););if(!w||j(w,s.draggable)<0)return A(!1)}vt=l,yt=Math.abs(X(l)["vertical"===y?"top":"left"]-b["vertical"===y?"top":"left"]),bt=j(Z)<j(l)?1:-1,xt=!0,setTimeout(Kt,30),T=l.nextElementSibling,1===bt?a.insertBefore(Z,T):l.parentNode.insertBefore(Z,l),$=Z.parentNode,A(!0)}}}else if(m){if(!1!==Ht(J,a,Z,o,l,X(l),n,!!l))return $=a,m.nextSibling?a.insertBefore(Z,m.nextSibling):a.appendChild(Z),N(),A(!0)}if(a.contains(Z))return A(!1)}return!1}function A(t){return t&&(d?u._hideClone():u._showClone(f),f!==p&&(k(Z,(ct||u).options.ghostClass,!1),k(Z,s.ghostClass,!0)),ct!==f&&f!==jt.active?ct=f:f===jt.active&&ct&&(ct=null),p===f&&(f._ignoreWhileAnimating=l),f.animateAll(function(){f._ignoreWhileAnimating=null}),f!==p&&(p.animateAll(),p._ignoreWhileAnimating=null)),(l===Z&&!Z.animated||l===a&&!l.animated)&&(vt=null),s.dragoverBubble||n.rootEl||l===document||(Z.parentNode[K]._isOutsideThisEl(n.target),t||Bt(n)),!s.dragoverBubble&&n.stopPropagation&&n.stopPropagation(),g=!0}function N(){rt=j(Z),lt=j(Z,s.draggable),V({sortable:f,name:"change",toEl:a,newIndex:rt,newDraggableIndex:lt,originalEvent:n})}},_ignoreWhileAnimating:null,_offMoveEvents:function(){p(document,"mousemove",this._onTouchMove),p(document,"touchmove",this._onTouchMove),p(document,"pointermove",this._onTouchMove),p(document,"dragover",Bt),p(document,"mousemove",Bt),p(document,"touchmove",Bt)},_offUpEvents:function(){var t=this.el.ownerDocument;p(t,"mouseup",this._onDrop),p(t,"touchend",this._onDrop),p(t,"pointerup",this._onDrop),p(t,"pointercancel",this._onDrop),p(t,"touchcancel",this._onDrop),p(document,"selectstart",this)},_onDrop:function(t){var e=this.el,n=this.options;rt=j(Z),lt=j(Z,n.draggable),U("drop",this,{evt:t}),$=Z&&Z.parentNode,rt=j(Z),lt=j(Z,n.draggable),jt.eventCanceled||(_t=Ct=Dt=!1,clearInterval(this._loopId),clearTimeout(this._dragStartTimer),zt(this.cloneId),zt(this._dragStartId),this.nativeDraggable&&(p(document,"drop",this),p(e,"dragstart",this._onDragStart)),this._offMoveEvents(),this._offUpEvents(),u&&R(document.body,"user-select",""),R(Z,"transform",""),t&&(mt&&(t.cancelable&&t.preventDefault(),n.dropBubble||t.stopPropagation()),Q&&Q.parentNode&&Q.parentNode.removeChild(Q),(J===$||ct&&"clone"!==ct.lastPutMode)&&nt&&nt.parentNode&&nt.parentNode.removeChild(nt),Z&&(this.nativeDraggable&&p(Z,"dragend",this),Lt(Z),Z.style["will-change"]="",mt&&!Dt&&k(Z,(ct||this).options.ghostClass,!1),k(Z,this.options.chosenClass,!1),V({sortable:this,name:"unchoose",toEl:$,newIndex:null,newDraggableIndex:null,originalEvent:t}),J!==$?(0<=rt&&(V({rootEl:$,name:"add",toEl:$,fromEl:J,originalEvent:t}),V({sortable:this,name:"remove",toEl:$,originalEvent:t}),V({rootEl:$,name:"sort",toEl:$,fromEl:J,originalEvent:t}),V({sortable:this,name:"sort",toEl:$,originalEvent:t})),ct&&ct.save()):rt!==it&&0<=rt&&(V({sortable:this,name:"update",toEl:$,originalEvent:t}),V({sortable:this,name:"sort",toEl:$,originalEvent:t})),jt.active&&(null!=rt&&-1!==rt||(rt=it,lt=at),V({sortable:this,name:"end",toEl:$,originalEvent:t}),this.save())))),this._nulling()},_nulling:function(){U("nulling",this),J=Z=$=Q=tt=nt=et=ot=ut=dt=mt=rt=lt=it=at=vt=bt=ct=st=jt.dragged=jt.ghost=jt.clone=jt.active=null,Ot.forEach(function(t){t.checked=!0}),Ot.length=ht=pt=0},handleEvent:function(t){switch(t.type){case"drop":case"dragend":this._onDrop(t);break;case"dragenter":case"dragover":Z&&(this._onDragOver(t),function(t){t.dataTransfer&&(t.dataTransfer.dropEffect="move");t.cancelable&&t.preventDefault()}(t));break;case"selectstart":t.preventDefault()}},toArray:function(){for(var t,e=[],n=this.el.children,o=0,i=n.length,r=this.options;o<i;o++)P(t=n[o],r.draggable,this.el,!1)&&e.push(t.getAttribute(r.dataIdAttr)||function(t){var e=t.tagName+t.className+t.src+t.href+t.textContent,n=e.length,o=0;for(;n--;)o+=e.charCodeAt(n);return o.toString(36)}(t));return e},sort:function(t,e){var n={},o=this.el;this.toArray().forEach(function(t,e){e=o.children[e];P(e,this.options.draggable,o,!1)&&(n[t]=e)},this),e&&this.captureAnimationState(),t.forEach(function(t){n[t]&&(o.removeChild(n[t]),o.appendChild(n[t]))}),e&&this.animateAll()},save:function(){var t=this.options.store;t&&t.set&&t.set(this)},closest:function(t,e){return P(t,e||this.options.draggable,this.el,!1)},option:function(t,e){var n=this.options;if(void 0===e)return n[t];var o=z.modifyOption(this,t,e);n[t]=void 0!==o?o:e,"group"===t&&Rt(n)},destroy:function(){U("destroy",this);var t=this.el;t[K]=null,p(t,"mousedown",this._onTapStart),p(t,"touchstart",this._onTapStart),p(t,"pointerdown",this._onTapStart),this.nativeDraggable&&(p(t,"dragover",this),p(t,"dragenter",this)),Array.prototype.forEach.call(t.querySelectorAll("[draggable]"),function(t){t.removeAttribute("draggable")}),this._onDrop(),this._disableDelayedDragEvents(),St.splice(St.indexOf(this.el),1),this.el=t=null},_hideClone:function(){ot||(U("hideClone",this),jt.eventCanceled||(R(nt,"display","none"),this.options.removeCloneOnHide&&nt.parentNode&&nt.parentNode.removeChild(nt),ot=!0))},_showClone:function(t){"clone"===t.lastPutMode?ot&&(U("showClone",this),jt.eventCanceled||(Z.parentNode!=J||this.options.group.revertClone?tt?J.insertBefore(nt,tt):J.appendChild(nt):J.insertBefore(nt,Z),this.options.group.revertClone&&this.animate(Z,nt),R(nt,"display",""),ot=!1)):this._hideClone()}};function Ht(t,e,n,o,i,r,a,l){var s,c,u=t[K],d=u.options.onMove;return!window.CustomEvent||y||w?(s=document.createEvent("Event")).initEvent("move",!0,!0):s=new CustomEvent("move",{bubbles:!0,cancelable:!0}),s.to=e,s.from=t,s.dragged=n,s.draggedRect=o,s.related=i||e,s.relatedRect=r||X(e),s.willInsertAfter=l,s.originalEvent=a,t.dispatchEvent(s),c=d?d.call(u,s,a):c}function Lt(t){t.draggable=!1}function Kt(){xt=!1}function Wt(t){return setTimeout(t,0)}function zt(t){return clearTimeout(t)}Mt&&h(document,"touchmove",function(t){(jt.active||Dt)&&t.cancelable&&t.preventDefault()}),jt.utils={on:h,off:p,css:R,find:D,is:function(t,e){return!!P(t,e,t,!1)},extend:function(t,e){if(t&&e)for(var n in e)e.hasOwnProperty(n)&&(t[n]=e[n]);return t},throttle:_,closest:P,toggleClass:k,clone:C,index:j,nextTick:Wt,cancelNextTick:zt,detectDirection:kt,getChild:B,expando:K},jt.get=function(t){return t[K]},jt.mount=function(){for(var t=arguments.length,e=new Array(t),n=0;n<t;n++)e[n]=arguments[n];(e=e[0].constructor===Array?e[0]:e).forEach(function(t){if(!t.prototype||!t.prototype.constructor)throw"Sortable: Mounted plugin must be a constructor function, not ".concat({}.toString.call(t));t.utils&&(jt.utils=I(I({},jt.utils),t.utils)),z.mount(t)})},jt.create=function(t,e){return new jt(t,e)},jt.version="1.15.6";return jt});
+</script>
+<script>
+// ── STATE ─────────────────────────────────────────────────────────────────────
+const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
+const CAM_KEY = 'ddos_cam_coords';
+
+let state = { order: [], reconnect: null, thumbnail: null, clips: {} };
+
+function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); }
+
+function loadState() {
+  const saved = localStorage.getItem(STATE_KEY);
+  if (saved) { try { state = JSON.parse(saved); return true; } catch(e) {} }
+  return false;
+}
+
+function allClips() { return [...CLIPS_DATA.selected, ...CLIPS_DATA.bench]; }
+function getClip(id) { return allClips().find(c => c.id === id); }
+function getClipState(id) { if (!state.clips[id]) state.clips[id] = {}; return state.clips[id]; }
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = (sec % 60).toFixed(1).padStart(4, '0');
+  return m + ':' + s;
+}
+function fmtTimeSec(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60).toString().padStart(2, '0');
+  return m + ':' + s;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const hadSaved = loadState();
+  if (!hadSaved || state.order.length === 0) {
+    state.order = CLIPS_DATA.selected.map(c => c.id);
+    state.clips = {};
+  }
+  document.getElementById('meta-line').textContent =
+    CLIPS_DATA.runId + ' · ' + allClips().length + ' кліпів scored';
+  renderClipList();
+  renderBench();
+  updateTopbar();
+  updatePrompt();
+});
+
+// ── RENDER CLIP LIST ──────────────────────────────────────────────────────────
+function renderClipList() {
+  const container = document.getElementById('clip-list');
+  container.innerHTML = '';
+  state.order.forEach((clipId, idx) => {
+    const clip = getClip(clipId);
+    if (!clip) return;
+    container.appendChild(buildClipCard(clip, idx + 1));
+    if (state.reconnect && state.reconnect.afterIndex === idx) {
+      container.appendChild(buildReconSep());
+    }
+  });
+  if (!state.reconnect && state.order.length > 0) {
+    const firstCard = container.querySelector('.clip-card');
+    if (firstCard && firstCard.nextSibling) {
+      container.insertBefore(buildReconSep(), firstCard.nextSibling);
+    }
+  }
+  initSortable();
+}
+
+function buildClipCard(clip, num) {
+  const cs = getClipState(clip.id);
+  const isShort = !!(cs.short);
+  const isThumb = state.thumbnail && state.thumbnail.clipId === clip.id;
+  const isRecon = state.reconnect && state.reconnect.clipId === clip.id;
+  const cutCount = (cs.cuts || []).length;
+  const card = document.createElement('div');
+  card.className = 'clip-card';
+  card.dataset.clipId = clip.id;
+  card.innerHTML = `
+    <div class="card-header" onclick="toggleCard(event,this)">
+      <span class="drag-handle" data-handle="true">⠿⠿</span>
+      <span class="clip-num">#${num}</span>
+      <span class="clip-streamer">${clip.streamer}</span>
+      <span class="clip-cat">· ${clip.category}</span>
+      <span class="clip-dur-display">${fmtTimeSec(clip.duration)}</span>
+      <span class="clip-score">${clip.ddosScore}</span>
+      <div class="card-tags">
+        <span class="tag tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">SHORT</span>
+        <span class="tag tag-thumb ${isThumb?'on':''}" data-tag="thumb" onclick="toggleTag(event,'${clip.id}','thumb')">THUMB</span>
+        <span class="tag tag-reconnect ${isRecon?'on':''}" data-tag="reconnect" onclick="toggleTag(event,'${clip.id}','reconnect')">RECONNECT</span>
+        ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
+        ${isThumb ? `<span class="mini-badge mb-thumb">🖼 ${fmtTimeSec(state.thumbnail.at)}</span>` : ''}
+      </div>
+      <span class="expand-icon">▼</span>
+    </div>
+    <div class="card-body" id="body-${clip.id}">${buildCardBody(clip)}</div>`;
+  return card;
+}
+
+function buildReconSep() {
+  const sep = document.createElement('div');
+  sep.className = 'recon-sep';
+  sep.dataset.isSep = 'true';
+  const detail = state.reconnect
+    ? `джерело: ${getClip(state.reconnect.clipId)?.streamer || '?'} · ${fmtTime(state.reconnect.from)} → ${fmtTime(state.reconnect.to)}`
+    : 'джерело не вибрано — тегни RECONNECT на кліпі';
+  sep.innerHTML = `
+    <span class="recon-sep-icon">⟳</span>
+    <div class="recon-sep-info">
+      <div class="recon-sep-title">RECONNECT transition тут</div>
+      <div class="recon-sep-detail">${detail}</div>
+    </div>
+    <span class="recon-sep-move">↕ перемістити</span>`;
+  return sep;
+}
+
+function toggleCard(e, header) {
+  if (e.target.dataset.handle || e.target.dataset.tag || e.target.closest('[data-tag]')) return;
+  const body = header.nextElementSibling;
+  const icon = header.querySelector('.expand-icon');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  icon.textContent = isOpen ? '▼' : '▲';
+  if (!isOpen) initCardMedia(header.closest('.clip-card'));
+}
+
+function toggleTag(e, clipId, tag) {
+  e.stopPropagation();
+  const cs = getClipState(clipId);
+  const clip = getClip(clipId);
+  if (tag === 'short') {
+    if (cs.short) { delete cs.short; } else { cs.short = { mode: 'desktop' }; }
+  } else if (tag === 'thumb') {
+    if (state.thumbnail && state.thumbnail.clipId === clipId) { state.thumbnail = null; }
+    else { state.thumbnail = { clipId, at: +((cs.trimOut ?? clip.duration) * 0.6).toFixed(2) }; }
+  } else if (tag === 'reconnect') {
+    if (state.reconnect && state.reconnect.clipId === clipId) { state.reconnect = null; }
+    else {
+      const inT = cs.trimIn ?? 0;
+      const outT = cs.trimOut ?? clip.duration;
+      state.reconnect = { clipId, from: inT, to: Math.min(inT + 3, outT), afterIndex: 0 };
+    }
+  }
+  saveState();
+  renderClipList();
+}
+
+// ── SORTABLE ──────────────────────────────────────────────────────────────────
+function initSortable() {
+  const container = document.getElementById('clip-list');
+  Sortable.create(container, {
+    animation: 150,
+    handle: '.drag-handle',
+    filter: '.recon-sep',
+    onEnd() {
+      const newOrder = [];
+      let reconAfter = null;
+      container.querySelectorAll('[data-clip-id],[data-is-sep]').forEach(el => {
+        if (el.dataset.isSep) { reconAfter = newOrder.length - 1; }
+        else { newOrder.push(el.dataset.clipId); }
+      });
+      state.order = newOrder;
+      if (state.reconnect && reconAfter !== null) {
+        state.reconnect.afterIndex = Math.max(0, reconAfter);
+      }
+      saveState();
+      updateNumbers();
+    }
+  });
+}
+
+function updateNumbers() {
+  let num = 1;
+  document.querySelectorAll('.clip-card').forEach(card => {
+    card.querySelector('.clip-num').textContent = '#' + num++;
+  });
+}
+
+// ── CARD BODY ─────────────────────────────────────────────────────────────────
+function buildCardBody(clip) {
+  return `
+    <div class="video-wrap">
+      <video id="vid-${clip.id}" preload="none" src="${clip.videoPath}"></video>
+    </div>
+    <div class="play-mode-row">
+      <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
+      <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
+      <span class="playpos" id="playpos-${clip.id}">0:00.0 / ${fmtTimeSec(clip.duration)}</span>
+    </div>
+    <div class="tl-wrap">
+      <div class="tl-label"><span>✂ Trim / Cut</span></div>
+      <div class="tl-track" id="tl-${clip.id}">
+        <div class="tl-fill" id="tl-fill-${clip.id}"></div>
+        <div class="tl-handle tl-handle-in" id="tl-in-${clip.id}" style="left:0%"></div>
+        <div class="tl-handle tl-handle-out tl-handle-out" id="tl-out-${clip.id}" style="right:0%"></div>
+        <div class="tl-playhead" id="tl-ph-${clip.id}" style="left:0%"></div>
+      </div>
+      <div class="tl-times">
+        <span id="tl-time-in-${clip.id}">in: 0:00.0</span>
+        <span>${fmtTimeSec(clip.duration)} total</span>
+        <span id="tl-time-out-${clip.id}">out: ${fmtTimeSec(clip.duration)}</span>
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lbl">+ Cut:</span>
+      <input class="ctrl-in" id="cut-from-${clip.id}" value="0:00" placeholder="from">
+      <span class="ctrl-lbl">→</span>
+      <input class="ctrl-in" id="cut-to-${clip.id}" value="0:05" placeholder="to">
+      <button class="ctrl-btn red" onclick="addCut('${clip.id}')">Додати ✂</button>
+      <span style="flex:1"></span>
+      <button class="ctrl-btn" onclick="seekRel('${clip.id}',-5)">⏮ −5s</button>
+      <button class="ctrl-btn" onclick="togglePlay('${clip.id}')">▶</button>
+      <button class="ctrl-btn" onclick="seekRel('${clip.id}',5)">+5s ⏭</button>
+    </div>
+    <div id="cuts-list-${clip.id}"></div>
+    ${buildTagSections(clip)}`;
+}
+
+function initCardMedia(card) {
+  const clipId = card.dataset.clipId;
+  const clip = getClip(clipId);
+  const cs = getClipState(clipId);
+  if (!clip || card.dataset.mediaInited) return;
+  card.dataset.mediaInited = '1';
+
+  const video = document.getElementById('vid-' + clipId);
+  const track = document.getElementById('tl-' + clipId);
+  const handleIn = document.getElementById('tl-in-' + clipId);
+  const handleOut = document.getElementById('tl-out-' + clipId);
+  const fill = document.getElementById('tl-fill-' + clipId);
+  const playhead = document.getElementById('tl-ph-' + clipId);
+
+  let inPct = cs.trimIn ? (cs.trimIn / clip.duration * 100) : 0;
+  let outPct = cs.trimOut ? (cs.trimOut / clip.duration * 100) : 100;
+
+  function updateFill() {
+    fill.style.left = inPct + '%';
+    fill.style.right = (100 - outPct) + '%';
+    handleIn.style.left = inPct + '%';
+    handleOut.style.right = (100 - outPct) + '%';
+    document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inPct / 100 * clip.duration);
+    document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outPct / 100 * clip.duration);
+    cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
+    cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
+    saveState();
+    updateDuration();
+  }
+
+  function makeDragHandle(handle, type) {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const rect = track.getBoundingClientRect();
+      const onMove = e => {
+        let pct = Math.max(0, Math.min(100, (e.clientX - rect.left) / rect.width * 100));
+        if (type === 'in') { inPct = Math.min(pct, outPct - 2); if (video) video.currentTime = inPct / 100 * clip.duration; }
+        else { outPct = Math.max(pct, inPct + 2); if (video) video.currentTime = outPct / 100 * clip.duration; }
+        updateFill();
+      };
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  makeDragHandle(handleIn, 'in');
+  makeDragHandle(handleOut, 'out');
+  updateFill();
+
+  track.addEventListener('click', e => {
+    if (e.target === handleIn || e.target === handleOut) return;
+    const rect = track.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    if (video) video.currentTime = pct * clip.duration;
+  });
+
+  if (video) {
+    video.addEventListener('timeupdate', () => {
+      const pct = video.currentTime / clip.duration * 100;
+      playhead.style.left = pct + '%';
+      document.getElementById('playpos-' + clipId).textContent =
+        fmtTime(video.currentTime) + ' / ' + fmtTimeSec(clip.duration);
+      if (card.dataset.playMode === 'preview') {
+        for (const [cs2, ce2] of (cs.cuts || [])) {
+          if (video.currentTime >= cs2 && video.currentTime < ce2) { video.currentTime = ce2; break; }
+        }
+        if (video.currentTime >= (outPct / 100) * clip.duration) video.pause();
+      }
+    });
+    video.addEventListener('play', () => {
+      const btns = card.querySelectorAll('.ctrl-btn');
+      btns.forEach(b => { if (b.textContent === '▶') b.textContent = '⏸'; });
+    });
+    video.addEventListener('pause', () => {
+      const btns = card.querySelectorAll('.ctrl-btn');
+      btns.forEach(b => { if (b.textContent === '⏸') b.textContent = '▶'; });
+    });
+  }
+  renderCutZones(clipId, clip);
+  syncTagSections(clipId);
+}
+
+function setPlayMode(clipId, mode, btn) {
+  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
+  card.dataset.playMode = mode;
+  card.querySelectorAll('.play-mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (mode === 'preview') {
+    const cs = getClipState(clipId);
+    const video = document.getElementById('vid-' + clipId);
+    if (video) { video.currentTime = cs.trimIn ?? 0; video.play(); }
+  }
+}
+
+function togglePlay(clipId) {
+  const video = document.getElementById('vid-' + clipId);
+  if (!video) return;
+  video.paused ? video.play() : video.pause();
+}
+
+function seekRel(clipId, delta) {
+  const video = document.getElementById('vid-' + clipId);
+  if (video) video.currentTime = Math.max(0, video.currentTime + delta);
+}
+
+// ── CUTS ──────────────────────────────────────────────────────────────────────
+function parseMmSs(str) {
+  const parts = str.trim().split(':');
+  if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+  return parseFloat(str) || 0;
+}
+
+function addCut(clipId) {
+  const clip = getClip(clipId);
+  const cs = getClipState(clipId);
+  const from = Math.max(0, parseMmSs(document.getElementById('cut-from-' + clipId).value));
+  const to = Math.min(clip.duration, parseMmSs(document.getElementById('cut-to-' + clipId).value));
+  if (to <= from) return;
+  if (!cs.cuts) cs.cuts = [];
+  cs.cuts.push([+from.toFixed(2), +to.toFixed(2)]);
+  cs.cuts.sort((a, b) => a[0] - b[0]);
+  saveState();
+  renderCutZones(clipId, clip);
+  renderClipList();
+}
+
+function removeCut(clipId, idx) {
+  const cs = getClipState(clipId);
+  cs.cuts.splice(idx, 1);
+  saveState();
+  renderCutZones(clipId, getClip(clipId));
+  renderClipList();
+}
+
+function renderCutZones(clipId, clip) {
+  const cs = getClipState(clipId);
+  const track = document.getElementById('tl-' + clipId);
+  if (!track) return;
+  track.querySelectorAll('.tl-cut-zone').forEach(el => el.remove());
+  (cs.cuts || []).forEach(([from, to]) => {
+    const zone = document.createElement('div');
+    zone.className = 'tl-cut-zone';
+    zone.style.left = (from / clip.duration * 100) + '%';
+    zone.style.width = ((to - from) / clip.duration * 100) + '%';
+    track.appendChild(zone);
+  });
+  const list = document.getElementById('cuts-list-' + clipId);
+  if (!list) return;
+  list.innerHTML = '';
+  (cs.cuts || []).forEach(([from, to], i) => {
+    const row = document.createElement('div');
+    row.className = 'ctrl-row';
+    row.style.marginTop = '5px';
+    row.innerHTML = `<span style="color:#ff6b6b;font-size:11px;font-family:monospace">✂ ${fmtTime(from)} → ${fmtTime(to)}</span>
+      <button class="ctrl-btn red" style="padding:2px 8px;font-size:10px" onclick="removeCut('${clipId}',${i})">× видалити</button>`;
+    list.appendChild(row);
+  });
+}
+
+// ── TAG SECTIONS ──────────────────────────────────────────────────────────────
+function buildTagSections(clip) {
+  return `
+    <div id="sec-reconnect-${clip.id}" style="display:none">
+      <div class="sec reconnect">
+        <div class="sec-title red">⟳ RECONNECT — джерело моменту</div>
+        <div class="ctrl-row" style="margin-top:0">
+          <span class="ctrl-lbl">Від:</span>
+          <input class="ctrl-in" id="recon-from-${clip.id}" value="0:03">
+          <span class="ctrl-lbl">До:</span>
+          <input class="ctrl-in" id="recon-to-${clip.id}" value="0:05">
+          <button class="ctrl-btn" onclick="applyReconnectTiming('${clip.id}')">✓ Зберегти</button>
+        </div>
+      </div>
+    </div>
+    <div id="sec-thumb-${clip.id}" style="display:none">
+      <div class="sec thumb">
+        <div class="sec-title green">🖼 THUMBNAIL — кадр</div>
+        <div class="ctrl-row" style="margin-top:0">
+          <span class="ctrl-lbl">Секунда:</span>
+          <input class="ctrl-in" id="thumb-at-${clip.id}" value="0:00">
+          <button class="ctrl-btn" onclick="applyThumbAt('${clip.id}')">✓ Зберегти</button>
+          <button class="ctrl-btn" onclick="setThumbFromPlayhead('${clip.id}')">📍 З поточної позиції</button>
+        </div>
+      </div>
+    </div>
+    <div id="sec-short-${clip.id}" style="display:none">
+      <div class="sec shorts">
+        <div class="sec-title purple">🎬 SHORTS — режим</div>
+        <div class="mode-row">
+          <div class="mode-btn" data-mode="desktop" onclick="setShortMode('${clip.id}','desktop',this)">
+            <span class="mode-icon">🖥</span><span class="mode-lbl">Desktop</span>
+          </div>
+          <div class="mode-btn" data-mode="mobile" onclick="setShortMode('${clip.id}','mobile',this)">
+            <span class="mode-icon">📱</span><span class="mode-lbl">Mobile</span>
+          </div>
+          <div class="mode-btn" data-mode="split" onclick="setShortMode('${clip.id}','split',this)">
+            <span class="mode-icon">🎭</span><span class="mode-lbl">Split</span>
+          </div>
+        </div>
+        <div id="split-editor-${clip.id}" style="display:none">${buildSplitEditor(clip)}</div>
+      </div>
+    </div>`;
+}
+
+function buildSplitEditor(clip) {
+  return `
+    <div class="split-editor">
+      <div>
+        <div style="font-size:10px;color:#444;margin-bottom:6px">Тягни рамки: 📷 webcam (жовта) · 🎮 gameplay (зелена)</div>
+        <div class="split-canvas" id="canvas-${clip.id}">
+          <video id="canvas-vid-${clip.id}" src="${clip.videoPath}" preload="none"
+            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none"></video>
+          <div class="drag-box cam-box-el" id="cam-${clip.id}"
+            style="top:7%;right:3%;width:23%;height:36%;left:auto"
+            onmousedown="startBoxDrag(event,'${clip.id}','cam')">
+            <div class="box-label">📷 webcam (якір)</div>
+            <div class="resize-handle" onmousedown="startBoxResize(event,'${clip.id}')"></div>
+          </div>
+          <div class="drag-box game-box-el" id="game-${clip.id}"
+            style="bottom:5%;left:3%;width:67%;height:48%;top:auto"
+            onmousedown="startBoxDrag(event,'${clip.id}','game')">
+            <div class="box-label">🎮 gameplay</div>
+          </div>
+        </div>
+        <div class="coord-hint" id="coord-hint-${clip.id}">cam: — · gameplay: auto</div>
+        <button class="ctrl-btn" style="margin-top:7px;font-size:10px"
+          onclick="saveCamForStreamer('${clip.id}','${clip.streamer}')">💾 зберегти для ${clip.streamer}</button>
+      </div>
+      <div class="preview-col">
+        <div class="preview-lbl">9:16 preview</div>
+        <div class="sp-phone" id="phone-${clip.id}">
+          <div class="sp-cam" id="sp-cam-${clip.id}" draggable="true"
+            ondragstart="event.dataTransfer.setData('text','cam')"
+            style="height:38%">webcam</div>
+          <div class="sp-div" id="sp-div-${clip.id}"></div>
+          <div class="sp-game" id="sp-game-${clip.id}">gameplay</div>
+        </div>
+        <div class="drag-tip">↕ тягни webcam<br>щоб змінити позицію</div>
+      </div>
+    </div>`;
+}
+
+function syncTagSections(clipId) {
+  const cs = getClipState(clipId);
+  const isRecon = state.reconnect?.clipId === clipId;
+  const isThumb = state.thumbnail?.clipId === clipId;
+  const isShort = !!cs.short;
+  const secR = document.getElementById('sec-reconnect-' + clipId);
+  const secT = document.getElementById('sec-thumb-' + clipId);
+  const secS = document.getElementById('sec-short-' + clipId);
+  if (secR) secR.style.display = isRecon ? 'block' : 'none';
+  if (secT) {
+    secT.style.display = isThumb ? 'block' : 'none';
+    if (isThumb) { const inp = document.getElementById('thumb-at-' + clipId); if (inp) inp.value = fmtTime(state.thumbnail.at); }
+  }
+  if (secS) {
+    secS.style.display = isShort ? 'block' : 'none';
+    if (isShort && cs.short.mode) {
+      secS.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === cs.short.mode));
+      const splitEd = document.getElementById('split-editor-' + clipId);
+      if (splitEd) splitEd.style.display = cs.short.mode === 'split' ? 'block' : 'none';
+    }
+  }
+  if (isRecon && state.reconnect) {
+    const fromIn = document.getElementById('recon-from-' + clipId);
+    const toIn = document.getElementById('recon-to-' + clipId);
+    if (fromIn) fromIn.value = fmtTime(state.reconnect.from);
+    if (toIn) toIn.value = fmtTime(state.reconnect.to);
+  }
+}
+
+function setShortMode(clipId, mode, btn) {
+  const cs = getClipState(clipId);
+  if (!cs.short) cs.short = {};
+  cs.short.mode = mode;
+  const sec = document.getElementById('sec-short-' + clipId);
+  sec.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const splitEd = document.getElementById('split-editor-' + clipId);
+  if (splitEd) splitEd.style.display = mode === 'split' ? 'block' : 'none';
+  if (mode === 'split') {
+    const saved = getSavedCam(getClip(clipId)?.streamer || '');
+    if (saved) restoreCamBox(clipId, saved);
+    initCanvasVideo(clipId);
+  }
+  saveState();
+}
+
+function applyReconnectTiming(clipId) {
+  if (!state.reconnect || state.reconnect.clipId !== clipId) return;
+  state.reconnect.from = parseMmSs(document.getElementById('recon-from-' + clipId).value);
+  state.reconnect.to = parseMmSs(document.getElementById('recon-to-' + clipId).value);
+  saveState(); renderClipList();
+}
+
+function applyThumbAt(clipId) {
+  if (!state.thumbnail || state.thumbnail.clipId !== clipId) return;
+  state.thumbnail.at = parseMmSs(document.getElementById('thumb-at-' + clipId).value);
+  saveState(); renderClipList();
+}
+
+function setThumbFromPlayhead(clipId) {
+  const video = document.getElementById('vid-' + clipId);
+  if (!video || !state.thumbnail || state.thumbnail.clipId !== clipId) return;
+  state.thumbnail.at = +video.currentTime.toFixed(2);
+  const inp = document.getElementById('thumb-at-' + clipId);
+  if (inp) inp.value = fmtTime(state.thumbnail.at);
+  saveState(); renderClipList();
+}
+
+// ── SPLIT EDITOR ──────────────────────────────────────────────────────────────
+function startBoxDrag(e, clipId, boxType) {
+  if (e.target.classList.contains('resize-handle')) return;
+  e.preventDefault();
+  const canvas = document.getElementById('canvas-' + clipId);
+  const box = document.getElementById((boxType === 'cam' ? 'cam-' : 'game-') + clipId);
+  const rect = canvas.getBoundingClientRect();
+  const bRect = box.getBoundingClientRect();
+  const offX = e.clientX - bRect.left;
+  const offY = e.clientY - bRect.top;
+  const onMove = e => {
+    const x = Math.max(0, Math.min(rect.width - bRect.width, e.clientX - rect.left - offX));
+    const y = Math.max(0, Math.min(rect.height - bRect.height, e.clientY - rect.top - offY));
+    box.style.left = (x / rect.width * 100) + '%';
+    box.style.top = (y / rect.height * 100) + '%';
+    box.style.right = 'auto'; box.style.bottom = 'auto';
+    updateCoordHint(clipId);
+  };
+  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); saveState(); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function startBoxResize(e, clipId) {
+  e.preventDefault(); e.stopPropagation();
+  const canvas = document.getElementById('canvas-' + clipId);
+  const box = document.getElementById('cam-' + clipId);
+  const rect = canvas.getBoundingClientRect();
+  const startW = box.offsetWidth, startH = box.offsetHeight;
+  const startX = e.clientX, startY = e.clientY;
+  const onMove = e => {
+    const w = Math.max(30, Math.min(rect.width * 0.5, startW + (e.clientX - startX)));
+    const h = Math.max(20, Math.min(rect.height * 0.5, startH + (e.clientY - startY)));
+    box.style.width = (w / rect.width * 100) + '%';
+    box.style.height = (h / rect.height * 100) + '%';
+    updateCoordHint(clipId);
+  };
+  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); saveState(); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function getCamCoords(clipId) {
+  const canvas = document.getElementById('canvas-' + clipId);
+  const box = document.getElementById('cam-' + clipId);
+  if (!canvas || !box) return null;
+  const r = canvas.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  return [
+    +((b.left - r.left) / r.width).toFixed(3),
+    +((b.top - r.top) / r.height).toFixed(3),
+    +(b.width / r.width).toFixed(3),
+    +(b.height / r.height).toFixed(3)
+  ];
+}
+
+function updateCoordHint(clipId) {
+  const coords = getCamCoords(clipId);
+  if (!coords) return;
+  document.getElementById('coord-hint-' + clipId).textContent =
+    `cam: ${(coords[0]*100).toFixed(0)}% ${(coords[1]*100).toFixed(0)}% ${(coords[2]*100).toFixed(0)}% ${(coords[3]*100).toFixed(0)}% · gameplay: auto`;
+  const cs = getClipState(clipId);
+  if (cs.short) cs.short.webcam = coords;
+}
+
+function saveCamForStreamer(clipId, streamer) {
+  const coords = getCamCoords(clipId);
+  if (!coords) return;
+  const stored = JSON.parse(localStorage.getItem(CAM_KEY) || '{}');
+  stored[streamer] = coords;
+  localStorage.setItem(CAM_KEY, JSON.stringify(stored));
+}
+
+function getSavedCam(streamer) {
+  return JSON.parse(localStorage.getItem(CAM_KEY) || '{}')[streamer] || null;
+}
+
+function restoreCamBox(clipId, coords) {
+  const canvas = document.getElementById('canvas-' + clipId);
+  const box = document.getElementById('cam-' + clipId);
+  if (!canvas || !box) return;
+  box.style.left = (coords[0]*100)+'%'; box.style.top = (coords[1]*100)+'%';
+  box.style.width = (coords[2]*100)+'%'; box.style.height = (coords[3]*100)+'%';
+  box.style.right = 'auto'; box.style.bottom = 'auto';
+  const cs = getClipState(clipId);
+  if (cs.short) cs.short.webcam = coords;
+  updateCoordHint(clipId);
+}
+
+function initCanvasVideo(clipId) {
+  const vid = document.getElementById('canvas-vid-' + clipId);
+  const mainVid = document.getElementById('vid-' + clipId);
+  if (!vid || !mainVid) return;
+  vid.currentTime = mainVid.currentTime || 0;
+}
+
+// Phone drag-and-drop for cam position
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  const phone = e.target.closest('.sp-phone');
+  if (!phone) return;
+  e.preventDefault();
+  const clipId = phone.id.replace('phone-', '');
+  const rect = phone.getBoundingClientRect();
+  const mid = rect.top + rect.height / 2;
+  const camEl = document.getElementById('sp-cam-' + clipId);
+  const divEl = document.getElementById('sp-div-' + clipId);
+  const gameEl = document.getElementById('sp-game-' + clipId);
+  if (!camEl || !divEl || !gameEl) return;
+  phone.innerHTML = '';
+  if (e.clientY < mid) {
+    phone.appendChild(camEl); phone.appendChild(divEl); phone.appendChild(gameEl);
+    if (state.clips[clipId]?.short) state.clips[clipId].short.camPos = 'top';
+  } else {
+    phone.appendChild(gameEl); phone.appendChild(divEl); phone.appendChild(camEl);
+    if (state.clips[clipId]?.short) state.clips[clipId].short.camPos = 'bottom';
+  }
+  saveState();
+});
+
+// ── BENCH ─────────────────────────────────────────────────────────────────────
+function renderBench() {
+  const bench = CLIPS_DATA.bench;
+  document.getElementById('bench-label').textContent = `Bench — ще ${bench.length} кліпів`;
+  const body = document.getElementById('bench-body');
+  body.innerHTML = '';
+  const cats = {};
+  bench.forEach(clip => {
+    if (!cats[clip.category]) cats[clip.category] = [];
+    cats[clip.category].push(clip);
+  });
+  Object.entries(cats).sort((a,b) => a[0].localeCompare(b[0])).forEach(([cat, clips]) => {
+    const catEl = document.createElement('div');
+    catEl.className = 'bench-cat';
+    const safeId = cat.replace(/\W/g,'_');
+    catEl.innerHTML = `<div class="bench-cat-title">${cat} (${clips.length})</div>
+      <div class="bench-cards" id="bench-cat-${safeId}"></div>`;
+    body.appendChild(catEl);
+    const cardsEl = catEl.querySelector('.bench-cards');
+    clips.sort((a,b) => b.ddosScore - a.ddosScore).forEach(clip => cardsEl.appendChild(buildBenchCard(clip)));
+  });
+}
+
+function buildBenchCard(clip) {
+  const card = document.createElement('div');
+  card.className = 'bench-card';
+  card.dataset.clipId = clip.id;
+  card.innerHTML = `
+    <span class="bench-streamer">${clip.streamer}</span>
+    <span class="bench-score">${clip.ddosScore}</span>
+    <span class="bench-dur">${fmtTimeSec(clip.duration)}</span>
+    <button class="bench-add" onclick="addFromBench('${clip.id}')">+</button>`;
+  return card;
+}
+
+function addFromBench(clipId) {
+  if (state.order.includes(clipId)) return;
+  state.order.push(clipId);
+  const idx = CLIPS_DATA.bench.findIndex(c => c.id === clipId);
+  if (idx !== -1) { CLIPS_DATA.selected.push(CLIPS_DATA.bench.splice(idx, 1)[0]); }
+  saveState();
+  renderClipList();
+  renderBench();
+}
+
+function toggleBench(btn) {
+  const body = document.getElementById('bench-body');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  document.getElementById('bench-arrow').textContent = isOpen ? '▶' : '▼';
+}
+
+// ── TOPBAR ────────────────────────────────────────────────────────────────────
+function updateTopbar() {
+  document.getElementById('count-display').textContent =
+    state.order.length + ' / ' + (CLIPS_DATA.selected.length + CLIPS_DATA.bench.length);
+  const shortCount = state.order.filter(id => !!state.clips[id]?.short).length;
+  document.getElementById('shorts-display').textContent = shortCount;
+  const reconBadge = document.getElementById('reconnect-badge');
+  if (state.reconnect) {
+    reconBadge.style.display = '';
+    document.getElementById('reconnect-display').textContent =
+      `${getClip(state.reconnect.clipId)?.streamer || '?'} ${fmtTime(state.reconnect.from)}–${fmtTime(state.reconnect.to)}`;
+  } else { reconBadge.style.display = 'none'; }
+  const thumbBadge = document.getElementById('thumb-badge');
+  if (state.thumbnail) {
+    thumbBadge.style.display = '';
+    document.getElementById('thumb-display').textContent =
+      `${getClip(state.thumbnail.clipId)?.streamer || '?'} ${fmtTime(state.thumbnail.at)}`;
+  } else { thumbBadge.style.display = 'none'; }
+}
+
+function updateDuration() {
+  let total = 1.25 + 1.25;
+  const reconCount = Math.max(0, Math.floor(state.order.length / 3) - 1);
+  total += reconCount;
+  state.order.forEach(clipId => {
+    const clip = getClip(clipId);
+    const cs = state.clips[clipId] || {};
+    if (!clip) return;
+    const inT = cs.trimIn ?? 0;
+    const outT = cs.trimOut ?? clip.duration;
+    let dur = outT - inT;
+    (cs.cuts || []).forEach(([from, to]) => {
+      const cf = Math.max(from, inT), ct = Math.min(to, outT);
+      if (ct > cf) dur -= (ct - cf);
+    });
+    total += Math.max(0, dur);
+  });
+  const m = Math.floor(total / 60);
+  const s = Math.round(total % 60).toString().padStart(2, '0');
+  document.getElementById('dur-display').textContent = `~${m}:${s}`;
+}
+
+// ── JSON GENERATOR ────────────────────────────────────────────────────────────
+function buildJSON() {
+  const out = {
+    runId: CLIPS_DATA.runId,
+    clipOrder: state.order,
+    reconnect: state.reconnect || null,
+    thumbnail: state.thumbnail || null,
+    clips: {}
+  };
+  state.order.forEach(clipId => {
+    const cs = state.clips[clipId] || {};
+    const entry = {};
+    if (cs.trimIn !== undefined || cs.trimOut !== undefined) {
+      entry.trim = {};
+      if (cs.trimIn !== undefined) entry.trim.in = +cs.trimIn.toFixed(2);
+      if (cs.trimOut !== undefined) entry.trim.out = +cs.trimOut.toFixed(2);
+    }
+    if (cs.cuts && cs.cuts.length > 0) entry.cuts = cs.cuts;
+    if (cs.short) entry.short = cs.short;
+    if (Object.keys(entry).length > 0) out.clips[clipId] = entry;
+  });
+  return out;
+}
+
+function updatePrompt() {
+  document.getElementById('prompt-code').textContent = JSON.stringify(buildJSON(), null, 2);
+}
+
+function copyPrompt() {
+  const json = buildJSON();
+  const text = `Editorial decisions for /ddos resume — paste this to Claude:\n\n${JSON.stringify(json, null, 2)}`;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.btn-copy');
+    const origText = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = origText; }, 2000);
+  });
+}
+</script>
+</body>
+</html>
