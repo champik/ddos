@@ -4,66 +4,24 @@
 
 ---
 
-## TRIM — Silence Detection + Re-encode
+## APPLY_EDITORIAL — Обробка кліпів за editorial.json
 
 ```bash
-node scripts/progress.js "projects/<runId>" 6 "Обрізка кліпів (FFmpeg trim + loudnorm)"
+node scripts/progress.js "projects/<runId>" 6 "Обробка кліпів (editorial cuts)"
 ```
-
-> **TRIM запускається ДО PLAN** — trimить кліпи incremental батчами поки не набереться
-> 12–15 хв чистого контенту. Так plan завжди має точні post-trim тривалості.
 
 ```bash
-node scripts/trim-clips.js "projects/<runId>" --incremental
+node scripts/apply-editorial.js "projects/<runId>"
 ```
 
-**Incremental логіка:**
-- Кліпи відсортовані за ddosScore (scored-clips.json)
-- Batch 1: топ **30** кліпів
-- Якщо сума clean durations < 720s → trim ще **10**, повторити
-- Зупинитись якщо:
-  - сума ≥ 720s (ціль досягнута), або
-  - наступний кліп ddosScore < **45** (підлога якості)
-- Після completion: всі trimmed кліпи доступні для plan з реальними тривалостями
+Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує `processed/<clipId>/clean.mp4` з:
+- `-ss trim.in -to trim.out` (якщо задано)
+- FFmpeg filter_complex з множинними сегментами (якщо є `cuts[]`)
+- Завжди: scale 1920×1080, loudnorm, libx264, 30fps, aac 192k, -ac 2
 
-Для кожного кліпу з черги:
+Якщо `clean.mp4` вже існує — пропустити (кешування).
 
-### 1. Знайти точки обрізання через silencedetect
-
-Шлях до завантаженого файлу: читати з `clips/downloaded-clips.json` → `clip.localPath` (не конструювати з clipId).
-
-```bash
-LOCAL_PATH=$(node -e "const c=require('./clips/downloaded-clips.json').find(c=>c.id==='<clipId>'); console.log(c.localPath)")
-SILENCE_OUT=$(ffmpeg -i "$LOCAL_PATH" \
-  -af "silencedetect=noise=-40dB:duration=0.3" \
-  -f null - 2>&1)
-```
-
-Парсинг:
-- `START` = перше `silence_end: X.XX` → кінець початкової тиші = початок контенту
-- `END` = останнє `silence_start: Y.YY` → початок кінцевої тиші = кінець контенту
-
-Якщо silencedetect не знайшов жодного silence event → `START=0`, `END=<full duration>` (повний кліп без обрізання).
-
-### 2. Re-encode з виправленими timestamps (НІКОЛИ не використовувати -c copy після -ss)
-
-```bash
-# LOCAL_PATH вже встановлено вище з downloaded-clips.json → clip.localPath
-
-ffmpeg -i "$LOCAL_PATH" -ss $START -to $END \
-  -vf "setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
-  -af "asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=11" \
-  -c:v libx264 -preset fast -crf 22 \
-  -c:a aac -b:a 192k -ar 48000 \
-  -r 30 \
-  -y "processed/<clipId>/clean.mp4"
-```
-
-Якщо `processed/<clipId>/clean.mp4` вже існує → пропустити.
-
-Видалити `processed/<clipId>/normalized.mp4` якщо існує (більше не потрібен — loudnorm вбудовано).
-
-Оновити `state.stages.trim = "done"`.
+Оновити `state.stages.trim = "done"` (для сумісності з downstream).
 
 ---
 
