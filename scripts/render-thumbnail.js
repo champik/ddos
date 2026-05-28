@@ -1,22 +1,17 @@
 'use strict';
+// Usage: node scripts/render-thumbnail.js <framePath> <headlineText> <outPath> [--size <px>]
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-async function render(framePath, episodeNumber, headline, outPath) {
+async function render(framePath, headline, outPath, fontSize) {
   let html = fs.readFileSync('assets/thumbnail-template/thumbnail.html', 'utf8');
 
   const frameB64 = fs.readFileSync(framePath).toString('base64');
   const frameDataUrl = 'data:image/png;base64,' + frameB64;
 
-  const logoB64 = fs.readFileSync('assets/thumbnail-template/logo.svg').toString('base64');
-  const logoDataUrl = 'data:image/svg+xml;base64,' + logoB64;
-
-  html = html.replace(
-    /var THUMB_CONFIG = \{[^}]+\}/,
-    `var THUMB_CONFIG = { ep: ${episodeNumber}, headline: '${headline.replace(/'/g, "\\'")}', img: '${frameDataUrl}', variant: 'A' }`
-  );
-  html = html.replace('./logo.svg', logoDataUrl);
+  const config = `var THUMB_CONFIG = { headline: '${headline.replace(/'/g, "\\'")}', img: '${frameDataUrl}'${fontSize ? ', fontSize: ' + fontSize : ''} }`;
+  html = html.replace(/var THUMB_CONFIG = \{[^}]+\}/, config);
 
   const tmpHtml = outPath.replace('.png', '_tmp.html');
   fs.writeFileSync(tmpHtml, html);
@@ -36,8 +31,16 @@ async function render(framePath, episodeNumber, headline, outPath) {
   console.log('Thumbnail:', outPath);
 }
 
-const [,, framePath, ep, headline, outPath] = process.argv;
-render(framePath, parseInt(ep), headline, outPath).catch(e => {
+const args = process.argv.slice(2);
+const sizeIdx = args.indexOf('--size');
+const fontSize = sizeIdx !== -1 ? parseInt(args[sizeIdx + 1]) : null;
+const [framePath, headline, outPath] = args.filter((_, i) => i !== sizeIdx && i !== sizeIdx + 1);
+
+if (!framePath || !headline || !outPath) {
+  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>]');
+  process.exit(1);
+}
+render(framePath, headline, outPath, fontSize).catch(e => {
   console.error('ERROR:', e.message);
   process.exit(1);
 });

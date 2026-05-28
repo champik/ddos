@@ -5,7 +5,7 @@
     <title>DDOS Thumbnail</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=JetBrains+Mono:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -23,13 +23,11 @@
         font-family: 'Anton', sans-serif;
       }
 
-      /* ─── shared base ─── */
       #frame {
         position: absolute;
         inset: 0;
       }
 
-      /* Background image (full bleed screenshot) */
       #bg {
         position: absolute;
         inset: 0;
@@ -38,7 +36,6 @@
         background-color: #1a1a1e;
       }
 
-      /* Caution tape strip — always top */
       .ct {
         position: absolute;
         left: 0;
@@ -47,14 +44,9 @@
         z-index: 10;
         background: repeating-linear-gradient(-45deg, #f5ff3d 0 16px, #0e0e10 16px 32px);
       }
-      .ct-top {
-        top: 0;
-      }
-      .ct-bottom {
-        bottom: 0;
-      }
+      .ct-top    { top: 0; }
+      .ct-bottom { bottom: 0; }
 
-      /* ─── VARIANT A · Impact ─── */
       #va {
         position: absolute;
         inset: 0;
@@ -66,47 +58,13 @@
         inset: 0;
         background: linear-gradient(
           180deg,
-          rgba(14, 14, 16, 0) 0%,
-          rgba(14, 14, 16, 0.1) 30%,
+          rgba(14, 14, 16, 0)    0%,
+          rgba(14, 14, 16, 0.1)  30%,
           rgba(14, 14, 16, 0.65) 62%,
           rgba(14, 14, 16, 0.95) 100%
         );
       }
 
-      /* Episode badge — top-right */
-      #va .ep-badge {
-        position: absolute;
-        top: 46px;
-        right: 28px;
-        z-index: 12;
-        display: flex;
-        align-items: center;
-        gap: 0;
-      }
-      #va .ep-num {
-        background: #f5ff3d;
-        color: #0e0e10;
-        font-family: 'Anton', sans-serif;
-        font-size: 96px;
-        letter-spacing: -1px;
-        padding: 3px 12px 2px;
-        line-height: 1.1;
-      }
-
-      /* Game/streamer tag */
-      #va .tag {
-        position: absolute;
-        left: 44px;
-        bottom: 132px;
-        z-index: 12;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 20px;
-        letter-spacing: 3px;
-        color: rgba(245, 255, 61, 0.9);
-        text-transform: uppercase;
-      }
-
-      /* Main headline */
       #va .headline {
         position: absolute;
         left: 40px;
@@ -121,18 +79,6 @@
           5px 5px 0 rgba(14, 14, 16, 0.9),
           0 0 40px rgba(14, 14, 16, 0.5);
       }
-
-      /* DDOS watermark — bottom-right */
-      #va .wm {
-        position: absolute;
-        top: 46px;
-        left: 32px;
-        z-index: 12;
-      }
-
-      #va .wm img {
-        max-width: 250px;
-      }
     </style>
   </head>
   <body>
@@ -141,52 +87,41 @@
       <div class="ct ct-top"></div>
       <div class="ct ct-bottom"></div>
 
-      <!-- VARIANT A -->
       <div id="va">
         <div class="grad"></div>
-        <div class="ep-badge">
-          <div class="ep-num" id="va-ep">#284</div>
-        </div>
         <div class="headline" id="va-hl">HE LANDED IT</div>
-        <div class="wm"><img src="./logo.svg" alt="DDOS"></div>
       </div>
+    </div>
 
     <script>
       var THUMB_CONFIG = {
-        ep: 284,
         headline: 'HE LANDED IT',
-        img: 'https://learn.zoner.com/wp-content/uploads/2025/04/zoner-ai-image-creator.jpg', // URL or file:// path to screenshot
-        variant: 'A',
+        img: '',
+        fontSize: null,  // optional override in px
       };
+
+      function hlSize(len) {
+        if (len <= 8)  return 320;
+        if (len >= 20) return 135;
+        return Math.round(320 - ((320 - 135) * (len - 8)) / 12);
+      }
 
       function renderThumb() {
         var c = THUMB_CONFIG;
-        var ep = '#' + c.ep;
         var hl = (c.headline || '').toUpperCase();
-        var sub = (c.sub || '').toUpperCase();
-        var variant = (c.variant || 'A').toUpperCase();
 
-        // Set background image
         if (c.img) {
           document.getElementById('bg').style.backgroundImage = "url('" + c.img + "')";
         }
 
-        // Calculate headline font size based on length
-        function hlSize(len, max, min) {
-          if (len <= 8) return max;
-          if (len >= 20) return min;
-          return Math.round(max - ((max - min) * (len - 8)) / 12);
-        }
-
         var el = document.getElementById('va');
         el.style.display = 'block';
-        document.getElementById('va-ep').textContent = ep;
+
         var hlEl = document.getElementById('va-hl');
         hlEl.textContent = hl;
-        hlEl.style.fontSize = hlSize(hl.length, 320, 135) + 'px';
+        hlEl.style.fontSize = (c.fontSize || hlSize(hl.length)) + 'px';
       }
 
-      // Auto-render with default config on page load
       renderThumb();
     </script>
   </body>
