@@ -1,417 +1,348 @@
-'use strict';
-// ingest-run.js — Twitch ingest + filter + prescore + download
-// Usage: node scripts/ingest-run.js <projectFolder> [--hours N]
+#!/usr/bin/env node
+// DDOS Pipeline — INGEST + FILTER + PRE-SCORE
+// Usage: node scripts/run-ingest.js <runId> <token> [--hours N]
 
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { execSync, exec } = require('child_process');
-const { step } = require('./progress');
 
-// ── args ─────────────────────────────────────────────────────────────
-const projectFolder = process.argv[2];
-if (!projectFolder) { console.error('Usage: node ingest-run.js <projectFolder>'); process.exit(1); }
-const hoursArg = process.argv.indexOf('--hours');
-const HOURS = hoursArg !== -1 ? parseInt(process.argv[hoursArg + 1]) : 24;
+const [,, runId, TOKEN, ...flags] = process.argv;
+const hoursArg = flags.indexOf('--hours');
+const HOURS = hoursArg >= 0 ? parseInt(flags[hoursArg + 1]) : 24;
 
-const PROJECT_DIR = path.join('projects', projectFolder);
-const CLIPS_DIR = path.join(PROJECT_DIR, 'clips');
-const DOWNLOADS_DIR = path.join(PROJECT_DIR, 'downloads');
+const RUN_DIR = path.join('projects', runId);
+const CLIPS_DIR = path.join(RUN_DIR, 'clips');
 
-// ── env ───────────────────────────────────────────────────────────────
-// Load .env manually (dotenv may not be installed)
-const envPath = path.join(process.cwd(), '.env');
-if (fs.existsSync(envPath)) {
-  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
-    const m = line.match(/^([^#=]+)=(.*)$/);
-    if (m) process.env[m[1].trim()] = m[2].trim();
-  });
+function readEnv() {
+  const env = fs.readFileSync('.env', 'utf8');
+  for (const line of env.split('\n')) {
+    const idx = line.indexOf('=');
+    if (idx > 0) process.env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+  }
 }
-const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
-const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
+readEnv();
 
-// ── helpers ───────────────────────────────────────────────────────────
-function httpsGet(url, headers = {}) {
+const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
+
+function httpsGet(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, (res) => {
+    const u = new URL(url);
+    const req = https.request({
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: 'GET',
+      headers: {
+        'Client-ID': CLIENT_ID,
+        'Authorization': `Bearer ${TOKEN}`
+      }
+    }, res => {
       let data = '';
       res.on('data', d => data += d);
       res.on('end', () => {
         try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0, 200))); }
+        catch(e) { reject(new Error('JSON parse error: ' + data.slice(0, 200))); }
       });
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
-
-function httpsPost(url, body) {
-  return new Promise((resolve, reject) => {
-    const data = Buffer.from(body);
-    const u = new URL(url);
-    const options = {
-      hostname: u.hostname, path: u.pathname, method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': data.length }
-    };
-    const req = https.request(options, (res) => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.write(data);
     req.end();
   });
 }
 
-function updateState(updates) {
-  const statePath = path.join(PROJECT_DIR, 'state.json');
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-  Object.assign(state, updates);
-  if (updates.stages) Object.assign(state.stages, updates.stages);
-  if (updates.counts) Object.assign(state.counts, updates.counts);
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-  return state;
-}
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ── core categories ───────────────────────────────────────────────────
-const CORE_IDS = new Set(['509658', '509672', '26936', '509667', '509671', '116747788', '417752']);
-const GAMBLING_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker'];
-const ORG_ACCOUNTS = new Set([
-  'esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2',
-  'weplay_esports','faceit','dreamhack','esltv','iem'
-]);
-const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
+async function getTopGames() {
+  const data = await httpsGet('https://api.twitch.tv/helix/games/top?first=20');
+  return data.data || [];
+}
 
-// ─────────────────────────────────────────────────────────────────────
+async function fetchClipsPage(gameId, startedAt, after) {
+  let url = `https://api.twitch.tv/helix/clips?game_id=${gameId}&started_at=${startedAt}&first=20`;
+  if (after) url += `&after=${after}`;
+  return httpsGet(url);
+}
+
+async function fetchClipsForCategory(gameId, startedAt) {
+  const clips = [];
+  let cursor = null;
+
+  // Top range: page 1
+  const page1 = await fetchClipsPage(gameId, startedAt, null);
+  if (page1.data) clips.push(...page1.data);
+  cursor = page1.pagination?.cursor;
+  await sleep(80);
+
+  // Mid range: skip 1 page, take 2
+  if (cursor) {
+    const skip1 = await fetchClipsPage(gameId, startedAt, cursor);
+    cursor = skip1.pagination?.cursor;
+    await sleep(80);
+    if (cursor) {
+      const mid1 = await fetchClipsPage(gameId, startedAt, cursor);
+      if (mid1.data) clips.push(...mid1.data);
+      cursor = mid1.pagination?.cursor;
+      await sleep(80);
+      if (cursor) {
+        const mid2 = await fetchClipsPage(gameId, startedAt, cursor);
+        if (mid2.data) clips.push(...mid2.data);
+        cursor = mid2.pagination?.cursor;
+        await sleep(80);
+      }
+    }
+  }
+
+  return clips;
+}
+
 async function main() {
-  step(PROJECT_DIR, 1, 'Отримую кліпи з Twitch');
-  console.log(`  Project: ${projectFolder} | Hours: ${HOURS}`);
+  console.log(`[INGEST] runId=${runId} hours=${HOURS}`);
 
-  // ── 1. Get Twitch token ───────────────────────────────────────────
-  console.log('\n[1/4] Отримую Twitch token...');
-  const tokenRes = await httpsPost(
-    'https://id.twitch.tv/oauth2/token',
-    `client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials`
-  );
-  const TOKEN = tokenRes.access_token;
-  if (!TOKEN) { console.error('Failed to get Twitch token:', tokenRes); process.exit(1); }
-  console.log('  Token: OK');
+  const startedAt = new Date(Date.now() - HOURS * 3600 * 1000).toISOString();
 
-  const AUTH_HEADERS = { 'Client-ID': CLIENT_ID, 'Authorization': `Bearer ${TOKEN}` };
-
-  // ── 2. Get categories ─────────────────────────────────────────────
-  console.log('\n[2/4] Отримую категорії...');
-  const coreCategories = [
+  // Core categories
+  const CORE = [
     { id: '509658', name: 'Just Chatting' },
     { id: '509672', name: 'IRL' },
+    { id: '32399',  name: 'Counter-Strike 2' },
+    { id: '516575', name: 'Valorant' },
     { id: '26936',  name: 'Music' },
     { id: '509667', name: 'Food & Drink' },
     { id: '509671', name: 'Fitness & Health' },
     { id: '116747788', name: 'Pools, Hot Tubs, and Beaches' },
     { id: '417752', name: 'Talk Shows & Podcasts' },
   ];
+  const CORE_IDS = new Set(CORE.map(c => c.id));
 
-  const topGamesRes = await httpsGet(
-    'https://api.twitch.tv/helix/games/top?first=30',
-    AUTH_HEADERS
-  );
-  const dynamicCategories = (topGamesRes.data || [])
-    .filter(g => {
-      if (CORE_IDS.has(g.id)) return false;
-      const nameLower = g.name.toLowerCase();
-      if (GAMBLING_KEYWORDS.some(k => nameLower.includes(k))) return false;
-      return true;
-    })
-    .slice(0, 20)
+  // Dynamic categories
+  const GAMBLING_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker'];
+  console.log('[INGEST] Fetching top games...');
+  const topGames = await getTopGames();
+  const dynamic = topGames
+    .filter(g => !CORE_IDS.has(g.id) && !GAMBLING_KEYWORDS.some(k => g.name.toLowerCase().includes(k)))
+    .slice(0, 12)
     .map(g => ({ id: g.id, name: g.name }));
 
-  const allCategories = [...coreCategories, ...dynamicCategories];
-  console.log(`  Categories: ${allCategories.length} (core: ${coreCategories.length}, dynamic: ${dynamicCategories.length})`);
-  allCategories.forEach(c => console.log(`    • ${c.name} (${c.id})`));
+  console.log(`[INGEST] Dynamic categories (${dynamic.length}): ${dynamic.map(d => d.name).join(', ')}`);
 
-  // ── 3. Fetch clips ────────────────────────────────────────────────
-  console.log('\n[3/4] Завантажую кліпи...');
-  const startedAt = new Date(Date.now() - HOURS * 3600 * 1000).toISOString();
+  const allCategories = [...CORE, ...dynamic];
   const allClips = [];
-  const seenIds = new Set();
-
-  async function fetchPage(gameId, gameName, after = null) {
-    let url = `https://api.twitch.tv/helix/clips?game_id=${gameId}&started_at=${encodeURIComponent(startedAt)}&first=20`;
-    if (after) url += `&after=${after}`;
-    try {
-      const res = await httpsGet(url, AUTH_HEADERS);
-      const clips = (res.data || []).map(c => ({ ...c, game_id: gameId, game_name: gameName }));
-      const cursor = res.pagination?.cursor;
-      return { clips, cursor };
-    } catch (e) {
-      console.warn(`    WARN: Failed to fetch ${gameName}: ${e.message}`);
-      return { clips: [], cursor: null };
-    }
-  }
-
-  async function skipAndFetch(gameId, gameName, skipPages, fetchPages) {
-    let cursor = null;
-    for (let i = 0; i < skipPages; i++) {
-      const r = await fetchPage(gameId, gameName, cursor);
-      cursor = r.cursor;
-      if (!cursor) return [];
-      await sleep(100);
-    }
-    const clips = [];
-    for (let i = 0; i < fetchPages; i++) {
-      const r = await fetchPage(gameId, gameName, cursor);
-      clips.push(...r.clips);
-      cursor = r.cursor;
-      if (!cursor) break;
-      await sleep(100);
-    }
-    return clips;
-  }
-
-  // fixed gem categories for deep-range fetching (JC + IRL + Music)
-  const gemCatIds = new Set(['509658', '509672', '26936']);
+  const seen = new Set();
 
   for (const cat of allCategories) {
-    process.stdout.write(`    ${cat.name}...`);
-
-    // Top range: 1 page
-    const top = await fetchPage(cat.id, cat.name);
-    top.clips.forEach(c => { if (!seenIds.has(c.id)) { seenIds.add(c.id); allClips.push(c); } });
-    await sleep(150);
-
-    // Mid range: skip 1, fetch 2
-    const mid = await skipAndFetch(cat.id, cat.name, 1, 2);
-    mid.forEach(c => { if (!seenIds.has(c.id)) { seenIds.add(c.id); allClips.push(c); } });
-    await sleep(150);
-
-    // Hidden gems: skip 3, fetch 1 (only for gem categories)
-    if (gemCatIds.has(cat.id)) {
-      const gems = await skipAndFetch(cat.id, cat.name, 3, 1);
-      gems.forEach(c => { if (!seenIds.has(c.id)) { seenIds.add(c.id); allClips.push(c); } });
-      await sleep(150);
+    console.log(`[INGEST] Fetching ${cat.name} (${cat.id})...`);
+    try {
+      const clips = await fetchClipsForCategory(cat.id, startedAt);
+      let added = 0;
+      for (const c of clips) {
+        if (!seen.has(c.id)) {
+          seen.add(c.id);
+          allClips.push({ ...c, game_id: cat.id, game_name: cat.name });
+          added++;
+        }
+      }
+      console.log(`  → ${clips.length} fetched, ${added} new (total: ${allClips.length})`);
+    } catch(e) {
+      console.error(`  [ERROR] ${cat.name}: ${e.message}`);
     }
-
-    console.log(` ${allClips.length} total`);
+    await sleep(150);
   }
 
-  console.log(`\n  Raw clips: ${allClips.length}`);
-  fs.writeFileSync(path.join(CLIPS_DIR, 'raw-clips.json'), JSON.stringify(allClips, null, 2));
-  updateState({ counts: { raw: allClips.length } });
+  // Hidden gems: 4 random categories, skip 3 pages
+  const gemCats = [...allCategories].sort(() => Math.random() - 0.5).slice(0, 4);
+  for (const cat of gemCats) {
+    console.log(`[INGEST] Hidden gems: ${cat.name}...`);
+    try {
+      // Get 3 cursors to skip
+      let cursor = null;
+      for (let i = 0; i < 3; i++) {
+        const p = await fetchClipsPage(cat.id, startedAt, cursor);
+        cursor = p.pagination?.cursor;
+        await sleep(80);
+        if (!cursor) break;
+      }
+      if (cursor) {
+        const gems = await fetchClipsPage(cat.id, startedAt, cursor);
+        let added = 0;
+        for (const c of (gems.data || [])) {
+          if (!seen.has(c.id)) {
+            seen.add(c.id);
+            allClips.push({ ...c, game_id: cat.id, game_name: cat.name });
+            added++;
+          }
+        }
+        console.log(`  → ${added} gems added`);
+      }
+    } catch(e) {
+      console.error(`  [ERROR] gems ${cat.name}: ${e.message}`);
+    }
+    await sleep(150);
+  }
 
-  // ── 4. FILTER ────────────────────────────────────────────────────
-  step(PROJECT_DIR, 2, 'Фільтрація та pre-score');
-  console.log('\n[FILTER] Фільтрую кліпи...');
+  console.log(`[INGEST] Total raw clips: ${allClips.length}`);
+  fs.writeFileSync(path.join(CLIPS_DIR, 'raw-clips.json'), JSON.stringify(allClips, null, 2));
+
+  // Update state
+  const state = JSON.parse(fs.readFileSync(path.join(RUN_DIR, 'state.json'), 'utf8'));
+  state.counts.raw = allClips.length;
+  state.stages.ingest = 'done';
+  state.stages.filter = 'running';
+  fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2));
+
+  console.log('[INGEST] Done. raw-clips.json saved.');
+
+  // ---- FILTER ----
+  console.log('[FILTER] Starting...');
+
+  const ORG_BLACKLIST = new Set([
+    'esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2',
+    'weplay_esports','faceit','dreamhack','esltv','iem'
+  ]);
+  const STREAMER_BLACKLIST = new Set(['lyasyaa']);
+  const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
+  const ASIAN_LANGS = new Set(['ja','ko','zh','th']);
+  const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
+  const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker'];
 
   const filtered = [];
   const rejected = [];
-  const ASIAN_LANGS = new Set(['ja', 'ko', 'zh', 'th']);
-
-  function rejectClip(clip, reason) {
-    rejected.push({ ...clip, rejectReason: reason });
-  }
+  let asianBest = null;
 
   for (const clip of allClips) {
-    const lang = clip.language || '';
+    const lang = (clip.language || '').toLowerCase();
     const title = (clip.title || '').toLowerCase();
-    const gameName = (clip.game_name || '').toLowerCase();
     const broadcaster = (clip.broadcaster_name || '').toLowerCase();
+    const gameName = (clip.game_name || '').toLowerCase();
 
-    if (lang === 'ru') { rejectClip(clip, 'excluded_language'); continue; }
-    if (RU_KEYWORDS.some(k => title.includes(k))) { rejectClip(clip, 'ru_keyword'); continue; }
-    if (ORG_ACCOUNTS.has(broadcaster)) { rejectClip(clip, 'tournament_official'); continue; }
-    if ([' major',' grand final','championship',' tournament','qualifier'].some(k => title.includes(k))) {
-      rejectClip(clip, 'tournament_event'); continue;
+    let rejectReason = null;
+
+    if (lang === 'ru') rejectReason = 'excluded_language';
+    else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
+    else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
+    else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
+    else if (TOURNAMENT_KEYWORDS.some(k => title.includes(k))) rejectReason = 'tournament_event';
+    else if (GAMBLING_NAMES.some(k => gameName.includes(k))) rejectReason = 'gambling';
+    else if (clip.duration < 6 || clip.duration > 90) rejectReason = 'duration';
+    else if (ASIAN_LANGS.has(lang)) rejectReason = 'asian_language';
+
+    if (rejectReason) {
+      rejected.push({ ...clip, rejectReason });
+    } else {
+      filtered.push(clip);
     }
-    if (GAMBLING_KEYWORDS.some(k => gameName.includes(k))) { rejectClip(clip, 'gambling'); continue; }
-    if (clip.duration < 6 || clip.duration > 90) { rejectClip(clip, 'duration'); continue; }
-    if (broadcaster === 'lyasyaa') { rejectClip(clip, 'blacklist'); continue; }
-
-    if (ASIAN_LANGS.has(lang)) { rejectClip(clip, 'asian_language'); continue; }
-
-    filtered.push(clip);
   }
 
-  console.log(`  Filtered: ${filtered.length} (rejected: ${rejected.length})`);
+  // Asian language exception: keep best 1 if visual/international
+  // (skip auto-selection here — just keep the filtered list clean)
+
+  console.log(`[FILTER] filtered: ${filtered.length}, rejected: ${rejected.length}`);
   fs.writeFileSync(path.join(CLIPS_DIR, 'filtered-clips.json'), JSON.stringify(filtered, null, 2));
   fs.writeFileSync(path.join(CLIPS_DIR, 'rejected-clips.json'), JSON.stringify(rejected, null, 2));
-  updateState({ stages: { ingest: 'done', filter: 'done' }, counts: { filtered: filtered.length } });
 
-  // ── 5. VIRALITY — розрахунок для всіх відфільтрованих кліпів ────
-  console.log('\n[VIRALITY] Отримую статистику стрімерів...');
-  const { fetchStreamerStats } = require('./fetch-streamer-stats');
-  const uniqueBroadcasters = [...new Set(filtered.map(c => c.broadcaster_name))];
-  const statsMap = await fetchStreamerStats(uniqueBroadcasters, TOKEN, CLIENT_ID);
+  state.counts.filtered = filtered.length;
+  state.stages.filter = 'done';
+  state.stages.prescore = 'running';
+  fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2));
 
-  const withVirality = filtered.map(clip => {
-    const avgViewers = statsMap.get(clip.broadcaster_name) || 1000;
-    const hoursAlive = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 1);
+  // ---- PRE-SCORE ----
+  console.log('[PRE-SCORE] Calculating scores...');
+
+  const CORE_IDS_ARR = ['509658','509672','26936','509667','509671','116747788','417752'];
+
+  // Pass 1: broadcaster max views
+  const broadcasterMaxViews = new Map();
+  for (const clip of filtered) {
+    const cur = broadcasterMaxViews.get(clip.broadcaster_name) || 0;
+    if (clip.view_count > cur) broadcasterMaxViews.set(clip.broadcaster_name, clip.view_count);
+  }
+
+  function calcPreScore(clip, seenStreamers, seenCategories) {
+    const hoursAlive = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5);
     const velocity = clip.view_count / hoursAlive;
     const velocityScore = Math.min(100, (Math.log10(velocity + 1) / Math.log10(5000)) * 100);
-    const viralityRatio = Math.round((clip.view_count / hoursAlive / avgViewers) * 1000) / 1000;
 
-    // Language multiplier: EN = base, UK = slight penalty, other = heavy penalty.
-    // Viral bypass: якщо velocityScore > 85 — мова не важлива, момент сам себе продає.
-    const lang = clip.language || '';
-    const isViral = velocityScore > 85;
-    const langMult = lang === 'en' ? 1.0 : lang === 'uk' ? 0.85 : (isViral ? 1.0 : 0.15);
-    const sortScore = viralityRatio * langMult;
+    const maxViews = broadcasterMaxViews.get(clip.broadcaster_name) || clip.view_count;
+    const ratioScore = Math.min(100, (clip.view_count / Math.max(maxViews, 1)) * 100);
 
-    return { ...clip, viralityRatio, velocityScore, sortScore };
-  });
-  console.log(`  Virality calculated for ${withVirality.length} clips`);
+    const categoryScore = CORE_IDS_ARR.includes(clip.game_id) ? 88 : 60;
 
-  // ── 6. DOWNLOAD SELECTION — 50 JC/IRL + 15 Specialty + 35 Gaming ───────
-  const JC_IRL_IDS     = new Set(['509658', '509672']);
-  const SPECIALTY_IDS  = new Set(['26936', '509667', '509671', '116747788', '417752']);
-  const MAX_PER_STREAMER      = 3;
-  const MAX_PER_GAME          = 5;
-  const MAX_PER_SPECIALTY_CAT = 5;
-  const MAX_NON_EN            = 10; // max non-EN (крім uk) кліпів по всіх бакетах разом
+    const d = clip.duration;
+    const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-  const selectedIds   = new Set();
-  const streamerCount = new Map();
-  const gameCount     = new Map();
-  let   nonEnCount    = 0;
+    const isViralLang = velocityScore > 85;
+    const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
+    const languageScore = isViralLang ? 100 : rawLangScore;
 
-  function isNonEn(clip) {
-    const lang = clip.language || '';
-    return lang !== 'en' && lang !== 'uk';
+    const title = (clip.title || '').toLowerCase();
+    const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
+
+    const baseScore = (
+      velocityScore * 0.25 +
+      ratioScore    * 0.15 +
+      categoryScore * 0.25 +
+      durationScore * 0.20 +
+      languageScore * 0.15
+    ) - riskPenalty;
+
+    const streamerCount = seenStreamers.get(clip.broadcaster_name) || 0;
+    const categoryCount = seenCategories.get(clip.game_id) || 0;
+    const streamerMult  = streamerCount === 0 ? 1.0 : streamerCount === 1 ? 0.85 : 0.70;
+    const categoryMult  = categoryCount < 5  ? 1.0 : categoryCount < 10  ? 0.90 : 0.80;
+
+    const isViral = velocityScore > 80 || (ratioScore >= 100 && velocityScore > 60);
+    const diversityMult = isViral ? 1.0 : streamerMult * categoryMult;
+
+    return Math.max(0, Math.min(100, baseScore * diversityMult));
   }
 
-  function tryAdd(clip, bucket, perGameLimit) {
-    if (selectedIds.has(clip.id)) return false;
-    const sc = streamerCount.get(clip.broadcaster_name) || 0;
-    if (sc >= MAX_PER_STREAMER) return false;
-    if (isNonEn(clip) && nonEnCount >= MAX_NON_EN) return false;
-    if (perGameLimit) {
-      const gc = gameCount.get(clip.game_id) || 0;
-      if (gc >= MAX_PER_GAME) return false;
-      gameCount.set(clip.game_id, gc + 1);
-    }
-    streamerCount.set(clip.broadcaster_name, sc + 1);
-    selectedIds.add(clip.id);
-    if (isNonEn(clip)) nonEnCount++;
-    bucket.push(clip);
-    return true;
+  // Pass 2: sort by velocity first, then score
+  const seenStreamers  = new Map();
+  const seenCategories = new Map();
+  const scored = filtered
+    .sort((a, b) => {
+      const va = a.view_count / Math.max((Date.now() - new Date(a.created_at)) / 3600000, 0.5);
+      const vb = b.view_count / Math.max((Date.now() - new Date(b.created_at)) / 3600000, 0.5);
+      return vb - va;
+    })
+    .map(clip => {
+      const score = calcPreScore(clip, seenStreamers, seenCategories);
+      seenStreamers.set(clip.broadcaster_name, (seenStreamers.get(clip.broadcaster_name) || 0) + 1);
+      seenCategories.set(clip.game_id, (seenCategories.get(clip.game_id) || 0) + 1);
+      return { ...clip, preScore: score };
+    })
+    .sort((a, b) => b.preScore - a.preScore);
+
+  const N = 100;
+  const top35  = scored.slice(0, Math.floor(N * 0.35));
+  const midPool = scored.slice(Math.floor(scored.length * 0.30), Math.floor(scored.length * 0.70));
+  const mid35  = midPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.35));
+  const gemsPool = scored.slice(Math.floor(scored.length * 0.70), Math.floor(scored.length * 0.90));
+  const gems15 = gemsPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.15));
+  const small10 = scored.filter(c => c.view_count < 10000).sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.10));
+  const trending5 = scored.filter(c => !CORE_IDS_ARR.includes(c.game_id)).slice(0, Math.floor(N * 0.05));
+
+  const seen2 = new Set();
+  const toDownload = [];
+  for (const c of [...top35, ...mid35, ...gems15, ...small10, ...trending5]) {
+    if (!seen2.has(c.id)) { seen2.add(c.id); toDownload.push(c); }
+    if (toDownload.length >= 100) break;
   }
 
-  const byVirality   = [...withVirality].sort((a, b) => b.sortScore    - a.sortScore);
-  const byPopularity = [...withVirality].sort((a, b) => b.view_count   - a.view_count);
+  console.log(`[PRE-SCORE] Selected ${toDownload.length} clips for download`);
+  console.log(`  top35=${top35.length}, mid35=${mid35.length}, gems15=${gems15.length}, small10=${small10.length}, trending5=${trending5.length}`);
 
-  const jcIrlClips      = (arr) => arr.filter(c =>  JC_IRL_IDS.has(c.game_id));
-  const specialtyClips  = (arr) => arr.filter(c =>  SPECIALTY_IDS.has(c.game_id));
-  const gamingClips     = (arr) => arr.filter(c => !JC_IRL_IDS.has(c.game_id) && !SPECIALTY_IDS.has(c.game_id));
-
-  // JC/IRL: 40 virality + 10 popularity → до 50
-  const poolJcIrl = [];
-  for (const clip of jcIrlClips(byVirality))   { if (poolJcIrl.length >= 40) break; tryAdd(clip, poolJcIrl, false); }
-  for (const clip of jcIrlClips(byPopularity))  { if (poolJcIrl.length >= 50) break; tryAdd(clip, poolJcIrl, false); }
-
-  // Specialty (Music, Food & Drink, Fitness, Pools, Talk Shows): 10 virality + 5 popularity → до 15, max 5 з однієї категорії
-  const specialtyCatCount = new Map();
-  const poolSpecialty = [];
-  function tryAddSpecialty(clip) {
-    if (selectedIds.has(clip.id)) return false;
-    const sc = streamerCount.get(clip.broadcaster_name) || 0;
-    if (sc >= MAX_PER_STREAMER) return false;
-    if (isNonEn(clip) && nonEnCount >= MAX_NON_EN) return false;
-    const cc = specialtyCatCount.get(clip.game_id) || 0;
-    if (cc >= MAX_PER_SPECIALTY_CAT) return false;
-    specialtyCatCount.set(clip.game_id, cc + 1);
-    streamerCount.set(clip.broadcaster_name, sc + 1);
-    selectedIds.add(clip.id);
-    if (isNonEn(clip)) nonEnCount++;
-    poolSpecialty.push(clip);
-    return true;
-  }
-  for (const clip of specialtyClips(byVirality))   { if (poolSpecialty.length >= 10) break; tryAddSpecialty(clip); }
-  for (const clip of specialtyClips(byPopularity))  { if (poolSpecialty.length >= 15) break; tryAddSpecialty(clip); }
-
-  // Gaming: 25 virality + 10 popularity → до 35
-  const poolGaming = [];
-  for (const clip of gamingClips(byVirality))   { if (poolGaming.length >= 25) break; tryAdd(clip, poolGaming, true); }
-  for (const clip of gamingClips(byPopularity)) { if (poolGaming.length >= 35) break; tryAdd(clip, poolGaming, true); }
-
-  const toDownload = [...poolJcIrl, ...poolSpecialty, ...poolGaming];
-  console.log(`  Selected: ${poolJcIrl.length} JC/IRL + ${poolSpecialty.length} Specialty + ${poolGaming.length} Gaming = ${toDownload.length} clips`);
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
-  updateState({ stages: { prescore: 'done' } });
 
-  // ── 7. DOWNLOAD ───────────────────────────────────────────────────
-  step(PROJECT_DIR, 3, `Завантаження кліпів (yt-dlp) — ${toDownload.length} кліпів`);
-  console.log('\n[DOWNLOAD] Завантажую кліпи...');
+  state.stages.prescore = 'done';
+  state.stages.download = 'running';
+  fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2));
 
-  function buildFilename(clip) {
-    const cat = (clip.game_name || 'unknown').toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    const streamer = (clip.broadcaster_name || 'unknown').toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    const views = clip.view_count;
-    const date = (clip.created_at || '').slice(0, 10).replace(/-/g, '_');
-    return `${cat}_${streamer}_${views}_${date}.mp4`;
-  }
-
-  function downloadClip(clip) {
-    return new Promise((resolve) => {
-      const filename = buildFilename(clip);
-      const outPath = path.join(DOWNLOADS_DIR, filename);
-
-      if (fs.existsSync(outPath)) {
-        resolve({ clip, filename, success: true, skipped: true });
-        return;
-      }
-
-      const url = clip.url;
-      const cmd = `python -m yt_dlp --no-playlist --format "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --output "${outPath}" --quiet "${url}"`;
-
-      exec(cmd, { timeout: 120000 }, (err) => {
-        if (err || !fs.existsSync(outPath)) {
-          resolve({ clip, filename, success: false, error: err?.message });
-        } else {
-          resolve({ clip, filename, success: true });
-        }
-      });
-    });
-  }
-
-  // parallel download, max 5 concurrent
-  const downloaded = [];
-  const downloadFailed = [];
-  const CONCURRENCY = 5;
-
-  for (let i = 0; i < toDownload.length; i += CONCURRENCY) {
-    const batch = toDownload.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(downloadClip));
-
-    for (const r of results) {
-      if (r.success) {
-        const localPath = `projects/${projectFolder}/downloads/${r.filename}`;
-        downloaded.push({ ...r.clip, localPath });
-        const mark = r.skipped ? '↩' : '✓';
-        console.log(`  ${mark} ${r.clip.broadcaster_name} — ${r.clip.game_name} (${r.clip.view_count} views)`);
-      } else {
-        downloadFailed.push(r.clip);
-        console.log(`  ✗ FAIL: ${r.clip.broadcaster_name} — ${r.error?.slice(0, 80)}`);
-      }
-    }
-  }
-
-  console.log(`\n  Downloaded: ${downloaded.length} | Failed: ${downloadFailed.length}`);
-  fs.writeFileSync(path.join(CLIPS_DIR, 'downloaded-clips.json'), JSON.stringify(downloaded, null, 2));
-  updateState({
-    stages: { download: 'done' },
-    counts: { downloaded: downloaded.length }
+  console.log('[PRE-SCORE] Done. prescore-candidates.json saved.');
+  console.log('\nTop 10 clips by preScore:');
+  toDownload.slice(0, 10).forEach((c, i) => {
+    console.log(`  ${i+1}. [${c.preScore.toFixed(1)}] ${c.broadcaster_name} — "${c.title.slice(0,60)}" (${c.game_name}, ${c.view_count} views, ${c.duration}s)`);
   });
-
-  console.log('\n✓ Ingest complete');
-  console.log(`  Raw: ${allClips.length} | Filtered: ${filtered.length} | Downloaded: ${downloaded.length}`);
 }
 
 main().catch(e => {
-  console.error('\n✗ Ingest failed:', e.message);
+  console.error('[FATAL]', e.message);
   process.exit(1);
 });

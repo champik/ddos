@@ -19,6 +19,10 @@ function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^ï»
 const plan   = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 const scored = readJson(path.join(projectDir, 'clips/scored-clips.json'));
 
+// Read editorial for per-clip overrides (captionsOff etc.)
+let editorialClips = {};
+try { editorialClips = readJson(path.join(projectDir, 'edit/editorial.json')).clips || {}; } catch {}
+
 // Game IDs where subtitles add little value unless the clip is very funny
 const GAMING_IDS = new Set(['32399','516575','32982','18122','21779','27471','33214','493057']);
 const CHAT_IDS   = new Set(['509658','509672']); // Just Chatting, IRL
@@ -203,6 +207,15 @@ for (const clipId of clipIds) {
     ? genLongformAss(tr.words, LONGFORM_HEADER)
     : LONGFORM_HEADER; // empty â€” no dialogue lines
   fs.writeFileSync(path.join(projectDir, 'processed', clipId, 'captions-longform.ass'), lfAss, 'utf8');
+
+  // captionsOff in editorial.short suppresses vertical (shorts) captions
+  const captionsOff = editorialClips[clipId]?.short?.captionsOff === true;
+  if (captionsOff) {
+    const assPath = path.join(projectDir, 'processed', clipId, 'captions-vertical.ass');
+    if (fs.existsSync(assPath)) fs.unlinkSync(assPath);
+    console.log(`[SKIP] captions OFF (editorial): ${clipId}`);
+    continue;
+  }
 
   const vAss = genVerticalAss(tr.words, VERTICAL_HEADER);
   fs.writeFileSync(path.join(projectDir, 'processed', clipId, 'captions-vertical.ass'), vAss, 'utf8');

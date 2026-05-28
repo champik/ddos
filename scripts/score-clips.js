@@ -1,95 +1,86 @@
 #!/usr/bin/env node
-/**
- * score-clips.js — apply Claude-generated scores to clip files
- *
- * Flow:
- *   1. Claude reads clips + transcripts, scores them in conversation
- *   2. Claude writes clips/scores-input.json
- *   3. node score-clips.js <runId>  → creates per-clip score.json + scored-clips.json
- */
+// Merge scores-raw.json + downloaded-clips.json → scored-clips.json + per-clip score.json
 const fs = require('fs');
 const path = require('path');
 
 const runId = process.argv[2];
-if (!runId) { console.error('Usage: node score-clips.js <runId>'); process.exit(1); }
+const RUN_DIR = path.join('projects', runId);
+const CLIPS_DIR = path.join(RUN_DIR, 'clips');
 
-const projectDir = path.join('projects', runId);
-const clipsDir = path.join(projectDir, 'clips');
-const processedDir = path.join(projectDir, 'processed');
+const scores = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scores-raw.json'), 'utf8'));
+const downloaded = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'downloaded-clips.json'), 'utf8'));
+const scoringInput = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scoring-input.json'), 'utf8'));
 
-function updateState(updates) {
-  const statePath = path.join(projectDir, 'state.json');
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-  for (const [key, val] of Object.entries(updates)) {
-    const parts = key.split('.');
-    let obj = state;
-    for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]];
-    obj[parts[parts.length - 1]] = val;
-  }
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-}
+const scoreMap = new Map(scores.map(s => [s.clipId, s]));
+const clipMap = new Map(downloaded.map(c => [c.id, c]));
 
-function calcDdosScore(s, viralityRatio = 0) {
+// Compute ddosScore
+function calcDdosScore(clip, score) {
+  const hoursAlive = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5);
+  // viralityRatio proxy: views/hour / 500 (est avg viewers for context)
+  const viralityRatio = clip.view_count / hoursAlive / 500;
   const viralityScore = Math.min(100, Math.sqrt(viralityRatio) * 35);
-  return Math.round(
-    viralityScore       * 0.30 +
-    s.retentionScore    * 0.25 +
-    s.funnyScore        * 0.20 +
-    s.payoffStrength    * 0.15 +
-    s.contextClarity    * 0.10 -
-    (s.toxicityRisk > 40 ? (s.toxicityRisk - 40) * 0.5 : 0)
-  );
+
+  const raw =
+    viralityScore      * 0.30 +
+    score.retentionScore * 0.25 +
+    score.funnyScore     * 0.20 +
+    score.payoffStrength * 0.15 +
+    score.contextClarity * 0.10;
+
+  const toxicityPenalty = score.toxicityRisk > 40 ? (score.toxicityRisk - 40) * 0.5 : 0;
+  return Math.max(0, Math.min(100, raw - toxicityPenalty));
 }
 
-function main() {
-  const scoresInputPath = path.join(clipsDir, 'scores-input.json');
-  if (!fs.existsSync(scoresInputPath)) {
-    console.error(`scores-input.json not found at ${scoresInputPath}`);
-    console.error('Claude must score clips in conversation first and write that file.');
-    process.exit(1);
-  }
+const result = [];
+for (const [clipId, score] of scoreMap) {
+  const clip = clipMap.get(clipId);
+  if (!clip) continue;
+  const ddosScore = calcDdosScore(clip, score);
+  const si = scoringInput.find(c => c.clipId === clipId);
 
-  const scores = JSON.parse(fs.readFileSync(scoresInputPath, 'utf8'));
-  const clips = JSON.parse(fs.readFileSync(path.join(clipsDir, 'downloaded-clips.json'), 'utf8'));
-  const clipsById = Object.fromEntries(clips.map(c => [c.id, c]));
-
-  console.log(`Applying ${scores.length} scores...`);
-  const allScores = [];
-
-  for (const score of scores) {
-    const clip = clipsById[score.clipId];
-    if (!clip) { console.warn(`  WARN: clip not found for ${score.clipId}`); continue; }
-
-    score.ddosScore = calcDdosScore(score, clip.viralityRatio || 0);
-    const full = { ...score, broadcaster_name: clip.broadcaster_name, game_name: clip.game_name, duration: clip.duration, title: clip.title, localPath: clip.localPath };
-
-    const scoreDir = path.join(processedDir, score.clipId);
-    fs.mkdirSync(scoreDir, { recursive: true });
-    fs.writeFileSync(path.join(scoreDir, 'score.json'), JSON.stringify(full, null, 2));
-    allScores.push(full);
-  }
-
-  allScores.sort((a, b) => b.ddosScore - a.ddosScore);
-
-  const scoredClips = clips.map(clip => {
-    const score = allScores.find(s => s.clipId === clip.id) || {};
-    return { ...clip, ...score };
-  }).sort((a, b) => (b.ddosScore || 0) - (a.ddosScore || 0));
-
-  fs.writeFileSync(path.join(clipsDir, 'scored-clips.json'), JSON.stringify(scoredClips, null, 2));
-  updateState({ 'stages.score': 'done', 'counts.scored': scoredClips.length });
-
-  console.log('\n=== TOP 20 CLIPS ===');
-  console.log('# | Стрімер               | Категорія         | DDOS | Viral | Funny | Shorts | Rage | Singing');
-  console.log('--|----------------------|-------------------|------|-------|-------|--------|------|--------');
-  scoredClips.slice(0, 20).forEach((c, i) => {
-    const streamer = (c.broadcaster_name || '').padEnd(20).slice(0, 20);
-    const cat = (c.game_name || '').padEnd(17).slice(0, 17);
-    const viral = (c.viralityRatio || 0).toFixed(2);
-    console.log(`${String(i+1).padStart(2)} | ${streamer} | ${cat} | ${String(c.ddosScore||0).padStart(4)} | ${viral.padStart(5)} | ${String(c.funnyScore||0).padStart(5)} | ${String(c.shortsPotential||0).padStart(6)} | ${String(c.rageScore||0).padStart(4)} | ${String(c.singingScore||0).padStart(7)}`);
+  result.push({
+    id: clipId,
+    broadcaster_name: clip.broadcaster_name,
+    game_name: clip.game_name,
+    game_id: clip.game_id,
+    title: clip.title,
+    duration: clip.duration,
+    view_count: clip.view_count,
+    created_at: clip.created_at,
+    language: clip.language,
+    url: clip.url,
+    localPath: clip.localPath,
+    ddosScore: Math.round(ddosScore * 10) / 10,
+    viralityScore: Math.round(Math.min(100, Math.sqrt(clip.view_count / Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5) / 500) * 35) * 10) / 10,
+    ...score
   });
 
-  console.log(`\nDone: ${scoredClips.length} clips scored`);
+  // Save per-clip score.json
+  const processedDir = path.join(RUN_DIR, 'processed', clipId);
+  fs.mkdirSync(processedDir, { recursive: true });
+  const scoreJson = {
+    clipId,
+    ddosScore: Math.round(ddosScore * 10) / 10,
+    viralityScore: Math.round(Math.min(100, Math.sqrt(clip.view_count / Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5) / 500) * 35) * 10) / 10,
+    ...score
+  };
+  fs.writeFileSync(path.join(processedDir, 'score.json'), JSON.stringify(scoreJson, null, 2));
 }
 
-main();
+result.sort((a, b) => b.ddosScore - a.ddosScore);
+fs.writeFileSync(path.join(CLIPS_DIR, 'scored-clips.json'), JSON.stringify(result, null, 2));
+
+const state = JSON.parse(fs.readFileSync(path.join(RUN_DIR, 'state.json'), 'utf8'));
+state.counts.scored = result.length;
+state.stages.score = 'done';
+fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2));
+
+console.log(`[SCORE] ${result.length} clips scored and saved`);
+console.log('\nTop 20 by ddosScore:');
+console.log('# | Streamer          | Category         | DDOS | Viral | Funny | Shorts | Flags');
+result.slice(0, 20).forEach((c, i) => {
+  const flags = c.flags.length ? c.flags.join(',') : '';
+  const line = `${(i+1).toString().padStart(2)} | ${c.broadcaster_name.padEnd(17)} | ${c.game_name.slice(0,16).padEnd(16)} | ${c.ddosScore.toFixed(0).padStart(4)} | ${c.viralityScore.toFixed(0).padStart(5)} | ${c.funnyScore.toString().padStart(5)} | ${c.shortsPotential.toString().padStart(6)} | ${flags}`;
+  console.log(line);
+});

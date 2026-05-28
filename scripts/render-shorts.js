@@ -67,8 +67,14 @@ function getShortWebcam(clipId) {
 function getCamPos(clipId) {
   return editorialClips[clipId]?.short?.camPos || 'top';
 }
+function getCamCrop(clipId) {
+  return editorialClips[clipId]?.short?.camCrop || null;
+}
 
+const dlPath = path.join(base, 'clips/downloaded-clips.json');
+const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
 const broadcasters = {};
+for (const clip of downloaded) broadcasters[clip.id] = clip.broadcaster_name;
 for (const clip of scored) broadcasters[clip.id] = clip.broadcaster_name;
 
 const CACHE_DIR = path.resolve('cache/overlays');
@@ -140,6 +146,7 @@ for (const clipId of clipIds) {
   const mode      = getShortMode(clipId);
   const webcam    = getShortWebcam(clipId);
   const camPos    = getCamPos(clipId);
+  const camCrop   = getCamCrop(clipId);
   const headerMkv = ensureHeaderMkv(broadcaster);
   const hasHeader = !!headerMkv && fs.existsSync(headerMkv);
 
@@ -155,7 +162,6 @@ for (const clipId of clipIds) {
     if (hasAss) vfChain += `,ass=${ffmpegPath(activeAssFile)}`;
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
-    // header overlay on top
     if (hasHeader) {
       filterParts = [
         `[0:v]${cropVf}[cropped]`,
@@ -177,17 +183,31 @@ for (const clipId of clipIds) {
     const CAM_Y = Math.round(ry * 1080);
     const CAM_W = Math.round(rw * 1920);
     const CAM_H = Math.round(rh * 1080);
-    // Must be even for libx264; total cam+game = 1920
-    const CAM_OUT_H  = 726;   // 1920 * 0.378 — even
-    const GAME_OUT_H = 1194;  // 1920 - 726 — even
+
+    // Apply camCrop: trim top/bottom fraction then optionally squish by scale factor
+    let srcCAM_Y = CAM_Y, srcCAM_H = CAM_H;
+    if (camCrop) {
+      const topPx = Math.round(CAM_H * (camCrop.top || 0));
+      const botPx = Math.round(CAM_H * (camCrop.bottom || 0));
+      srcCAM_Y = CAM_Y + topPx;
+      srcCAM_H = CAM_H - topPx - botPx;
+    }
+
+    // Webcam: full 1080px wide, natural AR; squishScale shrinks output height (0.5=half, 0.75=75%)
+    let camNaturalH = Math.round(1080 * srcCAM_H / CAM_W);
+    if (camCrop?.squishScale != null) camNaturalH = Math.round(camNaturalH * camCrop.squishScale);
+    else if (camCrop?.squishHalf) camNaturalH = Math.round(camNaturalH / 2);
+    const CAM_OUT_H  = camNaturalH % 2 === 0 ? camNaturalH : camNaturalH + 1;
+    const GAME_OUT_H = 1920 - CAM_OUT_H;
+    // Gameplay: mobile-style center crop (9:16), then take center GAME_OUT_H slice (no stretch)
+    const gameOffset = (1920 - GAME_OUT_H) / 2;
 
     // Need to split [0:v] since it's used for both cam crop and game scale
     const order = camPos === 'bottom' ? '[game][cam]' : '[cam][game]';
     const fc = [
       '[0:v]split=2[vsrc1][vsrc2]',
-      `[vsrc1]crop=${CAM_W}:${CAM_H}:${CAM_X}:${CAM_Y},scale=1080:${CAM_OUT_H}[cam]`,
-      // Center crop 9:16 then scale (same as mobile — no stretch)
-      `[vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:${GAME_OUT_H}[game]`,
+      `[vsrc1]crop=${CAM_W}:${srcCAM_H}:${CAM_X}:${srcCAM_Y},scale=1080:${CAM_OUT_H}[cam]`,
+      `[vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,crop=1080:${GAME_OUT_H}:0:${gameOffset}[game]`,
       `${order}vstack=inputs=2[stacked]`
     ];
 
@@ -195,11 +215,14 @@ for (const clipId of clipIds) {
     extraArgs = [];
 
     // Build filter chain: stacked → [+header] → [+captions] → [out]
+    // Header element (logo+nick) sits at y=290 in MKV; center it on the webcam/gameplay boundary
+    const HEADER_ELEM_CENTER = 324; // 290 (top) + 34 (half of 68px element height)
+    const headerY = Math.max(0, CAM_OUT_H - HEADER_ELEM_CENTER);
     let lastLabel = 'stacked';
     if (hasHeader) {
       ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
       extraArgs = ['-shortest'];
-      fc.push(`[${lastLabel}][1:v]overlay=0:0:format=auto[with_header]`);
+      fc.push(`[${lastLabel}][1:v]overlay=0:${headerY}:format=auto[with_header]`);
       lastLabel = 'with_header';
     }
     if (hasAss) {
@@ -249,6 +272,10 @@ for (const clipId of clipIds) {
       ];
     }
   }
+
+  // Ensure SAR=1:1 so players don't add black bars from incorrect pixel AR
+  filterParts[filterParts.length - 1] = filterParts[filterParts.length - 1].replace(/\[out\]$/, '[out_sar]');
+  filterParts.push('[out_sar]setsar=1[out]');
 
   const r = spawnSync('ffmpeg', [
     ...ffInputs,

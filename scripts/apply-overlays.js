@@ -16,8 +16,11 @@ function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^�
 
 const plan   = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 const scored = readJson(path.join(projectDir, 'clips/scored-clips.json'));
+const dlPath = path.join(projectDir, 'clips/downloaded-clips.json');
+const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
 
 const broadcasters = {};
+for (const clip of downloaded) broadcasters[clip.id] = clip.broadcaster_name;
 for (const clip of scored) broadcasters[clip.id] = clip.broadcaster_name;
 
 // Cache dir for overlay MKVs — reused across episodes since design doesn't change
@@ -125,9 +128,19 @@ function renderReconnecting() {
   const rcId = plan.reconnectingClipId;
   if (!rcId) { console.log('[SKIP] No reconnectingClipId'); return; }
 
+  // editorial.json can specify exact from/to for the reconnect source
+  let editorialFrom = null, editorialTo = null;
+  try {
+    const ed = readJson(path.resolve(projectDir, 'edit/editorial.json'));
+    if (ed.reconnectSource?.clipId === rcId) {
+      editorialFrom = ed.reconnectSource.from ?? null;
+      editorialTo   = ed.reconnectSource.to   ?? null;
+    }
+  } catch {}
+
   const scoreFile = path.resolve(projectDir, 'processed', rcId, 'score.json');
-  let peakStart = 0;
-  if (fs.existsSync(scoreFile)) {
+  let peakStart = editorialFrom ?? 0;
+  if (editorialFrom == null && fs.existsSync(scoreFile)) {
     const sc = readJson(scoreFile);
     peakStart = sc.peakMoment?.start || 0;
   }
@@ -136,15 +149,26 @@ function renderReconnecting() {
   let src = path.resolve(projectDir, 'processed', rcId, 'clean.mp4');
   if (!fs.existsSync(src)) src = path.resolve(projectDir, 'processed', rcId, 'overlayed.mp4');
 
-  // Avoid dark/black frames — try peak moment and nearby timestamps
-  const candidates = [peakStart, peakStart + 0.5, peakStart - 0.5, peakStart + 1.0, peakStart + 2.0]
-    .filter(t => t >= 0);
-  console.log(`[RECONNECT] clipId=${rcId} scanning for bright frame near t=${peakStart}s`);
-  peakStart = findBrightFrame(src, candidates);
+  // If editorial specifies exact from/to — use that directly, skip bright-frame scan
+  let rcSs, rcDur;
+  if (editorialFrom != null && editorialTo != null) {
+    rcSs  = editorialFrom;
+    rcDur = editorialTo - editorialFrom;
+    console.log(`[RECONNECT] clipId=${rcId} editorial from=${rcSs} to=${editorialTo} dur=${rcDur.toFixed(2)}s`);
+  } else {
+    // Avoid dark/black frames — try peak moment and nearby timestamps
+    const candidates = [peakStart, peakStart + 0.5, peakStart - 0.5, peakStart + 1.0, peakStart + 2.0]
+      .filter(t => t >= 0);
+    console.log(`[RECONNECT] clipId=${rcId} scanning for bright frame near t=${peakStart}s`);
+    peakStart = findBrightFrame(src, candidates);
+    rcSs  = Math.max(0, peakStart - 1.0);
+    rcDur = 2.1;
+    console.log(`[RECONNECT] clipId=${rcId} peakStart=${peakStart}`);
+  }
+
   const out = path.resolve(projectDir, 'edit/reconnecting.mp4');
 
   const panelMkv = ensureReconnectingMkv();
-  console.log(`[RECONNECT] clipId=${rcId} peakStart=${peakStart}`);
 
   // B&W clip → colored panel on top → glitch (noise + hue-rotate) over everything.
   // Pipeline: [0:v] desaturate → [bw]; [bw][panel] overlay → [composite]; [composite] glitch → [out]
@@ -153,9 +177,9 @@ function renderReconnecting() {
 
   if (!panelMkv) {
     const ok = ffrun([
-      '-ss', String(Math.max(0, peakStart - 1.0)), '-t', '2.1', '-i', src,
+      '-ss', String(rcSs), '-t', String(rcDur), '-i', src,
       '-vf', `${bwFilter},${glitchFilter}`,
-      '-t', '2.0',
+      '-t', String(rcDur),
       '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-r', '30', '-y', out
     ]);
@@ -164,7 +188,7 @@ function renderReconnecting() {
   }
 
   const ok = ffrun([
-    '-ss', String(Math.max(0, peakStart - 1.0)), '-t', '2.1', '-i', src,
+    '-ss', String(rcSs), '-t', String(rcDur), '-i', src,
     '-i', panelMkv,
     '-filter_complex', [
       `[0:v]${bwFilter}[bw]`,
@@ -172,7 +196,7 @@ function renderReconnecting() {
       `[composite]${glitchFilter}[out]`
     ].join(';'),
     '-map', '[out]', '-map', '0:a',
-    '-t', '2.0',
+    '-t', String(rcDur),
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-r', '30', '-y', out
   ]);

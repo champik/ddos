@@ -134,7 +134,10 @@ for (let gi = 0; gi < plan.groups.length; gi++) {
 }
 const rows = rowParts.join('\n');
 
-const titleCards = meta.titleOptions.map((t, i) =>
+const titleOptionsArr = Array.isArray(meta.titleOptions)
+  ? meta.titleOptions
+  : Object.values(meta.titleOptions || {});
+const titleCards = titleOptionsArr.map((t, i) =>
   `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
 ).join('\n');
 
