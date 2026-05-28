@@ -44,7 +44,9 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .tl-wrap{margin-top:10px}
 .tl-label{display:flex;justify-content:space-between;font-size:10px;color:#555;margin-bottom:4px}
 .tl-track{height:34px;background:#161620;border-radius:6px;position:relative;cursor:pointer}
-.tl-fill{position:absolute;top:0;height:100%;background:#f5ff3d14;border-radius:4px;pointer-events:none}
+.tl-fill{position:absolute;top:0;height:100%;background:#f5ff3d14;border-radius:4px;cursor:grab}
+.tl-fill:active{cursor:grabbing}
+.tl-recon-zone-src{position:absolute;top:0;height:100%;background:#ff4a4a22;border:1px solid #ff6b6b55;border-radius:3px;pointer-events:none;z-index:1}
 .tl-cut-zone{position:absolute;top:0;height:100%;background:#f5ff3d22;border:1px solid #f5ff3d55;border-radius:3px;pointer-events:none}
 .tl-handle{position:absolute;top:-4px;width:12px;height:42px;background:#f5ff3d;border-radius:3px;cursor:ew-resize;transform:translateX(-50%)}
 .tl-handle-out{transform:translateX(50%)}
@@ -68,25 +70,18 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .mode-icon{font-size:17px;display:block;margin-bottom:2px}
 .mode-lbl{font-size:10px;color:#666}
 .mode-btn.active .mode-lbl{color:#a78bfa}
-.split-editor{display:grid;grid-template-columns:1fr 168px;gap:14px;align-items:start}
-.split-canvas{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#0a0a12,#12122a);border-radius:6px;overflow:visible}
+.split-editor{display:grid;grid-template-columns:1fr 120px;gap:14px;align-items:start}
+.split-canvas{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#0a0a12,#12122a);border-radius:6px;overflow:hidden}
 .split-canvas video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none}
 .drag-box{position:absolute;border-radius:4px;cursor:move}
-.cam-box-el{border:2px solid #f5ff3d;background:rgba(245,255,61,.07)}
-.game-box-el{border:2px solid #4ade80;background:rgba(74,222,128,.06)}
-.box-label{position:absolute;top:-17px;left:0;font-size:9px;background:#0e0e10;padding:1px 5px;border-radius:3px;white-space:nowrap;pointer-events:none}
-.cam-box-el .box-label{color:#f5ff3d}
-.game-box-el .box-label{color:#4ade80}
+.cam-box-el{border:2px solid #f5ff3d;background:rgba(245,255,61,.12)}
+.box-label{position:absolute;top:2px;left:4px;font-size:9px;color:#f5ff3d;background:#0e0e10cc;padding:1px 4px;border-radius:2px;white-space:nowrap;pointer-events:none}
 .resize-handle{position:absolute;bottom:-5px;right:-5px;width:9px;height:9px;background:#f5ff3d;border-radius:50%;cursor:se-resize}
 .coord-hint{font-size:10px;color:#333;font-family:monospace;margin-top:5px}
 .preview-col{display:flex;flex-direction:column;align-items:center;gap:6px}
 .preview-lbl{font-size:10px;color:#444;font-family:monospace}
-.sp-phone{width:160px;height:284px;background:#000;border-radius:14px;overflow:hidden;border:2px solid #222;display:flex;flex-direction:column}
-.sp-cam{background:#0a160a;display:flex;align-items:center;justify-content:center;font-size:10px;color:#4ade8055;cursor:grab;user-select:none;position:relative;flex-shrink:0}
-.sp-cam::after{content:'↕';position:absolute;top:3px;right:5px;font-size:9px;color:#4ade8044}
-.sp-div{height:3px;background:#f5ff3d;flex-shrink:0}
-.sp-game{flex:1;background:linear-gradient(135deg,#0a0a12,#12122a);display:flex;align-items:center;justify-content:center;font-size:10px;color:#4444aa55}
-.drag-tip{font-size:9px;color:#2a2a3a;text-align:center;width:160px;line-height:1.5}
+.split-preview-canvas{border-radius:8px;border:1px solid #222;background:#111;display:block;cursor:pointer}
+.split-preview-canvas:hover{border-color:#444}
 .recon-sep{display:flex;align-items:center;gap:8px;padding:6px 13px;background:#150808;border:1px solid #ff4a4a33;border-radius:8px;margin:5px 0;cursor:grab}
 .recon-sep.sortable-ghost{opacity:0.3}
 .recon-sep-icon{color:#ff6b6b;font-size:15px;flex-shrink:0}
@@ -111,6 +106,8 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .bench-dur{color:#555;font-size:11px;font-family:monospace}
 .bench-add{background:#1a1a24;border:1px solid #2a2a2f;border-radius:5px;padding:3px 9px;color:#888;font-size:11px;cursor:pointer;flex-shrink:0}
 .bench-add:hover{border-color:#f5ff3d55;color:#f4f0e6}
+.btn-bench-it{background:none;border:1px solid #2a2a3a;border-radius:4px;color:#555;font-size:10px;cursor:pointer;padding:1px 6px;flex-shrink:0;line-height:1.4}
+.btn-bench-it:hover{border-color:#ff6b6b55;color:#ff6b6b}
 .prompt-block{background:#0a0a14;border:1px solid #1e1e28;border-radius:10px;padding:14px;margin-top:18px}
 .prompt-title{color:#f5ff3d;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:9px}
 .prompt-code{font-family:monospace;font-size:11px;color:#6aaa6a;line-height:1.75;white-space:pre;overflow-x:auto;max-height:300px}
@@ -163,7 +160,9 @@ const CLIPS_DATA = __CLIPS_JSON__;
 const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
 const CAM_KEY = 'ddos_cam_coords';
 
-let state = { order: [], reconnects: {}, thumbnail: null, clips: {}, moved: [] };
+let state = { order: [], reconnects: {}, reconnectSource: null, thumbnail: null, clips: {}, moved: [] };
+// state.reconnects[clipId] = true  — separator position after that clip
+// state.reconnectSource = { clipId, from, to } | null  — ONE global source clip+timing
 
 function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); }
 
@@ -172,15 +171,20 @@ function loadState() {
   if (saved) {
     try {
       state = JSON.parse(saved);
-      // Migrate old single reconnect → reconnects map
-      if (state.reconnect && !state.reconnects) {
-        state.reconnects = {};
-        if (state.reconnect.clipId) {
-          state.reconnects[state.reconnect.clipId] = { from: state.reconnect.from, to: state.reconnect.to };
+      // Migrate from broken state.reconnect = {clipId,from,to} format
+      if (state.reconnect !== undefined && !state.reconnectSource) {
+        const r = state.reconnect;
+        if (r && r.clipId) {
+          state.reconnectSource = { clipId: r.clipId, from: r.from ?? 0, to: r.to ?? 3 };
+          if (!state.reconnects) state.reconnects = {};
+          state.reconnects[r.clipId] = true;
+        } else {
+          state.reconnectSource = null;
         }
         delete state.reconnect;
       }
       if (!state.reconnects) state.reconnects = {};
+      if (state.reconnectSource === undefined) state.reconnectSource = null;
       return true;
     } catch(e) {}
   }
@@ -262,6 +266,7 @@ function buildClipCard(clip, num) {
         ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
         ${isThumb ? `<span class="mini-badge mb-thumb">🖼 ${fmtTimeSec(state.thumbnail.at)}</span>` : ''}
       </div>
+      <button class="btn-bench-it" onclick="sendToBench(event,'${clip.id}')" title="Відправити на лавку">⬇ bench</button>
       <span class="expand-icon">▼</span>
     </div>
     <div class="card-body" id="body-${clip.id}">${buildCardBody(clip)}</div>`;
@@ -273,9 +278,9 @@ function buildReconSep(clipId) {
   sep.className = 'recon-sep';
   sep.dataset.isSep = 'true';
   sep.dataset.reconClipId = clipId;
-  const r = state.reconnects[clipId];
-  const detail = r
-    ? `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`
+  const src = state.reconnectSource;
+  const detail = src
+    ? `джерело: ${getClip(src.clipId)?.streamer || '?'} · ${fmtTime(src.from)} → ${fmtTime(src.to)}`
     : 'джерело не вибрано';
   sep.innerHTML = `
     <span class="recon-sep-icon">⟳</span>
@@ -315,9 +320,7 @@ function toggleTag(e, clipId, tag) {
     if (state.reconnects[clipId]) {
       delete state.reconnects[clipId];
     } else {
-      const inT = cs.trimIn ?? 0;
-      const outT = cs.trimOut ?? clip.duration;
-      state.reconnects[clipId] = { from: inT, to: Math.min(inT + 3, outT) };
+      state.reconnects[clipId] = true;
     }
   }
   saveState();
@@ -395,9 +398,9 @@ function updateCardInPlace(clipId) {
 
   const sepDetail = document.getElementById('recon-sep-detail-' + clipId);
   if (sepDetail) {
-    const r = state.reconnects[clipId];
-    sepDetail.textContent = r
-      ? `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`
+    const src = state.reconnectSource;
+    sepDetail.textContent = src
+      ? `джерело: ${getClip(src.clipId)?.streamer || '?'} · ${fmtTime(src.from)} → ${fmtTime(src.to)}`
       : 'джерело не вибрано';
   }
 
@@ -414,6 +417,8 @@ function buildCardBody(clip) {
     <div class="play-mode-row">
       <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
       <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
+      <button class="play-mode-btn" id="recon-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','reconnect',this)" style="display:none">Reconnect</button>
+      <button class="play-mode-btn" id="thumb-mode-btn-${clip.id}" onclick="playThumbnail('${clip.id}')" style="display:none">Thumbnail</button>
       <span class="playpos" id="playpos-${clip.id}">0:00 / ${fmtTimeSec(clip.duration)}</span>
     </div>
     <div class="tl-wrap">
@@ -436,6 +441,7 @@ function buildCardBody(clip) {
       <span class="ctrl-lbl">→</span>
       <input class="ctrl-in" id="cut-to-${clip.id}" value="0:05" placeholder="to">
       <button class="ctrl-btn" onclick="addCut('${clip.id}')" style="border-color:#f5ff3d44;color:#f5ff3d">+ Зберегти</button>
+      <button class="ctrl-btn" onclick="setReconnectSource('${clip.id}')" style="border-color:#ff4a4a44;color:#ff6b6b">⟳ Recon</button>
     </div>
     <div id="cuts-list-${clip.id}"></div>
     ${buildTagSections(clip)}`;
@@ -501,6 +507,34 @@ function initCardMedia(card) {
   makeDragHandle(handleOut, 'out');
   updateFill();
 
+  // Drag whole interval (fill) left/right preserving width
+  fill.addEventListener('mousedown', e => {
+    if (e.target === handleIn || e.target === handleOut) return;
+    e.preventDefault();
+    const rect = track.getBoundingClientRect();
+    const width = outPct - inPct;
+    const startX = e.clientX;
+    const startInPct = inPct;
+    fill.style.cursor = 'grabbing';
+    const onMove = ev => {
+      const delta = (ev.clientX - startX) / rect.width * 100;
+      inPct = Math.max(0, Math.min(100 - width, startInPct + delta));
+      outPct = inPct + width;
+      updateFill();
+    };
+    const onUp = () => {
+      fill.style.cursor = 'grab';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
+      cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
+      saveState();
+      updateDuration();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
   track.addEventListener('click', e => {
     if (e.target === handleIn || e.target === handleOut) return;
     const rect = track.getBoundingClientRect();
@@ -540,6 +574,10 @@ function initCardMedia(card) {
       playhead.style.left = pct + '%';
       const playpos = document.getElementById('playpos-' + clipId);
       if (playpos) playpos.textContent = fmtTime(video.currentTime) + ' / ' + fmtTimeSec(clip.duration);
+      if (card.dataset.playMode === 'reconnect') {
+        const src = state.reconnectSource;
+        if (src && src.clipId === clipId && video.currentTime >= src.to) video.pause();
+      }
       if (card.dataset.playMode === 'preview') {
         const keeps = cs.keeps;
         const trimOut = cs.trimOut ?? clip.duration;
@@ -556,6 +594,7 @@ function initCardMedia(card) {
     });
   }
   renderCutZones(clipId, clip);
+  renderReconnectZone(clipId, clip);
   syncTagSections(clipId);
 }
 
@@ -570,6 +609,12 @@ function setPlayMode(clipId, mode, btn) {
     const keeps = cs.keeps;
     const startAt = (keeps && keeps.length > 0) ? keeps[0][0] : (cs.trimIn ?? 0);
     video.currentTime = startAt;
+    video.play();
+  }
+  if (mode === 'reconnect' && video) {
+    const src = state.reconnectSource;
+    if (!src || src.clipId !== clipId) return;
+    video.currentTime = src.from;
     video.play();
   }
 }
@@ -639,21 +684,29 @@ function renderCutZones(clipId, clip) {
   });
 }
 
+function renderReconnectZone(clipId, clip) {
+  const track = document.getElementById('tl-' + clipId);
+  if (!track) return;
+  track.querySelectorAll('.tl-recon-zone-src').forEach(el => el.remove());
+  const src = state.reconnectSource;
+  if (!src || src.clipId !== clipId || !clip) return;
+  const zone = document.createElement('div');
+  zone.className = 'tl-recon-zone-src';
+  zone.style.left = (src.from / clip.duration * 100) + '%';
+  zone.style.width = ((src.to - src.from) / clip.duration * 100) + '%';
+  track.appendChild(zone);
+}
+
+function playThumbnail(clipId) {
+  const video = document.getElementById('vid-' + clipId);
+  if (!video || !state.thumbnail || state.thumbnail.clipId !== clipId) return;
+  video.currentTime = state.thumbnail.at;
+  video.pause();
+}
+
 // ── TAG SECTIONS ──────────────────────────────────────────────────────────────
 function buildTagSections(clip) {
   return `
-    <div id="sec-reconnect-${clip.id}" style="display:none">
-      <div class="sec reconnect">
-        <div class="sec-title red">⟳ RECONNECT — джерело моменту</div>
-        <div class="ctrl-row" style="margin-top:0">
-          <span class="ctrl-lbl">Від:</span>
-          <input class="ctrl-in" id="recon-from-${clip.id}" value="0:03">
-          <span class="ctrl-lbl">До:</span>
-          <input class="ctrl-in" id="recon-to-${clip.id}" value="0:05">
-          <button class="ctrl-btn" onclick="applyReconnectTiming('${clip.id}')">✓ Зберегти</button>
-        </div>
-      </div>
-    </div>
     <div id="sec-thumb-${clip.id}" style="display:none">
       <div class="sec thumb">
         <div class="sec-title green">🖼 THUMBNAIL — кадр</div>
@@ -688,49 +741,45 @@ function buildSplitEditor(clip) {
   return `
     <div class="split-editor">
       <div>
-        <div style="font-size:10px;color:#444;margin-bottom:6px">Тягни рамки: 📷 webcam (жовта) · 🎮 gameplay (зелена)</div>
+        <div style="font-size:10px;color:#555;margin-bottom:6px">📷 Тягни жовту рамку на вебку · 🎮 Gameplay = увесь кадр</div>
         <div class="split-canvas" id="canvas-${clip.id}">
-          <video id="canvas-vid-${clip.id}" src="${clip.videoPath}" preload="none"
-            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none"></video>
+          <video id="canvas-vid-${clip.id}" src="${clip.videoPath}" preload="metadata"
+            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none"
+            onloadeddata="onSplitVideoReady('${clip.id}')"></video>
           <div class="drag-box cam-box-el" id="cam-${clip.id}"
             style="top:7%;right:3%;width:23%;height:36%;left:auto"
             onmousedown="startBoxDrag(event,'${clip.id}','cam')">
-            <div class="box-label">📷 webcam (якір)</div>
+            <div class="box-label">📷 webcam</div>
             <div class="resize-handle" onmousedown="startBoxResize(event,'${clip.id}')"></div>
           </div>
-          <div class="drag-box game-box-el" id="game-${clip.id}"
-            style="bottom:5%;left:3%;width:67%;height:48%;top:auto"
-            onmousedown="startBoxDrag(event,'${clip.id}','game')">
-            <div class="box-label">🎮 gameplay</div>
-          </div>
         </div>
-        <div class="coord-hint" id="coord-hint-${clip.id}">cam: — · gameplay: auto</div>
+        <div class="coord-hint" id="coord-hint-${clip.id}">cam: — · gameplay: повний кадр</div>
         <button class="ctrl-btn" style="margin-top:7px;font-size:10px"
           onclick="saveCamForStreamer('${clip.id}','${clip.streamer}')">💾 зберегти для ${clip.streamer}</button>
       </div>
       <div class="preview-col">
         <div class="preview-lbl">9:16 preview</div>
-        <div class="sp-phone" id="phone-${clip.id}">
-          <div class="sp-cam" id="sp-cam-${clip.id}" draggable="true"
-            ondragstart="event.dataTransfer.setData('text','cam')"
-            style="height:38%">webcam</div>
-          <div class="sp-div" id="sp-div-${clip.id}"></div>
-          <div class="sp-game" id="sp-game-${clip.id}">gameplay</div>
+        <canvas class="split-preview-canvas" id="split-preview-${clip.id}"
+          width="108" height="192" style="width:108px;height:192px"
+          title="Клік — змінити позицію cam"
+          onclick="toggleCamPos('${clip.id}')"></canvas>
+        <div style="font-size:9px;color:#444;text-align:center;line-height:1.3">
+          клік = cam<br>зверху/знизу
         </div>
-        <div class="drag-tip">↕ тягни webcam<br>щоб змінити позицію</div>
       </div>
     </div>`;
 }
 
 function syncTagSections(clipId) {
   const cs = getClipState(clipId);
-  const isRecon = !!state.reconnects[clipId];
   const isThumb = state.thumbnail?.clipId === clipId;
   const isShort = !!cs.short;
-  const secR = document.getElementById('sec-reconnect-' + clipId);
+  const reconModeBtn = document.getElementById('recon-mode-btn-' + clipId);
+  if (reconModeBtn) reconModeBtn.style.display = (state.reconnectSource?.clipId === clipId) ? '' : 'none';
+  const thumbModeBtn = document.getElementById('thumb-mode-btn-' + clipId);
+  if (thumbModeBtn) thumbModeBtn.style.display = isThumb ? '' : 'none';
   const secT = document.getElementById('sec-thumb-' + clipId);
   const secS = document.getElementById('sec-short-' + clipId);
-  if (secR) secR.style.display = isRecon ? 'block' : 'none';
   if (secT) {
     secT.style.display = isThumb ? 'block' : 'none';
     if (isThumb) { const inp = document.getElementById('thumb-at-' + clipId); if (inp) inp.value = fmtTime(state.thumbnail.at); }
@@ -740,16 +789,15 @@ function syncTagSections(clipId) {
     if (isShort && cs.short.mode) {
       secS.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === cs.short.mode));
       const splitEd = document.getElementById('split-editor-' + clipId);
-      if (splitEd) splitEd.style.display = cs.short.mode === 'split' ? 'block' : 'none';
-    }
-  }
-  if (isRecon) {
-    const r = state.reconnects[clipId];
-    if (r) {
-      const fromIn = document.getElementById('recon-from-' + clipId);
-      const toIn = document.getElementById('recon-to-' + clipId);
-      if (fromIn) fromIn.value = fmtTime(r.from);
-      if (toIn) toIn.value = fmtTime(r.to);
+      if (splitEd) {
+        const isSplit = cs.short.mode === 'split';
+        splitEd.style.display = isSplit ? 'block' : 'none';
+        if (isSplit) {
+          // Restore cam box position from state, then init video
+          if (cs.short.webcam) restoreCamBox(clipId, cs.short.webcam);
+          initCanvasVideo(clipId);
+        }
+      }
     }
   }
 }
@@ -767,19 +815,31 @@ function setShortMode(clipId, mode, btn) {
     const saved = getSavedCam(getClip(clipId)?.streamer || '');
     if (saved) restoreCamBox(clipId, saved);
     initCanvasVideo(clipId);
+    drawSplitPreview(clipId);
   }
   saveState();
 }
 
-function applyReconnectTiming(clipId) {
-  if (!state.reconnects[clipId]) return;
-  state.reconnects[clipId].from = parseMmSs(document.getElementById('recon-from-' + clipId).value);
-  state.reconnects[clipId].to = parseMmSs(document.getElementById('recon-to-' + clipId).value);
+function setReconnectSource(clipId) {
+  const clip = getClip(clipId);
+  if (!clip) return;
+  const fromIn = document.getElementById('cut-from-' + clipId);
+  const toIn = document.getElementById('cut-to-' + clipId);
+  const cs = getClipState(clipId);
+  const fromSec = fromIn ? parseMmSs(fromIn.value) : (cs.trimIn ?? 0);
+  const toSec = toIn ? parseMmSs(toIn.value) : (cs.trimOut ?? clip.duration);
+  if (toSec <= fromSec) return;
+  const oldSrc = state.reconnectSource;
+  state.reconnectSource = { clipId, from: +fromSec.toFixed(2), to: +toSec.toFixed(2) };
   saveState();
-  const r = state.reconnects[clipId];
-  const sepDetail = document.getElementById('recon-sep-detail-' + clipId);
-  if (sepDetail) sepDetail.textContent = `джерело: ${getClip(clipId)?.streamer || '?'} · ${fmtTime(r.from)} → ${fmtTime(r.to)}`;
+  if (oldSrc && oldSrc.clipId !== clipId) {
+    renderReconnectZone(oldSrc.clipId, getClip(oldSrc.clipId));
+    syncTagSections(oldSrc.clipId);
+  }
+  renderReconnectZone(clipId, clip);
+  syncTagSections(clipId);
   updateTopbar();
+  refreshSeps();
 }
 
 function applyThumbAt(clipId) {
@@ -858,10 +918,12 @@ function getCamCoords(clipId) {
 function updateCoordHint(clipId) {
   const coords = getCamCoords(clipId);
   if (!coords) return;
-  document.getElementById('coord-hint-' + clipId).textContent =
-    `cam: ${(coords[0]*100).toFixed(0)}% ${(coords[1]*100).toFixed(0)}% ${(coords[2]*100).toFixed(0)}% ${(coords[3]*100).toFixed(0)}% · gameplay: auto`;
+  const hint = document.getElementById('coord-hint-' + clipId);
+  if (hint) hint.textContent =
+    `cam: ${(coords[0]*100).toFixed(0)}% ${(coords[1]*100).toFixed(0)}% ${(coords[2]*100).toFixed(0)}% ${(coords[3]*100).toFixed(0)}% · gameplay: повний кадр`;
   const cs = getClipState(clipId);
   if (cs.short) cs.short.webcam = coords;
+  drawSplitPreview(clipId);
 }
 
 function saveCamForStreamer(clipId, streamer) {
@@ -877,47 +939,126 @@ function getSavedCam(streamer) {
 }
 
 function restoreCamBox(clipId, coords) {
-  const canvas = document.getElementById('canvas-' + clipId);
   const box = document.getElementById('cam-' + clipId);
-  if (!canvas || !box) return;
+  if (!box) return;
   box.style.left = (coords[0]*100)+'%'; box.style.top = (coords[1]*100)+'%';
   box.style.width = (coords[2]*100)+'%'; box.style.height = (coords[3]*100)+'%';
   box.style.right = 'auto'; box.style.bottom = 'auto';
   const cs = getClipState(clipId);
   if (cs.short) cs.short.webcam = coords;
   updateCoordHint(clipId);
+  // Preview redrawn via updateCoordHint → drawSplitPreview
+}
+
+function onSplitVideoReady(clipId) {
+  const vid = document.getElementById('canvas-vid-' + clipId);
+  const mainVid = document.getElementById('vid-' + clipId);
+  if (!vid) return;
+  const t = (mainVid?.currentTime) || (vid.duration ? vid.duration * 0.3 : 5);
+  vid.currentTime = t;
+  vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
 }
 
 function initCanvasVideo(clipId) {
   const vid = document.getElementById('canvas-vid-' + clipId);
   const mainVid = document.getElementById('vid-' + clipId);
-  if (!vid || !mainVid) return;
-  vid.currentTime = mainVid.currentTime || 0;
+  if (!vid) return;
+  const t = (mainVid?.currentTime) || 5;
+  if (vid.readyState >= 2) {
+    vid.currentTime = t;
+    vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
+  } else {
+    vid.addEventListener('loadeddata', () => {
+      vid.currentTime = t;
+      vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
+    }, { once: true });
+  }
 }
 
-// Phone drag-and-drop for cam position
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => {
-  const phone = e.target.closest('.sp-phone');
-  if (!phone) return;
-  e.preventDefault();
-  const clipId = phone.id.replace('phone-', '');
-  const rect = phone.getBoundingClientRect();
-  const mid = rect.top + rect.height / 2;
-  const camEl = document.getElementById('sp-cam-' + clipId);
-  const divEl = document.getElementById('sp-div-' + clipId);
-  const gameEl = document.getElementById('sp-game-' + clipId);
-  if (!camEl || !divEl || !gameEl) return;
-  phone.innerHTML = '';
-  if (e.clientY < mid) {
-    phone.appendChild(camEl); phone.appendChild(divEl); phone.appendChild(gameEl);
-    if (state.clips[clipId]?.short) state.clips[clipId].short.camPos = 'top';
-  } else {
-    phone.appendChild(gameEl); phone.appendChild(divEl); phone.appendChild(camEl);
-    if (state.clips[clipId]?.short) state.clips[clipId].short.camPos = 'bottom';
-  }
+function toggleCamPos(clipId) {
+  const cs = getClipState(clipId);
+  if (!cs.short) return;
+  cs.short.camPos = (cs.short.camPos === 'bottom') ? 'top' : 'bottom';
   saveState();
-});
+  drawSplitPreview(clipId);
+  updateTopbar();
+}
+
+function drawSplitPreview(clipId) {
+  const vid     = document.getElementById('canvas-vid-' + clipId);
+  const preview = document.getElementById('split-preview-' + clipId);
+  const cs      = getClipState(clipId);
+  if (!preview || !cs.short) return;
+
+  const ctx = preview.getContext('2d');
+  const PW = 108, PH = 192;
+
+  // Section heights (must match render-shorts.js: 726 + 1194 = 1920)
+  const CAM_H_PX  = Math.round(PH * 726  / 1920); // ≈41px
+  const GAME_H_PX = PH - CAM_H_PX;                // ≈151px
+
+  const camPos = cs.short.camPos || 'top';
+  const camDestY  = camPos === 'top' ? 0        : GAME_H_PX;
+  const gameDestY = camPos === 'top' ? CAM_H_PX : 0;
+  const divY      = camPos === 'top' ? CAM_H_PX : GAME_H_PX;
+
+  // Background
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, PW, PH);
+
+  const coords = getCamCoords(clipId);
+  const hasVideo = vid && vid.readyState >= 2 && vid.videoWidth > 0;
+
+  if (hasVideo && coords) {
+    const [rx, ry, rw, rh] = coords;
+    const vw = vid.videoWidth, vh = vid.videoHeight;
+
+    // ── Webcam crop → cam section ──────────────────────────────
+    const sx = Math.round(rx * vw);
+    const sy = Math.round(ry * vh);
+    const sw = Math.round(rw * vw);
+    const sh = Math.round(rh * vh);
+    if (sw > 0 && sh > 0) {
+      try { ctx.drawImage(vid, sx, sy, sw, sh, 0, camDestY, PW, CAM_H_PX); } catch {}
+    }
+
+    // ── Full frame → game section (scale to PW wide, center-crop vertically) ──
+    const scaledH = (vh / vw) * PW;   // video height when scaled to PW wide
+    let srcY = 0, srcH = vh;
+    if (scaledH > GAME_H_PX) {
+      // video is taller than game section → center-crop
+      const cropH = (GAME_H_PX / PW) * vw;
+      srcY = Math.round((vh - cropH) / 2);
+      srcH = Math.round(cropH);
+    }
+    try { ctx.drawImage(vid, 0, srcY, vw, srcH, 0, gameDestY, PW, GAME_H_PX); } catch {}
+  } else {
+    // Placeholder
+    ctx.fillStyle = '#1a1a0a';
+    ctx.fillRect(0, camDestY, PW, CAM_H_PX);
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, gameDestY, PW, GAME_H_PX);
+    ctx.fillStyle = '#555';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📷', PW / 2, camDestY + CAM_H_PX / 2);
+    ctx.fillText('🎮', PW / 2, gameDestY + GAME_H_PX / 2);
+  }
+
+  // Divider line
+  ctx.fillStyle = '#f5ff3d';
+  ctx.fillRect(0, divY, PW, 2);
+
+  // camPos label
+  ctx.fillStyle = '#f5ff3daa';
+  ctx.font = '7px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(camPos === 'top' ? '📷 top' : '📷 bot', 3, camDestY + 2);
+}
+
+// (drag-drop for cam position replaced by canvas click → toggleCamPos)
 
 // ── BENCH ─────────────────────────────────────────────────────────────────────
 function renderBench() {
@@ -966,6 +1107,21 @@ function addFromBench(clipId) {
   renderBench();
 }
 
+function sendToBench(e, clipId) {
+  e.stopPropagation();
+  state.order = state.order.filter(id => id !== clipId);
+  delete state.reconnects[clipId];
+  if (state.reconnectSource?.clipId === clipId) state.reconnectSource = null;
+  if (state.thumbnail?.clipId === clipId) state.thumbnail = null;
+  const idx = CLIPS_DATA.selected.findIndex(c => c.id === clipId);
+  if (idx !== -1) CLIPS_DATA.bench.push(CLIPS_DATA.selected.splice(idx, 1)[0]);
+  if (state.moved) state.moved = state.moved.filter(id => id !== clipId);
+  saveState();
+  renderClipList();
+  renderBench();
+  updateDuration();
+}
+
 function toggleBench(btn) {
   const body = document.getElementById('bench-body');
   const isOpen = body.classList.contains('open');
@@ -980,11 +1136,11 @@ function updateTopbar() {
   const shortCount = state.order.filter(id => !!state.clips[id]?.short).length;
   document.getElementById('shorts-display').textContent = shortCount;
   const reconBadge = document.getElementById('reconnect-badge');
-  const reconIds = Object.keys(state.reconnects || {});
-  if (reconIds.length > 0) {
+  if (state.reconnectSource) {
     reconBadge.style.display = '';
+    const src = state.reconnectSource;
     document.getElementById('reconnect-display').textContent =
-      reconIds.map(id => `${getClip(id)?.streamer || '?'} ${fmtTime(state.reconnects[id].from)}–${fmtTime(state.reconnects[id].to)}`).join(', ');
+      `${getClip(src.clipId)?.streamer || '?'} ${fmtTime(src.from)}–${fmtTime(src.to)}`;
   } else { reconBadge.style.display = 'none'; }
   const thumbBadge = document.getElementById('thumb-badge');
   if (state.thumbnail) {
@@ -1016,25 +1172,19 @@ function updateDuration() {
 
 // ── JSON GENERATOR ────────────────────────────────────────────────────────────
 function buildJSON() {
-  const reconnectArr = Object.entries(state.reconnects || {}).map(([clipId, r]) => ({
-    clipId, from: +r.from.toFixed(2), to: +r.to.toFixed(2)
-  }));
+  const src = state.reconnectSource;
+  const reconnectPositions = Object.keys(state.reconnects || {}).filter(id => state.order.includes(id));
   const out = {
     runId: CLIPS_DATA.runId,
     clipOrder: state.order,
-    reconnect: reconnectArr[0] || null,
-    reconnects: reconnectArr,
+    reconnectSource: src ? { clipId: src.clipId, from: +src.from.toFixed(2), to: +src.to.toFixed(2) } : null,
+    reconnectPositions,
     thumbnail: state.thumbnail || null,
     clips: {}
   };
   state.order.forEach(clipId => {
     const cs = state.clips[clipId] || {};
     const entry = {};
-    if (cs.trimIn !== undefined || cs.trimOut !== undefined) {
-      entry.trim = {};
-      if (cs.trimIn !== undefined) entry.trim.in = +cs.trimIn.toFixed(2);
-      if (cs.trimOut !== undefined) entry.trim.out = +cs.trimOut.toFixed(2);
-    }
     if (cs.keeps && cs.keeps.length > 0) entry.keeps = cs.keeps;
     if (cs.short) entry.short = cs.short;
     if (Object.keys(entry).length > 0) out.clips[clipId] = entry;

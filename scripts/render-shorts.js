@@ -51,6 +51,23 @@ const plan      = readJson(path.join(base, 'edit/episode-plan.json'));
 const scored    = readJson(path.join(base, 'clips/scored-clips.json'));
 const clipIds   = plan.shortClipIds || [];
 
+// Read editorial.json for short mode / webcam coords / camPos
+let editorialClips = {};
+try {
+  const ed = readJson(path.join(base, 'edit/editorial.json'));
+  editorialClips = ed.clips || {};
+} catch {}
+
+function getShortMode(clipId) {
+  return editorialClips[clipId]?.short?.mode || 'desktop';
+}
+function getShortWebcam(clipId) {
+  return editorialClips[clipId]?.short?.webcam || null;
+}
+function getCamPos(clipId) {
+  return editorialClips[clipId]?.short?.camPos || 'top';
+}
+
 const broadcasters = {};
 for (const clip of scored) broadcasters[clip.id] = clip.broadcaster_name;
 
@@ -120,61 +137,117 @@ for (const clipId of clipIds) {
     activeAssFile = tmpAssPath;
   }
 
+  const mode      = getShortMode(clipId);
+  const webcam    = getShortWebcam(clipId);
+  const camPos    = getCamPos(clipId);
   const headerMkv = ensureHeaderMkv(broadcaster);
   const hasHeader = !!headerMkv && fs.existsSync(headerMkv);
 
-  console.log(`[SHORT] @${broadcaster} — ${clipId.slice(0, 28)}${hasAss ? ' +captions' : ''}`);
-
-  // Layout:
-  //   [bg]  — blurred, fills 1080×1920
-  //   [fg]  — 1080×1080, centered vertically at (H-h)/2 = y≈420
-  //   [header MKV] — 1080×1920 transparent; logo+nick pulse at y≈178, overlaid on top
-  //   [captions]   — ASS burned at bottom (MarginV=340)
-  //
-  // The header MKV is full-frame but transparent below the logo/nick area,
-  // so it doesn't occlude the video content below y≈250.
-
-  const baseFilters = [
-    '[0:v]split[main][bg]',
-    '[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.3[blurred]',
-    // scale to 1080px wide, natural height from aspect ratio (no padding = no black bars)
-    '[main]scale=1080:-2[fg]',
-    '[blurred][fg]overlay=(W-w)/2:(H-h)/2[base]'
-  ];
-
-  let filterParts, ffInputs, extraArgs;
+  console.log(`[SHORT:${mode.toUpperCase()}] @${broadcaster} — ${clipId.slice(0, 28)}${hasAss ? ' +captions' : ''}`);
 
   const seekArgs = startOffset > 0 ? ['-ss', startOffset.toFixed(3)] : [];
+  let filterParts, ffInputs, extraArgs;
 
-  if (hasHeader && hasAss) {
-    filterParts = [
-      ...baseFilters,
-      '[base][1:v]overlay=0:0:format=auto[with_header]',
-      `[with_header]ass=${ffmpegPath(activeAssFile)}[out]`
-    ];
-    ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
-    extraArgs = ['-shortest'];
-  } else if (hasHeader) {
-    filterParts = [
-      ...baseFilters,
-      '[base][1:v]overlay=0:0:format=auto[out]'
-    ];
-    ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
-    extraArgs = ['-shortest'];
-  } else if (hasAss) {
-    filterParts = [
-      ...baseFilters.slice(0, 3),
-      `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`
-    ];
+  if (mode === 'mobile') {
+    // ── MOBILE: center crop 9:16 ──────────────────────────────────────────────
+    const cropVf = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920';
+    let vfChain = cropVf;
+    if (hasAss) vfChain += `,ass=${ffmpegPath(activeAssFile)}`;
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
+    // header overlay on top
+    if (hasHeader) {
+      filterParts = [
+        `[0:v]${cropVf}[cropped]`,
+        `[cropped][1:v]overlay=0:0:format=auto${hasAss ? '[with_header]' : '[out]'}`,
+        ...(hasAss ? [`[with_header]ass=${ffmpegPath(activeAssFile)}[out]`] : [])
+      ];
+      ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
+      extraArgs = ['-shortest'];
+    } else if (hasAss) {
+      filterParts = [`[0:v]${cropVf},ass=${ffmpegPath(activeAssFile)}[out]`];
+    } else {
+      filterParts = [`[0:v]${cropVf}[out]`];
+    }
+
+  } else if (mode === 'split' && webcam) {
+    // ── SPLIT: webcam crop (top or bottom) + scaled gameplay ──────────────────
+    const [rx, ry, rw, rh] = webcam;
+    const CAM_X = Math.round(rx * 1920);
+    const CAM_Y = Math.round(ry * 1080);
+    const CAM_W = Math.round(rw * 1920);
+    const CAM_H = Math.round(rh * 1080);
+    // Must be even for libx264; total cam+game = 1920
+    const CAM_OUT_H  = 726;   // 1920 * 0.378 — even
+    const GAME_OUT_H = 1194;  // 1920 - 726 — even
+
+    // Need to split [0:v] since it's used for both cam crop and game scale
+    const order = camPos === 'bottom' ? '[game][cam]' : '[cam][game]';
+    const fc = [
+      '[0:v]split=2[vsrc1][vsrc2]',
+      `[vsrc1]crop=${CAM_W}:${CAM_H}:${CAM_X}:${CAM_Y},scale=1080:${CAM_OUT_H}[cam]`,
+      // Center crop 9:16 then scale (same as mobile — no stretch)
+      `[vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:${GAME_OUT_H}[game]`,
+      `${order}vstack=inputs=2[stacked]`
+    ];
+
+    ffInputs  = [...seekArgs, '-i', input];
+    extraArgs = [];
+
+    // Build filter chain: stacked → [+header] → [+captions] → [out]
+    let lastLabel = 'stacked';
+    if (hasHeader) {
+      ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
+      extraArgs = ['-shortest'];
+      fc.push(`[${lastLabel}][1:v]overlay=0:0:format=auto[with_header]`);
+      lastLabel = 'with_header';
+    }
+    if (hasAss) {
+      fc.push(`[${lastLabel}]ass=${ffmpegPath(activeAssFile)}[out]`);
+    } else {
+      // rename last output label to [out]
+      fc[fc.length - 1] = fc[fc.length - 1].replace(`[${lastLabel}]`, '[out]');
+    }
+    filterParts = fc;
+
   } else {
-    filterParts = [
-      ...baseFilters.slice(0, 3),
-      '[blurred][fg]overlay=(W-w)/2:(H-h)/2[out]'
+    // ── DESKTOP: blur background (default / fallback) ─────────────────────────
+    const baseFilters = [
+      '[0:v]split[main][bg]',
+      '[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.3[blurred]',
+      '[main]scale=1080:-2[fg]',
+      '[blurred][fg]overlay=(W-w)/2:(H-h)/2[base]'
     ];
+
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
+
+    if (hasHeader && hasAss) {
+      filterParts = [
+        ...baseFilters,
+        '[base][1:v]overlay=0:0:format=auto[with_header]',
+        `[with_header]ass=${ffmpegPath(activeAssFile)}[out]`
+      ];
+      ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
+      extraArgs = ['-shortest'];
+    } else if (hasHeader) {
+      filterParts = [
+        ...baseFilters,
+        '[base][1:v]overlay=0:0:format=auto[out]'
+      ];
+      ffInputs  = [...seekArgs, '-i', input, '-stream_loop', '-1', '-i', headerMkv];
+      extraArgs = ['-shortest'];
+    } else if (hasAss) {
+      filterParts = [
+        ...baseFilters.slice(0, 3),
+        `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`
+      ];
+    } else {
+      filterParts = [
+        ...baseFilters.slice(0, 3),
+        '[blurred][fg]overlay=(W-w)/2:(H-h)/2[out]'
+      ];
+    }
   }
 
   const r = spawnSync('ffmpeg', [
@@ -183,7 +256,7 @@ for (const clipId of clipIds) {
     '-map', '[out]',
     '-map', '0:a',
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
     '-movflags', '+faststart',
     ...extraArgs,
     '-y', output

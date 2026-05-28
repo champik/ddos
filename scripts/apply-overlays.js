@@ -132,8 +132,9 @@ function renderReconnecting() {
     peakStart = sc.peakMoment?.start || 0;
   }
 
-  let src = path.resolve(projectDir, 'processed', rcId, 'overlayed.mp4');
-  if (!fs.existsSync(src)) src = path.resolve(projectDir, 'processed', rcId, 'clean.mp4');
+  // Always use clean.mp4 — no streamer name banner on reconnect transition
+  let src = path.resolve(projectDir, 'processed', rcId, 'clean.mp4');
+  if (!fs.existsSync(src)) src = path.resolve(projectDir, 'processed', rcId, 'overlayed.mp4');
 
   // Avoid dark/black frames — try peak moment and nearby timestamps
   const candidates = [peakStart, peakStart + 0.5, peakStart - 0.5, peakStart + 1.0, peakStart + 2.0]
