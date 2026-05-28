@@ -53,7 +53,7 @@ Respond ONLY with valid JSON, no markdown:
   },
   "thumbnailHook": "<2-4 WORDS ALL CAPS — must NOT reveal the ending>",
   "thumbnailStrategy": "<One sentence: which frame moment to use, what emotion/action is visible, why it works at mobile size.>",
-  "description": "<150-200 words English. First 2 sentences: drop viewer into the main hook moment immediately — name the streamer, describe the action, why it's unexpected or hilarious. Middle: set expectations for variety. End EXACTLY with: Subscribe for daily Twitch highlights and the best stream moments every day!>",
+  "description": "<150-200 words English. Opening 2 sentences: name the streamer, describe the specific action, why it landed — no 'In this episode' or 'Today's episode covers'. Then one flowing paragraph (NOT a list) describing 4-6 other moments with specific details, quotes, or outcomes; weave in game names and category keywords naturally. No 'zero filler', no 'all in one sitting', no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
   "shortsMetadata": [
     {
       "clipId": "<id>",
@@ -102,11 +102,21 @@ thumbnailStrategy rules:
 - High contrast — bright text on dark or vice versa, no busy background behind text
 - Confirm the hook fits at 200px mobile width
 
-description rules:
-- Hook in first 2 sentences: drop viewer into the main moment NOW — no "In this episode..." opener
-- Natural keywords: streamer names, Twitch clips, stream moments
-- NO social links, NO URLs
-- End EXACTLY: "Subscribe for daily Twitch highlights and the best stream moments every day!"
+description rules — HARD CONSTRAINTS:
+- First 2 sentences: drop into the main hook moment immediately — streamer name, what happened, why it landed. No "In this episode...", no "Today's episode covers..."
+- Body (one flowing paragraph, NOT a list): describe 4-6 other moments with specific details — a quote, an action, an outcome. Weave in streamer names, game names (CS2, Marvel Rivals, etc.), and category keywords (Just Chatting, IRL stream) naturally for search.
+- BANNED closing phrases: "zero filler", "all in one sitting", "at its finest", "maximum reaction", "every clip selected", episode number (never write "Episode N")
+- Include a specific quote or concrete detail from at least 3 moments — not generic summaries
+- End EXACTLY with this line (nothing after it, nothing changed): "Subscribe for daily Twitch highlights and the best stream moments every day!"
+- NO social links, NO URLs, NO episode number anywhere
+
+Good example (Ep 12 style):
+  Stormfall33 was playing 007 First Light and delivered a Bond villain line so unexpected it stopped chat mid-scroll — "you've meowed your last meow." CookSux survives a paragliding takeoff that probably shouldn't have gone that way. xQc reacts to a $7,000 knife with his entire body. Jynxzi coaches a viewer to their first penta kill in League of Legends. Seventeen moments earned.
+  Subscribe for daily Twitch highlights and the best stream moments every day!
+
+Bad example (avoid):
+  Today's episode covers IRL chaos, gaming moments, and wholesome content. Featuring xQc, HAchubby, and more — every clip selected for maximum reaction, zero filler. Funny, chaotic, and wholesome all in one sitting.
+  Subscribe for daily Twitch highlights and the best stream moments every day!
 
 Shorts title rules:
 - Max 60 characters, no channel suffix, no emojis
