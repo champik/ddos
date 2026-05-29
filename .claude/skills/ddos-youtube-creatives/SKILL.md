@@ -35,7 +35,6 @@ Framework:
 - Retention-first: the first 30 seconds determine watch-through. Titles and thumbnails must hook without deception.
 - Thumbnails tell micro-stories. Mobile-first: readable at 200px width.
 - Five title options, each targeting a DIFFERENT psychological trigger.
-- Shorts captions must stop the scroll in under 10 words.
 
 Episode data:
   Episode #: <N>
@@ -58,7 +57,7 @@ Respond ONLY with valid JSON, no markdown:
     {
       "clipId": "<id>",
       "title": "<scroll-stopping hook — max 60 chars, no channel suffix, no emojis>",
-      "caption": "<scroll-stopper: emotional hook in under 10 words, present tense>",
+      "description": "<50-80 words English. First sentence: streamer name + specific action + why it landed — no 'In this clip', no 'Check out', no 'Watch as'. Second sentence: context with game name or Just Chatting/IRL keyword + reaction or outcome detail. No generic phrases, no list, no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
       "hashtags": ["#DailyDoseOfStream","#TwitchClips","#Shorts","#<streamer>"]
     }
   ]
@@ -122,11 +121,21 @@ Shorts title rules:
 - Max 60 characters, no channel suffix, no emojis
 - Lead with the streamer name or the action — not a generic phrase
 
-Shorts caption rules:
-- Present tense, under 10 words
-- Emotional — make viewer feel they'll miss something if they scroll
-- Good: "He actually did it" / "Chat could NOT believe this happened"
-- Bad: passive voice, generic "funny moment", recap of title, any banned phrase
+Shorts description rules — HARD CONSTRAINTS (YouTube SEO, 50-80 words):
+- First sentence: streamer name + specific action + why it landed. NO openers: "In this clip", "Check out", "Watch as", "Here is"
+- Second sentence: context — weave in game name (CS2, Marvel Rivals, etc.) or category keyword (Just Chatting, IRL stream) + reaction or outcome detail
+- NO generic phrases: "funny moment", "epic reaction", "amazing clip", "you won't believe"
+- NO list format, NO episode number, NO URLs
+- End EXACTLY: "Subscribe for daily Twitch highlights and the best stream moments every day!"
+- Hashtags are appended by the script — do NOT include them in this field
+
+Good example:
+  HAchubby's delivery driver refused to leave without getting on camera, and what happened next had her IRL stream in absolute shambles for two minutes straight.
+  Subscribe for daily Twitch highlights and the best stream moments every day!
+
+Bad example:
+  Check out this funny clip from HAchubby's stream! Amazing Just Chatting moment you won't believe.
+  Subscribe for daily Twitch highlights and the best stream moments every day!
 ```
 
 Зберегти raw JSON у `exports/metadata.json`.

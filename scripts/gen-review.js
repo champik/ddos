@@ -145,7 +145,7 @@ const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   `  <div class="short-card">
     <video src="../exports/shorts/${sm.clipId}.mp4" controls></video>
     <div class="short-title">${esc(sm.title)}</div>
-    <div class="short-caption">${esc(sm.caption)}</div>
+    <div class="short-description">${esc(sm.description || '')}</div>
   </div>`
 ).join('\n');
 
@@ -199,7 +199,7 @@ const html = `<!DOCTYPE html>
   .short-card { display: flex; flex-direction: column; gap: 8px; }
   .short-card video { width: 155px; border-radius: 8px; background: #000; aspect-ratio: 9 / 16; }
   .short-title { font-size: 11px; font-weight: 600; color: #f5ff3d; max-width: 155px; line-height: 1.3; }
-  .short-caption { font-size: 11px; color: #888; max-width: 155px; }
+  .short-description { font-size: 10px; color: #888; max-width: 155px; line-height: 1.4; }
   .meta-block { background: #1a1a1e; border-radius: 10px; padding: 20px 24px; }
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }

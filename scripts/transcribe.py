@@ -26,14 +26,14 @@ def transcribe(video_path, output_path, clip_id):
 
     try:
         model = WhisperModel("large-v3", device="cuda", compute_type="float16")
-        segments, info = model.transcribe(video_path, word_timestamps=True)
+        segments, info = model.transcribe(video_path, word_timestamps=True, task="translate")
         words = []
         full_text = []
-        for seg in segments:
+        for seg_idx, seg in enumerate(segments):
             full_text.append(seg.text.strip())
             if seg.words:
                 for w in seg.words:
-                    words.append({"word": w.word, "start": round(w.start, 3), "end": round(w.end, 3)})
+                    words.append({"word": w.word, "start": round(w.start, 3), "end": round(w.end, 3), "seg": seg_idx})
 
         result = {
             "clip_id": clip_id,

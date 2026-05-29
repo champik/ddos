@@ -106,13 +106,12 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
   return videoId;
 }
 
-// Build short description: link to full video is the first line so YouTube picks it up
-function buildShortDescription(_mainVideoId, clipMeta) {
+function buildShortDescription(clipMeta) {
   const hashtags = (clipMeta && clipMeta.hashtags)
     ? clipMeta.hashtags.join(' ')
     : '#DailyDoseOfStream #TwitchClips #Shorts';
-  const caption = (clipMeta && clipMeta.caption) ? clipMeta.caption + '\n\n' : '';
-  return `${caption}${hashtags}`;
+  const body = clipMeta && clipMeta.description;
+  return body ? `${body}\n\n${hashtags}` : hashtags;
 }
 
 // publishAt — optional ISO string. If provided, video is scheduled (private until that time).
@@ -132,7 +131,7 @@ async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publ
     ? clipMeta.title.slice(0, 100)
     : `${hookText || 'Clip'} | Daily Dose Of Stream #shorts`.slice(0, 100);
 
-  const description = buildShortDescription(mainVideoId, clipMeta);
+  const description = buildShortDescription(clipMeta);
 
   const statusBody = publishAt
     ? { privacyStatus: 'private', publishAt, selfDeclaredMadeForKids: false }

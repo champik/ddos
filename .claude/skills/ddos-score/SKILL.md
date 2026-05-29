@@ -161,25 +161,6 @@ PEAK=$(python3 scripts/find_peak.py "processed/<clipId>/clean.mp4")
 
 ---
 
-## CHILL CLIP ACCUMULATION
-
-Після scoring кожного кліпу:
-
-```bash
-if singingScore > 70:
-  mkdir -p assets/chill-archive/singing
-  cp "processed/<clipId>/clean.mp4" "assets/chill-archive/singing/<clipId>.mp4"
-  # Додати в assets/chill-archive/index.json:
-  {"clipId": "...", "type": "singing", "broadcaster": "...", "score": N, "runId": "...", "duration": N}
-
-if dancingScore > 70:
-  mkdir -p assets/chill-archive/dancing
-  cp "processed/<clipId>/clean.mp4" "assets/chill-archive/dancing/<clipId>.mp4"
-  # Аналогічно в index.json з type: "dancing"
-```
-
----
-
 ## GENERATE_EDITORIAL — Відбір кліпів + генерація edit.html
 
 ```bash

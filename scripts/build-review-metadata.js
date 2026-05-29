@@ -144,7 +144,7 @@ const shortsMetadata = (plan.shortClipIds || []).map(clipId => {
   return {
     clipId,
     title: `${name} Had A Moment | Daily Dose Of Stream`,
-    caption: `${name} on Twitch 😂 #TwitchClips #Shorts`,
+    description: '',
     hashtags: buildShortsTags(clipId),
   };
 });

@@ -45,29 +45,35 @@ const shortClips = editorial.clipOrder
 
 Також читає `edit/shorts-selection.json` як fallback якщо editorial.json відсутній.
 
-Input: `processed/<clipId>/overlayed.mp4`
+Input: `processed/<clipId>/clean.mp4` (без стрімер-оверлею)
 Output: `exports/shorts/<clipId>.mp4`
+
+Брендинг через оверлей відсутній — тільки субтитри внизу.
 
 ### Режим: desktop (blur зверху/знизу)
 ```bash
-ffmpeg -i "processed/<id>/overlayed.mp4" \
+ffmpeg -i "processed/<id>/clean.mp4" \
   -filter_complex \
-  "[0:v]scale=1080:1920,boxblur=20:5[bg];
-   [0:v]scale=1080:-2[fg];
-   [bg][fg]overlay=(W-w)/2:(H-h)/2[out];
-   [out]subtitles=processed/<id>/captions-vertical.ass[final]" \
-  -map "[final]" -map "0:a" \
-  -c:v libx264 -crf 23 -c:a aac -b:a 192k -ac 2 -ar 48000 -r 30 \
-  -y "exports/shorts/<id>.mp4"
+  "[0:v]split[main][bg];
+   [bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.3[blurred];
+   [main]scale=1080:-2[fg];
+   [blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=processed/<id>/captions-vertical.ass[out_sar];
+   [out_sar]setsar=1[out]" \
+  -map "[out]" -map "0:a" \
+  -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \
+  -movflags +faststart -y "exports/shorts/<id>.mp4"
 ```
-Якщо `captions-vertical.ass` відсутній — прибрати `subtitles=` фільтр (замінити `[out]` на output напряму).
+Якщо `captions-vertical.ass` відсутній — прибрати `,ass=...` з останнього фільтру.
 
 ### Режим: mobile (center crop 9:16)
 ```bash
-ffmpeg -i "processed/<id>/overlayed.mp4" \
-  -vf "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920" \
-  -c:v libx264 -crf 23 -c:a aac -b:a 192k -ac 2 -ar 48000 -r 30 \
-  -y "exports/shorts/<id>.mp4"
+ffmpeg -i "processed/<id>/clean.mp4" \
+  -filter_complex \
+  "[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,ass=processed/<id>/captions-vertical.ass[out_sar];
+   [out_sar]setsar=1[out]" \
+  -map "[out]" -map "0:a" \
+  -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \
+  -movflags +faststart -y "exports/shorts/<id>.mp4"
 ```
 
 ### Режим: split (webcam + gameplay)
@@ -83,23 +89,24 @@ const CAM_Y = Math.round(ry * 1080);
 const CAM_W = Math.round(rw * 1920);
 const CAM_H = Math.round(rh * 1080);
 
-const CAM_OUT_H = 726;   // 1920 * 0.38
-const GAME_OUT_H = 1191; // 1920 - 3 - 726
+const CAM_OUT_H  = camNaturalH; // визначається з AR + camCrop
+const GAME_OUT_H = 1920 - CAM_OUT_H;
 
 // camPos=top: webcam зверху, gameplay знизу
-// [cam][game]vstack → якщо camPos=bottom то [game][cam]vstack
 const order = (short.camPos === 'bottom') ? '[game][cam]' : '[cam][game]';
 ```
 
 ```bash
-ffmpeg -i "processed/<id>/overlayed.mp4" \
+ffmpeg -i "processed/<id>/clean.mp4" \
   -filter_complex \
-  "[0:v]crop=${CAM_W}:${CAM_H}:${CAM_X}:${CAM_Y},scale=1080:${CAM_OUT_H}[cam];
-   [0:v]scale=1080:${GAME_OUT_H}[game];
-   ${order}vstack=inputs=2[out]" \
+  "[0:v]split=2[vsrc1][vsrc2];
+   [vsrc1]crop=${CAM_W}:${CAM_H}:${CAM_X}:${CAM_Y},scale=1080:${CAM_OUT_H}[cam];
+   [vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,crop=1080:${GAME_OUT_H}:0:${gameOffset}[game];
+   ${order}vstack=inputs=2,ass=processed/<id>/captions-vertical.ass[out_sar];
+   [out_sar]setsar=1[out]" \
   -map "[out]" -map "0:a" \
-  -c:v libx264 -crf 23 -c:a aac -b:a 192k -ac 2 -ar 48000 -r 30 \
-  -y "exports/shorts/<id>.mp4"
+  -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \
+  -movflags +faststart -y "exports/shorts/<id>.mp4"
 ```
 
 Зберегти список у `state.outputs.shortsPaths`.

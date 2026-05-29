@@ -34,7 +34,6 @@
     "overlays": "pending",
     "captions": "pending",
     "reconnecting": "pending",
-    "chillFinale": "pending",
     "renderLong": "pending",
     "renderShorts": "pending",
     "thumbnail": "pending",

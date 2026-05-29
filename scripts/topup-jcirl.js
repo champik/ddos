@@ -13,6 +13,8 @@ const hoursArg = process.argv.indexOf('--hours');
 const HOURS = hoursArg !== -1 ? parseInt(process.argv[hoursArg + 1]) : 36; // wider window for more variety
 const limitArg = process.argv.indexOf('--limit');
 const LIMIT = limitArg !== -1 ? parseInt(process.argv[limitArg + 1]) : 20;
+const pagesArg = process.argv.indexOf('--pages');
+const PAGES = pagesArg !== -1 ? parseInt(process.argv[pagesArg + 1]) : 6;
 
 const PROJECT_DIR = path.join('projects', runId);
 const CLIPS_DIR   = path.join(PROJECT_DIR, 'clips');
@@ -110,7 +112,7 @@ async function main() {
 
     // Fetch multiple pages to get enough candidates
     let cursor = '';
-    let pagesLeft = 6; // up to 120 clips per category
+    let pagesLeft = PAGES; // up to PAGES*20 clips per category
     let pageFetched = 0;
 
     while (pagesLeft-- > 0) {

@@ -56,7 +56,10 @@ function toAssTime(secs) {
   return `${h}:${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-// Group words into natural phrases (max 5 words, split on long pauses or punctuation)
+// Group words into natural phrases.
+// Primary split: Whisper segment boundary (seg field) — never merge across segments.
+// Secondary splits: pause > 0.35s, sentence-ending punctuation, comma/semicolon, max 4 words.
+// Falls back gracefully for old transcripts without seg field.
 function groupIntoPhrases(words) {
   const phrases = [];
   let current = [];
@@ -67,12 +70,13 @@ function groupIntoPhrases(words) {
     const gap = prev ? w.start - prev.end : 0;
     const prevText = prev ? prev.word.trim() : '';
 
-    // Break phrase on: long pause, sentence-ending punctuation, or max length
-    const longPause = gap > 0.55;
+    const segBreak   = prev && w.seg != null && prev.seg != null && w.seg !== prev.seg;
+    const longPause  = gap > 0.35;
     const sentenceEnd = /[.!?]$/.test(prevText);
-    const tooLong = current.length >= 5;
+    const commaBreak = /[,;]$/.test(prevText);
+    const tooLong    = current.length >= 4;
 
-    if (current.length > 0 && (longPause || sentenceEnd || tooLong)) {
+    if (current.length > 0 && (segBreak || longPause || sentenceEnd || commaBreak || tooLong)) {
       phrases.push(current);
       current = [w];
     } else {

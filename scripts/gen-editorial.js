@@ -47,21 +47,33 @@ const TARGET_MAX = 900;
 // Exclude flagged clips from auto-selection
 const eligible = scored.filter(c => !c.flags.some(f => SKIP_FLAGS.has(f)));
 
-for (const c of eligible) {
-  if (totalDuration >= TARGET_MAX) break;
+const jcIrlEligible = eligible.filter(c => JC_IRL_IDS.has(c.game_id));
+const otherEligible = eligible.filter(c => !JC_IRL_IDS.has(c.game_id));
+
+// Target: 50% JC/IRL → fill up to half the episode with JC/IRL, rest with other
+const JCIRL_TARGET = TARGET_MIN * 0.55; // ~55% of min gives breathing room
+
+// Phase 1: add top JC/IRL clips until we hit JCIRL_TARGET duration
+for (const c of jcIrlEligible) {
+  if (totalDuration >= JCIRL_TARGET) break;
   const count = streamerCount.get(c.broadcaster_name) || 0;
   if (count >= 3) continue;
-
-  // Try to keep episode to reasonable count while hitting duration target
   selected.push(buildEditorialClip(c));
   totalDuration += c.duration;
   streamerCount.set(c.broadcaster_name, count + 1);
+}
 
-  if (totalDuration >= TARGET_MIN && selected.length >= 12) {
-    // Check if we have enough JC/IRL
-    const jcIrlCount = selected.filter(s => JC_IRL_IDS.has(s.gameId)).length;
-    if (jcIrlCount / selected.length >= 0.50) break;
-  }
+// Phase 2: fill with non-JC/IRL to hit TARGET_MIN while keeping JC/IRL >= 50%
+for (const c of otherEligible) {
+  if (totalDuration >= TARGET_MAX) break;
+  const count = streamerCount.get(c.broadcaster_name) || 0;
+  if (count >= 3) continue;
+  const jcIrlDur = selected.filter(s => JC_IRL_IDS.has(s.gameId)).reduce((a, s) => a + s.duration, 0);
+  // Stop if adding this would push JC/IRL below 50% of total AND we already hit minimum
+  if ((jcIrlDur / (totalDuration + c.duration)) < 0.50 && totalDuration >= TARGET_MIN) break;
+  selected.push(buildEditorialClip(c));
+  totalDuration += c.duration;
+  streamerCount.set(c.broadcaster_name, count + 1);
 }
 
 // Bench: all other eligible clips not selected

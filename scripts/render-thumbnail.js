@@ -34,7 +34,9 @@ async function render(framePath, headline, outPath, fontSize) {
 const args = process.argv.slice(2);
 const sizeIdx = args.indexOf('--size');
 const fontSize = sizeIdx !== -1 ? parseInt(args[sizeIdx + 1]) : null;
-const [framePath, headline, outPath] = args.filter((_, i) => i !== sizeIdx && i !== sizeIdx + 1);
+const [framePath, headline, outPath] = sizeIdx !== -1
+  ? args.filter((_, i) => i !== sizeIdx && i !== sizeIdx + 1)
+  : args;
 
 if (!framePath || !headline || !outPath) {
   console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>]');

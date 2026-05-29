@@ -100,8 +100,12 @@ node scripts/youtube-upload.js publish-all "<runId>"
 📱 Shorts заплановані: +1год, +2год, +3год...
 ```
 
-Після publish — перегенерувати review.html:
+Після publish — оновити review і index:
+
 ```bash
 node scripts/gen-review.js "projects/<runId>"
+node scripts/update-index.js "<runId>"
 ```
-Це оновить статус на "✓ Published" і додасть посилання на YouTube + Shorts одразу під заголовком.
+
+`gen-review.js` — оновить статус на "✓ Published", додасть YouTube + Shorts лінки під заголовком review.html.  
+`update-index.js` — в `projects/index.html` змінить статус на "✓ published", додасть YouTube ↗, всі Shorts ↗, і Edit лінк якщо є `edit/edit.html`.

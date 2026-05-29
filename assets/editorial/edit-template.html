@@ -106,7 +106,7 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .bench-dur{color:#555;font-size:11px;font-family:monospace}
 .bench-add{background:#1a1a24;border:1px solid #2a2a2f;border-radius:5px;padding:3px 9px;color:#888;font-size:11px;cursor:pointer;flex-shrink:0}
 .bench-add:hover{border-color:#f5ff3d55;color:#f4f0e6}
-.btn-bench-it{background:none;border:1px solid #2a2a3a;border-radius:4px;color:#555;font-size:10px;cursor:pointer;padding:1px 6px;flex-shrink:0;line-height:1.4}
+.btn-bench-it{background:none;border:1px solid #2a2a3a;border-radius:4px;color:#555;font-size:10px;cursor:pointer;padding:0;flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center}
 .btn-bench-it:hover{border-color:#ff6b6b55;color:#ff6b6b}
 .prompt-block{background:#0a0a14;border:1px solid #1e1e28;border-radius:10px;padding:14px;margin-top:18px}
 .prompt-title{color:#f5ff3d;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:9px}
@@ -149,7 +149,71 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 </div>
 
 <script>
-const CLIPS_DATA = __CLIPS_JSON__;
+const MOCK_CLIPS_DATA = {
+  runId: "mock",
+  episodeNumber: 0,
+  selected: [
+    {
+      id: "ImpartialHungryPorpoiseGingerPower-dfbu4rdLoyX5-UR4",
+      streamer: "wendolynortizz", category: "IRL", gameId: "509672",
+      duration: 59.9, ddosScore: 77, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_wendolynortizz_9555_2026_05_28.mp4",
+      title: "fight for jonny", viewCount: 9555, language: "en",
+      thumbnailPotential: 70, shortsPotential: 68, emotionalCategory: "fail",
+      flags: [], reasoning: "IRL street fight with Spanish reactions — visually engaging chaos."
+    },
+    {
+      id: "InexpensiveWimpyStarTF2John-QXpJEtFq2K7S2DG_",
+      streamer: "TenzinNiznet", category: "Just Chatting", gameId: "509658",
+      duration: 45.7, ddosScore: 65.2, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_tenzinniznet_5599_2026_05_27.mp4",
+      title: "LMFAO", viewCount: 5599, language: "en",
+      thumbnailPotential: 72, shortsPotential: 80, emotionalCategory: "fail",
+      flags: [], reasoning: "IRL parking panic with sensors beeping — universally funny."
+    },
+    {
+      id: "ResilientStylishPlumberShazBotstix-35tpi0puI8SCgC9F",
+      streamer: "Jinnytty", category: "Just Chatting", gameId: "509658",
+      duration: 35.9, ddosScore: 64.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_jinnytty_4353_2026_05_27.mp4",
+      title: "Romanian Medieval Cat attack!!", viewCount: 4353, language: "en",
+      thumbnailPotential: 80, shortsPotential: 85, emotionalCategory: "surprise",
+      flags: [], reasoning: "Jinnytty gets bitten by wild cat at Romanian castle — instantly funny."
+    },
+    {
+      id: "TangentialAuspiciousGorillaSMOrc-J3kqeLsHcIwmtHmU",
+      streamer: "dano_mall", category: "IRL", gameId: "509672",
+      duration: 29.9, ddosScore: 55.8, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_dano_mall_777_2026_05_28.mp4",
+      title: "dano moment", viewCount: 777, language: "en",
+      thumbnailPotential: 60, shortsPotential: 65, emotionalCategory: "other",
+      flags: [], reasoning: "Short IRL moment."
+    },
+    {
+      id: "SquareWildFriseeFreakinStinkin-gAHsGOUrPWAF0EOl",
+      streamer: "BLASTDota", category: "Dota 2", gameId: "29595",
+      duration: 59.9, ddosScore: 58.4, videoPath: "../../projects/Episode_13_2026_05_28/downloads/dota_2_blastdota_7956_2026_05_27.mp4",
+      title: "BLAST Dota highlight", viewCount: 7956, language: "en",
+      thumbnailPotential: 62, shortsPotential: 60, emotionalCategory: "hype",
+      flags: [], reasoning: "Esports highlight."
+    }
+  ],
+  bench: [
+    {
+      id: "OutstandingPopularSharkFutureMan-PKV9tS4_6lvqPllu",
+      streamer: "TinaKitten", category: "Just Chatting", gameId: "509658",
+      duration: 58.6, ddosScore: 62.4, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_tinakitten_1897_2026_05_28.mp4",
+      title: "Tina on Bra Double Standards", viewCount: 1897, language: "en",
+      thumbnailPotential: 68, shortsPotential: 72, emotionalCategory: "other",
+      flags: [], reasoning: "TinaKitten rant — relatable topic but lacks sharp payoff."
+    },
+    {
+      id: "SolidBelovedWitchMrDestructoid-K2RWUjdRp5gQvhqW",
+      streamer: "erobb221", category: "IRL", gameId: "509672",
+      duration: 59.9, ddosScore: 55.7, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_erobb221_2108_2026_05_28.mp4",
+      title: "erobb moment", viewCount: 2108, language: "en",
+      thumbnailPotential: 65, shortsPotential: 70, emotionalCategory: "fail",
+      flags: [], reasoning: "erobb IRL fail."
+    }
+  ]
+};
+const CLIPS_DATA = (() => { try { return __CLIPS_JSON__; } catch(e) { return MOCK_CLIPS_DATA; } })();
 </script>
 <script>
 /*! Sortable 1.15.6 - MIT | git://github.com/SortableJS/Sortable.git */
@@ -164,7 +228,7 @@ let state = { order: [], reconnects: {}, reconnectSource: null, thumbnail: null,
 // state.reconnects[clipId] = true  — separator position after that clip
 // state.reconnectSource = { clipId, from, to } | null  — ONE global source clip+timing
 
-function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); }
+function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); updateDuration(); }
 
 function loadState() {
   const saved = localStorage.getItem(STATE_KEY);
@@ -225,7 +289,19 @@ document.addEventListener('DOMContentLoaded', () => {
   renderBench();
   updateTopbar();
   updatePrompt();
+  updateDuration();
 });
+
+function getClipUsedDur(clipId) {
+  const clip = getClip(clipId);
+  if (!clip) return 0;
+  const cs = state.clips[clipId] || {};
+  const keeps = cs.keeps;
+  if (keeps && keeps.length > 0) {
+    return keeps.reduce((sum, [f, t]) => sum + Math.max(0, t - f), 0);
+  }
+  return clip.duration;
+}
 
 // ── RENDER CLIP LIST ──────────────────────────────────────────────────────────
 function renderClipList() {
@@ -257,7 +333,7 @@ function buildClipCard(clip, num) {
       <span class="clip-num">#${num}</span>
       <span class="clip-streamer">${clip.streamer}</span>
       <span class="clip-cat">· ${clip.category}</span>
-      <span class="clip-dur-display">${fmtTimeSec(clip.duration)}</span>
+      <span class="clip-dur-used" id="dur-used-${clip.id}" style="font-family:monospace;font-size:11px;color:#555"><span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clip.id))}</span>/${fmtTimeSec(clip.duration)}</span>
       <span class="clip-score">${clip.ddosScore}</span>
       <div class="card-tags">
         <span class="tag tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">SHORT</span>
@@ -266,7 +342,7 @@ function buildClipCard(clip, num) {
         ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
         ${isThumb ? `<span class="mini-badge mb-thumb">🖼 ${fmtTimeSec(state.thumbnail.at)}</span>` : ''}
       </div>
-      <button class="btn-bench-it" onclick="sendToBench(event,'${clip.id}')" title="Відправити на лавку">⬇ bench</button>
+      <button class="btn-bench-it" onclick="sendToBench(event,'${clip.id}')" title="Відправити на лавку"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
       <span class="expand-icon">▼</span>
     </div>
     <div class="card-body" id="body-${clip.id}">${buildCardBody(clip)}</div>`;
@@ -378,6 +454,10 @@ function updateCardInPlace(clipId) {
   card.querySelector('.tag-short')?.classList.toggle('on', isShort);
   card.querySelector('.tag-thumb')?.classList.toggle('on', isThumb);
   card.querySelector('.tag-reconnect')?.classList.toggle('on', isRecon);
+
+  const clip = getClip(clipId);
+  const usedSpan = card.querySelector('.clip-dur-used');
+  if (usedSpan && clip) usedSpan.innerHTML = `<span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clipId))}</span>/${fmtTimeSec(clip.duration)}`;
 
   const cardTags = card.querySelector('.card-tags');
   cardTags.querySelectorAll('.mini-badge').forEach(el => el.remove());

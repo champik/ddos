@@ -90,19 +90,22 @@
 | JC/IRL | Just Chatting | 509658 |
 | JC/IRL | IRL | 509672 |
 | Specialty | Music | 26936 |
-| Specialty | Food & Drink | 509667 |
-| Specialty | Fitness & Health | 509671 |
 | Specialty | Pools, Hot Tubs, and Beaches | 116747788 |
-| Specialty | Talk Shows & Podcasts | 417752 |
+| Gaming | Counter-Strike | 32399 |
+| Gaming | VALORANT | 516575 |
+| Gaming | League of Legends | 21779 |
+| Gaming | Dota 2 | 29595 |
+| Gaming | PUBG: BATTLEGROUNDS | 493057 |
 
-**Dynamic (топ-12 з Twitch топ-20, виключаючи core і gambling):**
-Gaming категорії що в тренді (CS2, GTA, Valorant, LoL тощо).
+**Dynamic Gaming (додаткові категорії понад Core):**
+
+Топ-5 з Twitch топ-20, виключаючи Core і бан-лист. Нові хайпові ігри природно з'являться тут самі.
 
 ### Download бакети (100 кліпів)
 ```
 JC/IRL     → до 50  (40 по вірусності + 10 по популярності)
-Specialty  → до 15  (10 по вірусності + 5 по популярності, max 5 з однієї категорії)
-Gaming     → до 35  (25 по вірусності + 10 по популярності, max 5 з однієї гри)
+Specialty  → до 10  (7 по вірусності + 3 по популярності, max 6 з однієї категорії)
+Gaming     → до 40  (30 по вірусності + 10 по популярності, max 5 з однієї гри)
 ```
 
 ### Ліміти
@@ -113,13 +116,12 @@ Gaming     → до 35  (25 по вірусності + 10 по популярн
 - targetEpisodeMin: 720с (12 хв)
 - targetEpisodeMax: 900с (15 хв)
 - maxShorts: 10
-- maxDancingClipsInFinale: 10
 
 ### Фільтри — ЗАВЖДИ відхиляти
 - language == "ru"
 - language in ["ja", "ko", "zh", "th"] — азійські мови: переглядів багато але незрозуміло без контексту. Максимум 1 кліп на епізод тільки якщо момент суто візуальний (без діалогу) або міжнародно відомий стрімер
 - title містить: русский, россия, russian, путін, рф
-- category: Slots, Casino, Gambling, Sports Betting
+- category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals
 - стрімер у blacklist: Lyasyaa
 
 ### Детекція російських стрімерів (багатошарова)
@@ -187,7 +189,6 @@ projects/<runId>/
 │   ├── captions-segments.json
 │   ├── episode.ass                    # merged episode captions
 │   ├── reconnecting.mp4               # ~2s glitch moment (тривалість залежить від кліпу)
-│   ├── chill-finale.mp4               # singing + dancing finale (optional)
 │   └── concat-list.txt
 ├── exports/
 │   ├── episode-NNN.mp4
