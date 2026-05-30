@@ -85,17 +85,35 @@ function buildVideoTags() {
 
 function buildShortsTags(clipId) {
   const c = byId[clipId];
-  const base = ['#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
-  if (!c) return base;
-  const tags = [...base];
-  if (c.broadcaster_name) tags.push('#' + c.broadcaster_name.replace(/\s/g, ''));
-  const gid = String(c.game_id || '');
-  if (SPECIALTY[gid]) {
-    tags.push('#' + SPECIALTY[gid][0]);
-  } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
-    tags.push('#' + sanitizeGameTag(c.game_name));
+  const specific = ['#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
+  if (c?.broadcaster_name) specific.push('#' + c.broadcaster_name.replace(/\s/g, ''));
+  if (c) {
+    const gid = String(c.game_id || '');
+    if (SPECIALTY[gid]) {
+      for (const t of SPECIALTY[gid]) specific.push('#' + t);
+    } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
+      specific.push('#' + sanitizeGameTag(c.game_name), '#Gaming', '#TwitchGaming');
+    }
   }
-  return tags.slice(0, 8);
+  const general = [
+    '#TwitchShorts', '#StreamerMoments', '#FunnyMoments', '#TwitchMoments',
+    '#Twitch', '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
+    '#StreamClips', '#TwitchFunny', '#JustChatting', '#LiveStreaming',
+    '#TwitchHighlight', '#TwitchClip', '#ClipOfTheDay', '#TwitchCommunity',
+    '#StreamMoment', '#TwitchStream', '#ContentCreator', '#ShortsVideo',
+    '#TwitchFails', '#DailyClips', '#TopClips', '#TwitchTV', '#Streaming',
+  ];
+  const candidates = [...specific, ...general];
+  const result = [];
+  let len = 0;
+  for (const t of candidates) {
+    const bare = t.replace(/^#/, '');
+    const add = (result.length > 0 ? 1 : 0) + bare.length;
+    if (len + add > 500) break;
+    result.push(t);
+    len += add;
+  }
+  return result;
 }
 
 // ── chapters ──────────────────────────────────────────────────────────────────

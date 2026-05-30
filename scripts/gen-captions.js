@@ -221,7 +221,15 @@ for (const clipId of clipIds) {
     continue;
   }
 
-  const vAss = genVerticalAss(tr.words, VERTICAL_HEADER);
+  // For clips with a single keep starting at t>0: clean.mp4 starts at 0, so shift
+  // transcript timestamps by -keepStart so captions align with the trimmed video
+  const keeps = editorialClips[clipId]?.keeps;
+  const keepStart = (keeps && keeps.length === 1 && keeps[0][0] > 0) ? keeps[0][0] : 0;
+  const keepEnd   = (keeps && keeps.length === 1) ? keeps[0][1] : Infinity;
+  const shortWords = keepStart > 0
+    ? tr.words.filter(w => w.start >= keepStart - 0.15 && w.start < keepEnd + 0.15)
+    : tr.words;
+  const vAss = genVerticalAss(shortWords, VERTICAL_HEADER, -keepStart);
   fs.writeFileSync(path.join(projectDir, 'processed', clipId, 'captions-vertical.ass'), vAss, 'utf8');
 
   const phrases = groupIntoPhrases(tr.words);

@@ -32,59 +32,26 @@ function buildEditorialClip(c) {
   };
 }
 
-// Select clips for episode
-// Rules: 12-15 min, max 3 per streamer, 50%+ JC/IRL, quality first
+// Order: JC/IRL → Gaming → Music/Specialty, sorted by ddosScore within each group
+// All clips go into selected; bench starts empty — user removes to bench during review
 const JC_IRL_IDS = new Set(['509658', '509672']);
-const streamerCount = new Map();
+const MUSIC_IDS  = new Set(['26936', '116747788']);
 
-const SKIP_FLAGS = new Set(['high_toxicity']);
-
-const selected = [];
-let totalDuration = 0;
-const TARGET_MIN = 720;
-const TARGET_MAX = 900;
-
-// Exclude flagged clips from auto-selection
-const eligible = scored.filter(c => !c.flags.some(f => SKIP_FLAGS.has(f)));
-
-const jcIrlEligible = eligible.filter(c => JC_IRL_IDS.has(c.game_id));
-const otherEligible = eligible.filter(c => !JC_IRL_IDS.has(c.game_id));
-
-// Target: 50% JC/IRL → fill up to half the episode with JC/IRL, rest with other
-const JCIRL_TARGET = TARGET_MIN * 0.55; // ~55% of min gives breathing room
-
-// Phase 1: add top JC/IRL clips until we hit JCIRL_TARGET duration
-for (const c of jcIrlEligible) {
-  if (totalDuration >= JCIRL_TARGET) break;
-  const count = streamerCount.get(c.broadcaster_name) || 0;
-  if (count >= 3) continue;
-  selected.push(buildEditorialClip(c));
-  totalDuration += c.duration;
-  streamerCount.set(c.broadcaster_name, count + 1);
+function clipGroup(c) {
+  if (JC_IRL_IDS.has(c.game_id)) return 0;
+  if (!MUSIC_IDS.has(c.game_id)) return 1; // Gaming
+  return 2;                                 // Music/Specialty
 }
 
-// Phase 2: fill with non-JC/IRL to hit TARGET_MIN while keeping JC/IRL >= 50%
-for (const c of otherEligible) {
-  if (totalDuration >= TARGET_MAX) break;
-  const count = streamerCount.get(c.broadcaster_name) || 0;
-  if (count >= 3) continue;
-  const jcIrlDur = selected.filter(s => JC_IRL_IDS.has(s.gameId)).reduce((a, s) => a + s.duration, 0);
-  // Stop if adding this would push JC/IRL below 50% of total AND we already hit minimum
-  if ((jcIrlDur / (totalDuration + c.duration)) < 0.50 && totalDuration >= TARGET_MIN) break;
-  selected.push(buildEditorialClip(c));
-  totalDuration += c.duration;
-  streamerCount.set(c.broadcaster_name, count + 1);
-}
+const selected = [...scored].sort((a, b) => {
+  const gd = clipGroup(a) - clipGroup(b);
+  return gd !== 0 ? gd : b.ddosScore - a.ddosScore;
+}).map(buildEditorialClip);
 
-// Bench: all other eligible clips not selected
-const selectedIds = new Set(selected.map(s => s.id));
-const bench = eligible
-  .filter(c => !selectedIds.has(c.id))
-  .map(buildEditorialClip);
+const bench = [];
 
-console.log(`[EDITORIAL] Selected: ${selected.length} clips, total duration: ${totalDuration.toFixed(0)}s (${(totalDuration/60).toFixed(1)} min)`);
-const jcIrlPct = Math.round(selected.filter(s => JC_IRL_IDS.has(s.gameId)).length / selected.length * 100);
-console.log(`[EDITORIAL] JC/IRL: ${jcIrlPct}%`);
+const totalDuration = selected.reduce((s, c) => s + c.duration, 0);
+console.log(`[EDITORIAL] All clips: ${selected.length}, total duration: ${totalDuration.toFixed(0)}s (${(totalDuration/60).toFixed(1)} min)`);
 
 // Build editorial data
 const editorialData = {

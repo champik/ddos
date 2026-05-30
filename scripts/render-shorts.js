@@ -64,6 +64,10 @@ function getCamPos(clipId) {
 function getCamCrop(clipId) {
   return editorialClips[clipId]?.short?.camCrop || null;
 }
+function getCropX(clipId) {
+  // cropX: 0=full-left, 0.5=center (default), 1=full-right
+  return editorialClips[clipId]?.short?.cropX ?? 0.5;
+}
 
 const outDir = path.join(base, 'exports/shorts');
 fs.mkdirSync(outDir, { recursive: true });
@@ -115,6 +119,7 @@ for (const clipId of clipIds) {
   const webcam  = getShortWebcam(clipId);
   const camPos  = getCamPos(clipId);
   const camCrop = getCamCrop(clipId);
+  const cropX   = getCropX(clipId);
 
   console.log(`[SHORT:${mode.toUpperCase()}] ${clipId.slice(0, 28)}${hasAss ? ' +captions' : ''}`);
 
@@ -122,13 +127,14 @@ for (const clipId of clipIds) {
   let filterParts, ffInputs, extraArgs;
 
   if (mode === 'mobile') {
-    // ── MOBILE: center crop 9:16 ──────────────────────────────────────────────
+    // ── MOBILE: 9:16 crop; cropX: 0=left, 0.5=center, 1=right ───────────────
+    const cropXExpr = cropX === 0.5 ? '(iw-ih*9/16)/2' : `(iw-ih*9/16)*${cropX}`;
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
     if (hasAss) {
-      filterParts = [`[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,ass=${ffmpegPath(activeAssFile)}[out]`];
+      filterParts = [`[0:v]crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920,ass=${ffmpegPath(activeAssFile)}[out]`];
     } else {
-      filterParts = [`[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920[out]`];
+      filterParts = [`[0:v]crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920[out]`];
     }
 
   } else if (mode === 'split' && webcam) {

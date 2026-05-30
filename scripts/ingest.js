@@ -90,7 +90,7 @@ async function fetchClipsForCategory(gameId, startedAt) {
     }
   }
 
-  return clips;
+  return { clips, nextCursor: cursor };
 }
 
 async function main() {
@@ -102,23 +102,23 @@ async function main() {
   const CORE = [
     { id: '509658', name: 'Just Chatting' },
     { id: '509672', name: 'IRL' },
+    { id: '26936',  name: 'Music' },
+    { id: '116747788', name: 'Pools, Hot Tubs, and Beaches' },
     { id: '32399',  name: 'Counter-Strike 2' },
     { id: '516575', name: 'Valorant' },
-    { id: '26936',  name: 'Music' },
-    { id: '509667', name: 'Food & Drink' },
-    { id: '509671', name: 'Fitness & Health' },
-    { id: '116747788', name: 'Pools, Hot Tubs, and Beaches' },
-    { id: '417752', name: 'Talk Shows & Podcasts' },
+    { id: '21779',  name: 'League of Legends' },
+    { id: '29595',  name: 'Dota 2' },
+    { id: '493057', name: 'PUBG: BATTLEGROUNDS' },
   ];
   const CORE_IDS = new Set(CORE.map(c => c.id));
 
-  // Dynamic categories
-  const GAMBLING_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker'];
+  // Dynamic categories: top-5 from top-20, excluding core and banlist
+  const BAN_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker', 'tarkov', 'overwatch', 'marvel rivals'];
   console.log('[INGEST] Fetching top games...');
   const topGames = await getTopGames();
   const dynamic = topGames
-    .filter(g => !CORE_IDS.has(g.id) && !GAMBLING_KEYWORDS.some(k => g.name.toLowerCase().includes(k)))
-    .slice(0, 12)
+    .filter(g => !CORE_IDS.has(g.id) && !BAN_KEYWORDS.some(k => g.name.toLowerCase().includes(k)))
+    .slice(0, 5)
     .map(g => ({ id: g.id, name: g.name }));
 
   console.log(`[INGEST] Dynamic categories (${dynamic.length}): ${dynamic.map(d => d.name).join(', ')}`);
@@ -127,10 +127,12 @@ async function main() {
   const allClips = [];
   const seen = new Set();
 
+  const jcIrlCursors = {};
   for (const cat of allCategories) {
     console.log(`[INGEST] Fetching ${cat.name} (${cat.id})...`);
     try {
-      const clips = await fetchClipsForCategory(cat.id, startedAt);
+      const { clips, nextCursor } = await fetchClipsForCategory(cat.id, startedAt);
+      if (JCIRL_IDS.has(cat.id)) jcIrlCursors[cat.id] = nextCursor;
       let added = 0;
       for (const c of clips) {
         if (!seen.has(c.id)) {
@@ -200,7 +202,7 @@ async function main() {
   const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
   const ASIAN_LANGS = new Set(['ja','ko','zh','th']);
   const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
-  const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker'];
+  const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker','tarkov','overwatch','marvel rivals','sports betting'];
 
   const filtered = [];
   const rejected = [];
@@ -237,6 +239,53 @@ async function main() {
   fs.writeFileSync(path.join(CLIPS_DIR, 'filtered-clips.json'), JSON.stringify(filtered, null, 2));
   fs.writeFileSync(path.join(CLIPS_DIR, 'rejected-clips.json'), JSON.stringify(rejected, null, 2));
 
+  // ---- JC/IRL TOPUP ----
+  const JCIRL_MIN = 50;
+  const JCIRL_TOPUP_NAMES = { '509658': 'Just Chatting', '509672': 'IRL' };
+  const seenTopup = new Set(allClips.map(c => c.id));
+  let jcIrlCount = filtered.filter(c => JCIRL_IDS.has(c.game_id)).length;
+
+  if (jcIrlCount < JCIRL_MIN) {
+    console.log(`[JCIRL-TOPUP] ${jcIrlCount} JC/IRL survived filter, need ${JCIRL_MIN}. Fetching more...`);
+    for (const gameId of ['509658', '509672']) {
+      let cursor = jcIrlCursors[gameId] || null;
+      let pages = 0;
+      while (jcIrlCount < JCIRL_MIN && pages < 15) {
+        if (!cursor) break;
+        let page;
+        try { page = await fetchClipsPage(gameId, startedAt, cursor); }
+        catch(e) { console.error(`  [TOPUP ERROR] ${e.message}`); break; }
+        cursor = page.pagination?.cursor || null;
+        pages++;
+        for (const c of (page.data || [])) {
+          if (seenTopup.has(c.id)) continue;
+          seenTopup.add(c.id);
+          const clip = { ...c, game_id: gameId, game_name: JCIRL_TOPUP_NAMES[gameId] };
+          const lang = (clip.language || '').toLowerCase();
+          const title = (clip.title || '').toLowerCase();
+          const broadcaster = (clip.broadcaster_name || '').toLowerCase();
+          let rejectReason = null;
+          if (lang === 'ru') rejectReason = 'excluded_language';
+          else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
+          else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
+          else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
+          else if (TOURNAMENT_KEYWORDS.some(k => title.includes(k))) rejectReason = 'tournament_event';
+          else if (GAMBLING_NAMES.some(k => (clip.game_name || '').toLowerCase().includes(k))) rejectReason = 'gambling';
+          else if (clip.duration < 6 || clip.duration > 90) rejectReason = 'duration';
+          else if (ASIAN_LANGS.has(lang)) rejectReason = 'asian_language';
+          if (rejectReason) { rejected.push({ ...clip, rejectReason }); }
+          else { filtered.push(clip); jcIrlCount++; }
+        }
+        await sleep(150);
+      }
+      console.log(`  [TOPUP] ${JCIRL_TOPUP_NAMES[gameId]}: fetched ${pages} extra pages`);
+      if (jcIrlCount >= JCIRL_MIN) break;
+    }
+    console.log(`[JCIRL-TOPUP] Final JC/IRL: ${jcIrlCount}`);
+    fs.writeFileSync(path.join(CLIPS_DIR, 'filtered-clips.json'), JSON.stringify(filtered, null, 2));
+    fs.writeFileSync(path.join(CLIPS_DIR, 'rejected-clips.json'), JSON.stringify(rejected, null, 2));
+  }
+
   state.counts.filtered = filtered.length;
   state.stages.filter = 'done';
   state.stages.prescore = 'running';
@@ -245,7 +294,7 @@ async function main() {
   // ---- PRE-SCORE ----
   console.log('[PRE-SCORE] Calculating scores...');
 
-  const CORE_IDS_ARR = ['509658','509672','26936','509667','509671','116747788','417752'];
+  const CORE_IDS_ARR = ['509658','509672','26936','116747788','32399','516575','21779','29595','493057'];
 
   // Pass 1: broadcaster max views
   const broadcasterMaxViews = new Map();
@@ -267,9 +316,7 @@ async function main() {
     const d = clip.duration;
     const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-    const isViralLang = velocityScore > 85;
-    const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
-    const languageScore = isViralLang ? 100 : rawLangScore;
+    const languageScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
 
     const title = (clip.title || '').toLowerCase();
     const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
@@ -310,24 +357,77 @@ async function main() {
     })
     .sort((a, b) => b.preScore - a.preScore);
 
-  const N = 100;
-  const top35  = scored.slice(0, Math.floor(N * 0.35));
-  const midPool = scored.slice(Math.floor(scored.length * 0.30), Math.floor(scored.length * 0.70));
-  const mid35  = midPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.35));
-  const gemsPool = scored.slice(Math.floor(scored.length * 0.70), Math.floor(scored.length * 0.90));
-  const gems15 = gemsPool.sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.15));
-  const small10 = scored.filter(c => c.view_count < 10000).sort(() => Math.random() - 0.5).slice(0, Math.floor(N * 0.10));
-  const trending5 = scored.filter(c => !CORE_IDS_ARR.includes(c.game_id)).slice(0, Math.floor(N * 0.05));
+  // Category buckets
+  const JCIRL_IDS    = new Set(['509658', '509672']);
+  const SPECIALTY_IDS = new Set(['26936', '116747788']);
+  // Gaming = everything else (CS, VALORANT, LoL, Dota2, PUBG + dynamic)
+
+  function pickBucket(pool, viralN, popN, maxPerGame) {
+    const byVelocity = [...pool].sort((a, b) => {
+      const va = a.view_count / Math.max((Date.now() - new Date(a.created_at)) / 3600000, 0.5);
+      const vb = b.view_count / Math.max((Date.now() - new Date(b.created_at)) / 3600000, 0.5);
+      return vb - va;
+    });
+    const byPopularity = [...pool].sort((a, b) => b.view_count - a.view_count);
+
+    const seen = new Set();
+    const result = [];
+    const gameCounts = new Map();
+
+    function tryAdd(c) {
+      if (seen.has(c.id)) return;
+      if (maxPerGame) {
+        const cnt = gameCounts.get(c.game_id) || 0;
+        if (cnt >= maxPerGame) return;
+        gameCounts.set(c.game_id, cnt + 1);
+      }
+      seen.add(c.id);
+      result.push(c);
+    }
+
+    for (const c of byVelocity)   { if (result.length >= viralN) break; tryAdd(c); }
+    for (const c of byPopularity) { if (result.length >= viralN + popN) break; tryAdd(c); }
+    return result;
+  }
+
+  const jcIrlPool    = scored.filter(c => JCIRL_IDS.has(c.game_id));
+  const specialtyPool = scored.filter(c => SPECIALTY_IDS.has(c.game_id));
+  const gamingPool   = scored.filter(c => !JCIRL_IDS.has(c.game_id) && !SPECIALTY_IDS.has(c.game_id));
+
+  const jcIrlPick    = pickBucket(jcIrlPool,    30, 20, null);  // up to 50
+  const specialtyPick = pickBucket(specialtyPool, 7,  3,    6);  // up to 10, max 6/cat
+  const gamingPick   = pickBucket(gamingPool,   30, 10,    5);  // up to 40, max 5/game
 
   const seen2 = new Set();
   const toDownload = [];
-  for (const c of [...top35, ...mid35, ...gems15, ...small10, ...trending5]) {
+  for (const c of [...jcIrlPick, ...specialtyPick, ...gamingPick]) {
     if (!seen2.has(c.id)) { seen2.add(c.id); toDownload.push(c); }
-    if (toDownload.length >= 100) break;
+  }
+
+  // Cap non-English at 20 — keep top by preScore, replace removed slots with next best English
+  const NON_EN_MAX = 20;
+  const nonEnClips = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk');
+  if (nonEnClips.length > NON_EN_MAX) {
+    const dropIds = new Set(
+      [...nonEnClips].sort((a, b) => a.preScore - b.preScore)
+        .slice(0, nonEnClips.length - NON_EN_MAX)
+        .map(c => c.id)
+    );
+    const dropped = toDownload.filter(c => dropIds.has(c.id)).length;
+    toDownload.splice(0, toDownload.length, ...toDownload.filter(c => !dropIds.has(c.id)));
+    // Fill removed slots with best remaining English clips not yet selected
+    const selectedIds = new Set(toDownload.map(c => c.id));
+    const extraEn = scored
+      .filter(c => !selectedIds.has(c.id) && (c.language === 'en' || c.language === 'uk'))
+      .slice(0, dropped);
+    toDownload.push(...extraEn);
+    console.log(`[PRE-SCORE] Non-EN cap: dropped ${dropped} clips, added ${extraEn.length} EN replacements`);
   }
 
   console.log(`[PRE-SCORE] Selected ${toDownload.length} clips for download`);
-  console.log(`  top35=${top35.length}, mid35=${mid35.length}, gems15=${gems15.length}, small10=${small10.length}, trending5=${trending5.length}`);
+  console.log(`  JC/IRL=${jcIrlPick.length}, Specialty=${specialtyPick.length}, Gaming=${gamingPick.length}`);
+  const nonEnFinal = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk').length;
+  console.log(`  EN/UK=${toDownload.length - nonEnFinal}, non-EN=${nonEnFinal}`);
 
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
 

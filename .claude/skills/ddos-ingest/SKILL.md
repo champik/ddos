@@ -26,11 +26,15 @@ curl -s -X POST "https://id.twitch.tv/oauth2/token" \
 **Core (завжди включати):**
 
 ```
-509658 = Just Chatting
-509672 = IRL
-32399  = Counter-Strike 2
-516575 = Valorant
-26936  = Music (стрімери грають на інструментах; Twitch auto-мютить ліцензовану музику → musicRisk нижчий)
+509658 = Just Chatting      [JC/IRL]
+509672 = IRL                [JC/IRL]
+26936  = Music              [Specialty]
+116747788 = Pools, Hot Tubs, and Beaches  [Specialty]
+32399  = Counter-Strike 2   [Gaming]
+516575 = Valorant           [Gaming]
+21779  = League of Legends  [Gaming]
+29595  = Dota 2             [Gaming]
+493057 = PUBG: BATTLEGROUNDS [Gaming]
 ```
 
 **Dynamic (запитати щоразу):**
@@ -41,12 +45,12 @@ curl -s "https://api.twitch.tv/helix/games/top?first=20" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-З топ-20 взяти перші 12, виключивши:
+З топ-20 взяти перші 5, виключивши:
 
 - id вже є в core
-- name (lowercase) містить: slots, casino, gambling, betting, poker
+- name (lowercase) містить: slots, casino, gambling, betting, poker, tarkov, overwatch, marvel rivals, sports betting
 
-Результат: ~14–16 категорій.
+Результат: ~14 категорій загалом.
 
 ### Запит кліпів
 
@@ -114,7 +118,7 @@ weplay_esports, faceit, dreamhack, esltv, iem
 Для кожного filtered кліпу розрахувати `preScore` (0–100):
 
 ```javascript
-const coreIds = ['509658', '509672', '26936', '509667', '509671', '116747788', '417752'];
+const coreIds = ['509658','509672','26936','116747788','32399','516575','21779','29595','493057'];
 
 // Pass 1: build broadcasterMaxViews for ratio signal
 const broadcasterMaxViews = new Map();
@@ -187,24 +191,19 @@ const scored = filteredClips
   .sort((a, b) => b.preScore - a.preScore);
 ```
 
-**Hybrid sampling для download (100 кліпів):**
+**Download buckets (100 кліпів):**
+
+Для кожного бакету: viral = sort by views/hour, popularity = sort by view_count.
 
 ```
-N = 100
-top35  = scored.slice(0, Math.floor(N * 0.35))              // топ 35
-mid35  = scored.slice(Math.floor(scored.length * 0.30),
-                      Math.floor(scored.length * 0.70))
-         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.35))  // mid 35
-gems15 = scored.slice(Math.floor(scored.length * 0.70),
-                      Math.floor(scored.length * 0.90))
-         .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.15))  // gems 15
-small10 = scored.filter(c => c.view_count < 10000)
-          .sort(() => Math.random()-0.5).slice(0, Math.floor(N * 0.10)) // small 10
-trending5 = scored.filter(c => !coreIds.includes(c.game_id))
-            .slice(0, Math.floor(N * 0.05))                              // trending 5
-
-toDownload = dedup([...top35, ...mid35, ...gems15, ...small10, ...trending5]).slice(0, 100)
+JC/IRL     → до 50  (30 viral + 20 popularity)
+Specialty  → до 10  (7 viral + 3 popularity, max 6 з однієї категорії)
+Gaming     → до 40  (30 viral + 10 popularity, max 5 з однієї гри)
 ```
+
+- JC/IRL: game_id in [509658, 509672]
+- Specialty: game_id in [26936, 116747788]
+- Gaming: все інше (core gaming + dynamic)
 
 Зберегти у `clips/prescore-candidates.json`. Оновити `state.stages.prescore = "done"`.
 
