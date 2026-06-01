@@ -91,22 +91,14 @@ weplay_esports, faceit, dreamhack, esltv, iem
 
 **Відхиляти кліп якщо будь-яка умова:**
 
-| Умова                                                                                       | Причина                              |
-| ------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `language == "ru"`                                                                          | excluded_language                    |
-| title (lowercase) містить: русский/россия/russian/путін/рф                                  | ru_keyword                           |
-| `broadcaster_name` (lowercase) в org-списку                                                 | tournament_official                  |
-| title (lowercase) містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event                     |
-| game_name (lowercase) містить: slots/casino/gambling/betting/poker                          | gambling                             |
-| `duration < 6` або `duration > 90`                                                          | duration                             |
-| `language` in `["ja","ko","zh","th"]`                                                       | asian_language (see exception below) |
-
-**Азійські мови — виняток:** Максимум **1 кліп на епізод** якщо виконані обидві умови:
-
-- момент суто візуальний (без діалогу — реакція, фізичний гег, тощо)
-- стрімер міжнародно відомий (xfactor, впізнаваний глядачам без контексту)
-
-Якщо таких кліпів кілька — взяти лише найкращий за `preScore`. Решту відхиляти з причиною `asian_language`.
+| Умова                                                                                       | Причина           |
+| ------------------------------------------------------------------------------------------- | ----------------- |
+| `language != "en"`                                                                          | non_english       |
+| title (lowercase) містить: русский/россия/russian/путін/рф                                  | ru_keyword        |
+| `broadcaster_name` (lowercase) в org-списку                                                 | tournament_official |
+| title (lowercase) містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event  |
+| game_name (lowercase) містить: slots/casino/gambling/betting/poker                          | gambling          |
+| `duration < 6` або `duration > 90`                                                          | duration          |
 
 Зберегти у `filtered-clips.json` і `rejected-clips.json`.
 Оновити `state.counts.filtered`.
@@ -146,21 +138,15 @@ function calcPreScore(clip, seenStreamers, seenCategories) {
   const d = clip.duration;
   const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-  // languageScore: viral bypass — якщо velocityScore > 85, мова не важлива
-  const isViralLang = velocityScore > 85;
-  const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
-  const languageScore = isViralLang ? 100 : rawLangScore;
-
   // riskPenalty
   const title = (clip.title || '').toLowerCase();
   const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
 
   const baseScore = (
-    velocityScore * 0.25 +
+    velocityScore * 0.40 +
     ratioScore    * 0.15 +
     categoryScore * 0.25 +
-    durationScore * 0.20 +
-    languageScore * 0.15
+    durationScore * 0.20
   ) - riskPenalty;
 
   // Diversity: soft cap multipliers, applied per streamer AND per category independently

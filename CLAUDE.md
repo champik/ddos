@@ -111,7 +111,6 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 ### Ліміти
 - maxClipCandidates: 500
 - maxDownloads: 100
-- maxNonEnglish: 20 (з 100 завантажених; тільки візуальні моменти де мова не потрібна)
 - maxClipsPerStreamer: 3 (у episode plan)
 - minDuration: 6s / maxDuration: 90s
 - targetEpisodeMin: 720с (12 хв)
@@ -119,32 +118,10 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 - maxShorts: 10
 
 ### Фільтри — ЗАВЖДИ відхиляти
-- language == "ru"
-- language in ["ja", "ko", "zh", "th"] — азійські мови: переглядів багато але незрозуміло без контексту. Максимум 1 кліп на епізод тільки якщо момент суто візуальний (без діалогу) або міжнародно відомий стрімер
-- title містить: русский, россия, russian, путін, рф
+- language != "en" — будь-яка мова крім англійської (RU, UK, JA, KO, ZH, TH та всі інші)
+- title містить: русский, россия, russian, путін, рф (додатковий захист для хибно-класифікованих кліпів)
 - category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals
 - стрімер у blacklist: Lyasyaa
-
-### Детекція російських стрімерів (багатошарова)
-Окрім `language == "ru"`, перевіряти додатково при FILTER stage:
-
-**1. Blacklist (ручний список)**
-Стрімери додані вручну — відхиляти одразу.  
-Поточний список: `Lyasyaa`
-
-**2. Сигнали з Twitch API (metadata)**
-- `broadcaster_language == "ru"` — мова каналу
-- `broadcaster_name` або `display_name` містить кирилицю
-- `title` або `description` каналу містить кирилицю або слова зі списку: россия, русский, рф, путін, москва, питер
-- `stream_language == "ru"` у полі clips endpoint
-
-**3. Транскрипт (після TRANSCRIBE)**
-- `detected_language == "ru"` від Whisper — відхиляти навіть якщо Twitch сказав інше
-- Якщо >30% слів кирилиця — відхиляти
-
-**4. Логіка при конфлікті**
-Якщо будь-який з сигналів = RU → відхиляти без винятків.  
-Принцип: краще пропустити хороший кліп, ніж включити RU контент.
 
 ### DDOS Score формула
 ```

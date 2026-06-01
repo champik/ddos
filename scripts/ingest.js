@@ -202,7 +202,6 @@ async function main() {
   ]);
   const STREAMER_BLACKLIST = new Set(['lyasyaa']);
   const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
-  const ASIAN_LANGS = new Set(['ja','ko','zh','th']);
   const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
   const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker','tarkov','overwatch','marvel rivals','sports betting'];
 
@@ -218,14 +217,13 @@ async function main() {
 
     let rejectReason = null;
 
-    if (lang === 'ru') rejectReason = 'excluded_language';
+    if (lang !== 'en') rejectReason = 'non_english';
     else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
     else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
     else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
     else if (TOURNAMENT_KEYWORDS.some(k => title.includes(k))) rejectReason = 'tournament_event';
     else if (GAMBLING_NAMES.some(k => gameName.includes(k))) rejectReason = 'gambling';
     else if (clip.duration < 6 || clip.duration > 90) rejectReason = 'duration';
-    else if (ASIAN_LANGS.has(lang)) rejectReason = 'asian_language';
 
     if (rejectReason) {
       rejected.push({ ...clip, rejectReason });
@@ -267,14 +265,13 @@ async function main() {
           const title = (clip.title || '').toLowerCase();
           const broadcaster = (clip.broadcaster_name || '').toLowerCase();
           let rejectReason = null;
-          if (lang === 'ru') rejectReason = 'excluded_language';
+          if (lang !== 'en') rejectReason = 'non_english';
           else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
           else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
           else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
           else if (TOURNAMENT_KEYWORDS.some(k => title.includes(k))) rejectReason = 'tournament_event';
           else if (GAMBLING_NAMES.some(k => (clip.game_name || '').toLowerCase().includes(k))) rejectReason = 'gambling';
           else if (clip.duration < 6 || clip.duration > 90) rejectReason = 'duration';
-          else if (ASIAN_LANGS.has(lang)) rejectReason = 'asian_language';
           if (rejectReason) { rejected.push({ ...clip, rejectReason }); }
           else { filtered.push(clip); jcIrlCount++; }
         }
@@ -318,17 +315,14 @@ async function main() {
     const d = clip.duration;
     const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-    const languageScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
-
     const title = (clip.title || '').toLowerCase();
     const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
 
     const baseScore = (
-      velocityScore * 0.25 +
+      velocityScore * 0.40 +
       ratioScore    * 0.15 +
       categoryScore * 0.25 +
-      durationScore * 0.20 +
-      languageScore * 0.15
+      durationScore * 0.20
     ) - riskPenalty;
 
     const streamerCount = seenStreamers.get(clip.broadcaster_name) || 0;
@@ -406,24 +400,6 @@ async function main() {
     if (!seen2.has(c.id)) { seen2.add(c.id); toDownload.push(c); }
   }
 
-  // Cap non-English at 20 — prefer replacing dropped non-EN with same-bucket EN clips
-  const NON_EN_MAX = 20;
-  const nonEnClips = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk');
-  if (nonEnClips.length > NON_EN_MAX) {
-    const toDrop = [...nonEnClips].sort((a, b) => a.preScore - b.preScore)
-      .slice(0, nonEnClips.length - NON_EN_MAX);
-    const dropIds = new Set(toDrop.map(c => c.id));
-    benchExtra.push(...toDrop); // swapped to bench, still get downloaded
-    toDownload.splice(0, toDownload.length, ...toDownload.filter(c => !dropIds.has(c.id)));
-    // Fill slots: JC/IRL EN first, then any EN — to preserve bucket quotas
-    const selectedIds = new Set(toDownload.map(c => c.id));
-    const jcIrlEn = scored.filter(c => JCIRL_IDS.has(c.game_id) && (c.language === 'en' || c.language === 'uk') && !selectedIds.has(c.id));
-    const otherEn = scored.filter(c => !JCIRL_IDS.has(c.game_id) && (c.language === 'en' || c.language === 'uk') && !selectedIds.has(c.id));
-    const extraEn = [...jcIrlEn, ...otherEn].slice(0, toDrop.length);
-    toDownload.push(...extraEn);
-    console.log(`[PRE-SCORE] Non-EN cap: dropped ${toDrop.length} to bench, added ${extraEn.length} replacements (JC/IRL EN preferred)`);
-  }
-
   // Enforce JC/IRL minimum 50: swap lowest non-JC/IRL to bench, add best unselected JC/IRL
   const JCIRL_MIN_DL = 50;
   const jcIrlFinal = toDownload.filter(c => JCIRL_IDS.has(c.game_id));
@@ -451,8 +427,7 @@ async function main() {
   const gamingCount2 = toDownload.filter(c => !JCIRL_IDS.has(c.game_id) && !SPECIALTY_IDS.has(c.game_id)).length;
   const specCount2 = toDownload.filter(c => SPECIALTY_IDS.has(c.game_id)).length;
   console.log(`  JC/IRL=${jcIrlCount2}, Specialty=${specCount2}, Gaming=${gamingCount2}`);
-  const nonEnFinal = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk').length;
-  console.log(`  EN/UK=${toDownload.length - nonEnFinal}, non-EN=${nonEnFinal}`);
+  console.log(`  EN=${toDownload.length}`);
 
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
   // bench-extra.json — downloaded and scored, but excluded from main selection

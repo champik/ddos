@@ -82,7 +82,8 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .preview-lbl{font-size:10px;color:#444;font-family:monospace}
 .split-preview-canvas{border-radius:8px;border:1px solid #222;background:#111;display:block;cursor:pointer}
 .split-preview-canvas:hover{border-color:#444}
-.recon-sep{display:flex;align-items:center;gap:8px;padding:6px 13px;background:#150808;border:1px solid #ff4a4a33;border-radius:8px;margin:5px 0;cursor:grab}
+.recon-sep{display:flex;align-items:center;gap:8px;padding:6px 13px;background:#150808;border:1px solid #ff4a4a33;border-radius:8px;margin:5px 0}
+.recon-sep-standalone{cursor:grab}.recon-sep-standalone:active{cursor:grabbing}
 .recon-sep.sortable-ghost{opacity:0.3}
 .recon-sep-icon{color:#ff6b6b;font-size:15px;flex-shrink:0}
 .recon-sep-info{flex:1}
@@ -113,12 +114,20 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .prompt-code{font-family:monospace;font-size:11px;color:#6aaa6a;line-height:1.75;white-space:pre;overflow-x:auto;max-height:300px}
 .prompt-actions{display:flex;gap:8px;margin-top:11px}
 .btn-copy-json{background:transparent;border:1px solid #f5ff3d;color:#f5ff3d;border-radius:6px;padding:7px 15px;font-size:12px;cursor:pointer}
+.btn-add-recon{background:#160a0a;border:1px solid #ff4a4a44;border-radius:6px;padding:3px 10px;color:#ff6b6b;font-size:11px;cursor:pointer;font-weight:600;line-height:1}
+.btn-add-recon:hover{border-color:#ff6b6b88;background:#1a0808}
+.ctrl-btn.tag-thumb{color:#4ade8055;border-color:#4ade8022}
+.ctrl-btn.tag-thumb.on{color:#4ade80;border-color:#4ade8066;background:#4ade8011}
+.ctrl-btn.tag-short{color:#a78bfa55;border-color:#a78bfa22}
+.ctrl-btn.tag-short.on{color:#a78bfa;border-color:#a78bfa66;background:#a78bfa11}
+.ctrl-btn.tag-recon-src{color:#ff6b6b55;border-color:#ff4a4a22}
+.ctrl-btn.tag-recon-src.on{color:#ff6b6b;border-color:#ff4a4a66;background:#ff4a4a11}
 </style>
 </head>
 <body>
 <div style="max-width:900px;margin:0 auto" id="app">
   <div class="topbar">
-    <div>
+    <div style="width:100%">
       <h1>EDITORIAL</h1>
       <div class="meta" id="meta-line">Loading...</div>
       <div class="badges" id="badges">
@@ -127,9 +136,9 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
         <div class="badge">shorts: <span id="shorts-display">0</span></div>
         <div class="badge" id="reconnect-badge" style="display:none">reconnect: <span id="reconnect-display">—</span></div>
         <div class="badge" id="thumb-badge" style="display:none">thumb: <span id="thumb-display">—</span></div>
+        <button class="btn-add-recon" onclick="addStandaloneRecon()" style="margin-left:auto">⟳ +Reconnect</button>
       </div>
     </div>
-    <button class="btn-copy" onclick="copyPrompt()">📋 Copy Prompt</button>
   </div>
   <div id="clip-list"></div>
   <div class="bench-wrap">
@@ -224,7 +233,7 @@ const CLIPS_DATA = (() => { try { return __CLIPS_JSON__; } catch(e) { return MOC
 const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
 const CAM_KEY = 'ddos_cam_coords';
 
-let state = { order: [], reconnects: {}, reconnectSource: null, thumbnail: null, clips: {}, moved: [] };
+let state = { order: [], reconnects: {}, reconnectSource: null, thumbnail: null, clips: {}, benched: [] };
 // state.reconnects[clipId] = true  — separator position after that clip
 // state.reconnectSource = { clipId, from, to } | null  — ONE global source clip+timing
 
@@ -272,19 +281,36 @@ function fmtTimeSec(sec) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Merge all clips into selected so everything starts in the main list
+  const totalCount = CLIPS_DATA.selected.length + CLIPS_DATA.bench.length;
+  CLIPS_DATA.bench.forEach(c => CLIPS_DATA.selected.push(c));
+  CLIPS_DATA.bench = [];
+
   const hadSaved = loadState();
-  // Re-apply bench→selected moves so CLIPS_DATA matches saved state
-  (state.moved || []).forEach(clipId => {
-    const idx = CLIPS_DATA.bench.findIndex(c => c.id === clipId);
-    if (idx !== -1) CLIPS_DATA.selected.push(CLIPS_DATA.bench.splice(idx, 1)[0]);
-  });
+
   if (!hadSaved || state.order.length === 0) {
     state.order = CLIPS_DATA.selected.map(c => c.id);
     state.clips = {};
-    state.moved = [];
+    state.benched = [];
+  } else {
+    // Migrate old state.moved format → new state.benched
+    if (state.moved !== undefined && state.benched === undefined) {
+      const allIds = CLIPS_DATA.selected.map(c => c.id);
+      state.benched = allIds.filter(id => !state.order.includes(id));
+      delete state.moved;
+    }
+    if (!state.benched) state.benched = [];
+    // Restore bench from state.benched
+    state.benched.forEach(clipId => {
+      const idx = CLIPS_DATA.selected.findIndex(c => c.id === clipId);
+      if (idx !== -1) CLIPS_DATA.bench.push(CLIPS_DATA.selected.splice(idx, 1)[0]);
+    });
+    // Ensure order only has valid non-benched clips (keep standalone recons)
+    state.order = state.order.filter(id => id.startsWith('__recon_') || (!state.benched.includes(id) && CLIPS_DATA.selected.some(c => c.id === id)));
   }
+
   document.getElementById('meta-line').textContent =
-    CLIPS_DATA.runId + ' · ' + allClips().length + ' кліпів scored';
+    CLIPS_DATA.runId + ' · ' + totalCount + ' кліпів scored';
   renderClipList();
   renderBench();
   updateTopbar();
@@ -307,12 +333,16 @@ function getClipUsedDur(clipId) {
 function renderClipList() {
   const container = document.getElementById('clip-list');
   container.innerHTML = '';
-  state.order.forEach((clipId, idx) => {
-    const clip = getClip(clipId);
-    if (!clip) return;
-    container.appendChild(buildClipCard(clip, idx + 1));
-    if (state.reconnects[clipId]) {
-      container.appendChild(buildReconSep(clipId));
+  let clipNum = 0;
+  state.order.forEach(id => {
+    if (id.startsWith('__recon_')) {
+      container.appendChild(buildStandaloneReconSep(id));
+    } else {
+      const clip = getClip(id);
+      if (!clip) return;
+      clipNum++;
+      container.appendChild(buildClipCard(clip, clipNum));
+      if (state.reconnects[id]) container.appendChild(buildReconSep(id));
     }
   });
   initSortable();
@@ -323,6 +353,7 @@ function buildClipCard(clip, num) {
   const isShort = !!(cs.short);
   const isThumb = state.thumbnail && state.thumbnail.clipId === clip.id;
   const isRecon = !!state.reconnects[clip.id];
+  const isReconSrc = state.reconnectSource?.clipId === clip.id;
   const cutCount = (cs.keeps || []).length;
   const card = document.createElement('div');
   card.className = 'clip-card';
@@ -336,11 +367,11 @@ function buildClipCard(clip, num) {
       <span class="clip-dur-used" id="dur-used-${clip.id}" style="font-family:monospace;font-size:11px;color:#555"><span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clip.id))}</span>/${fmtTimeSec(clip.duration)}</span>
       <span class="clip-score">${clip.ddosScore}</span>
       <div class="card-tags">
-        <span class="tag tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">SHORT</span>
-        <span class="tag tag-thumb ${isThumb?'on':''}" data-tag="thumb" onclick="toggleTag(event,'${clip.id}','thumb')">THUMB</span>
-        <span class="tag tag-reconnect ${isRecon?'on':''}" data-tag="reconnect" onclick="toggleTag(event,'${clip.id}','reconnect')">RECONNECT</span>
+        ${isShort ? `<span class="tag tag-short on" style="cursor:default">SHORT</span>` : ''}
+        ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB</span>` : ''}
+        ${isRecon ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
+        ${isReconSrc ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
         ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
-        ${isThumb ? `<span class="mini-badge mb-thumb">🖼 ${fmtTimeSec(state.thumbnail.at)}</span>` : ''}
       </div>
       <button class="btn-bench-it" onclick="sendToBench(event,'${clip.id}')" title="Відправити на лавку"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
       <span class="expand-icon">▼</span>
@@ -351,7 +382,7 @@ function buildClipCard(clip, num) {
 
 function buildReconSep(clipId) {
   const sep = document.createElement('div');
-  sep.className = 'recon-sep';
+  sep.className = 'recon-sep recon-sep-attached';
   sep.dataset.isSep = 'true';
   sep.dataset.reconClipId = clipId;
   const src = state.reconnectSource;
@@ -364,6 +395,24 @@ function buildReconSep(clipId) {
       <div class="recon-sep-title">RECONNECT transition тут</div>
       <div class="recon-sep-detail" id="recon-sep-detail-${clipId}">${detail}</div>
     </div>`;
+  return sep;
+}
+
+function buildStandaloneReconSep(reconId) {
+  const sep = document.createElement('div');
+  sep.className = 'recon-sep recon-sep-standalone';
+  sep.dataset.reconId = reconId;
+  const src = state.reconnectSource;
+  const detail = src
+    ? `джерело: ${getClip(src.clipId)?.streamer || '?'} · ${fmtTime(src.from)} → ${fmtTime(src.to)}`
+    : 'джерело не вибрано';
+  sep.innerHTML = `
+    <span class="recon-sep-icon">⟳</span>
+    <div class="recon-sep-info">
+      <div class="recon-sep-title">RECONNECT transition тут</div>
+      <div class="recon-sep-detail">${detail}</div>
+    </div>
+    <button class="btn-bench-it" onclick="removeStandaloneRecon('${reconId}')" title="Видалити" style="margin-left:auto"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>`;
   return sep;
 }
 
@@ -410,13 +459,14 @@ function initSortable() {
   const container = document.getElementById('clip-list');
   Sortable.create(container, {
     animation: 150,
-    handle: '.card-header',
-    filter: '.recon-sep',
+    handle: '.card-header, .recon-sep-standalone',
+    filter: '.recon-sep-attached, .btn-bench-it',
     preventOnFilter: false,
     onEnd() {
       const newOrder = [];
-      container.querySelectorAll('.clip-card').forEach(el => {
-        newOrder.push(el.dataset.clipId);
+      Array.from(container.children).forEach(el => {
+        if (el.dataset.clipId) newOrder.push(el.dataset.clipId);
+        else if (el.dataset.reconId) newOrder.push(el.dataset.reconId);
       });
       state.order = newOrder;
       saveState();
@@ -439,6 +489,13 @@ function refreshSeps() {
     const clipId = el.dataset.clipId;
     if (state.reconnects[clipId]) el.after(buildReconSep(clipId));
   });
+  const src = state.reconnectSource;
+  const detail = src
+    ? `джерело: ${getClip(src.clipId)?.streamer || '?'} · ${fmtTime(src.from)} → ${fmtTime(src.to)}`
+    : 'джерело не вибрано';
+  container.querySelectorAll('.recon-sep-standalone .recon-sep-detail').forEach(el => {
+    el.textContent = detail;
+  });
   updateNumbers();
 }
 
@@ -449,30 +506,26 @@ function updateCardInPlace(clipId) {
   const isShort = !!cs.short;
   const isThumb = state.thumbnail?.clipId === clipId;
   const isRecon = !!state.reconnects[clipId];
+  const isReconSrc = state.reconnectSource?.clipId === clipId;
   const cutCount = (cs.keeps || []).length;
 
-  card.querySelector('.tag-short')?.classList.toggle('on', isShort);
-  card.querySelector('.tag-thumb')?.classList.toggle('on', isThumb);
-  card.querySelector('.tag-reconnect')?.classList.toggle('on', isRecon);
+  card.querySelectorAll('.tag-short').forEach(el => el.classList.toggle('on', isShort));
+  card.querySelectorAll('.tag-thumb').forEach(el => el.classList.toggle('on', isThumb));
+  card.querySelectorAll('.tag-recon-src').forEach(el => el.classList.toggle('on', isReconSrc));
 
   const clip = getClip(clipId);
   const usedSpan = card.querySelector('.clip-dur-used');
   if (usedSpan && clip) usedSpan.innerHTML = `<span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clipId))}</span>/${fmtTimeSec(clip.duration)}`;
 
   const cardTags = card.querySelector('.card-tags');
-  cardTags.querySelectorAll('.mini-badge').forEach(el => el.remove());
-  if (cutCount > 0) {
-    const b = document.createElement('span');
-    b.className = 'mini-badge mb-cut';
-    b.textContent = `✂ ${cutCount}`;
-    cardTags.appendChild(b);
-  }
-  if (isThumb && state.thumbnail) {
-    const b = document.createElement('span');
-    b.className = 'mini-badge mb-thumb';
-    b.textContent = `🖼 ${fmtTimeSec(state.thumbnail.at)}`;
-    cardTags.appendChild(b);
-  }
+  cardTags.innerHTML = '';
+  const mkTag = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.style.cursor = 'default'; s.textContent = text; cardTags.appendChild(s); };
+  const mkBadge = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; cardTags.appendChild(s); };
+  if (isShort) mkTag('tag tag-short on', 'SHORT');
+  if (isThumb) mkTag('tag tag-thumb on', 'THUMB');
+  if (isRecon) mkTag('tag tag-reconnect on', 'RECONNECT');
+  if (isReconSrc) mkTag('tag tag-reconnect on', 'RECONNECT');
+  if (cutCount > 0) mkBadge('mini-badge mb-cut', `✂ ${cutCount}`);
 
   if (card.dataset.mediaInited) syncTagSections(clipId);
 
@@ -490,6 +543,10 @@ function updateCardInPlace(clipId) {
 
 // ── CARD BODY ─────────────────────────────────────────────────────────────────
 function buildCardBody(clip) {
+  const cs = getClipState(clip.id);
+  const isShort = !!cs.short;
+  const isThumb = state.thumbnail?.clipId === clip.id;
+  const isReconSrc = state.reconnectSource?.clipId === clip.id;
   return `
     <div class="video-wrap">
       <video id="vid-${clip.id}" preload="metadata" controls src="${clip.videoPath}"></video>
@@ -521,7 +578,9 @@ function buildCardBody(clip) {
       <span class="ctrl-lbl">→</span>
       <input class="ctrl-in" id="cut-to-${clip.id}" value="0:05" placeholder="to">
       <button class="ctrl-btn" onclick="addCut('${clip.id}')" style="border-color:#f5ff3d44;color:#f5ff3d">+ Зберегти</button>
-      <button class="ctrl-btn" onclick="setReconnectSource('${clip.id}')" style="border-color:#ff4a4a44;color:#ff6b6b">⟳ Recon</button>
+      <button class="ctrl-btn tag-recon-src ${isReconSrc?'on':''}" onclick="setReconnectSource('${clip.id}')">⟳ Recon</button>
+      <button class="ctrl-btn tag-thumb ${isThumb?'on':''}" data-tag="thumb" onclick="toggleTag(event,'${clip.id}','thumb')">🖼 Thumb</button>
+      <button class="ctrl-btn tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">✂ Short</button>
     </div>
     <div id="cuts-list-${clip.id}"></div>
     ${buildTagSections(clip)}`;
@@ -910,14 +969,26 @@ function setReconnectSource(clipId) {
   const toSec = toIn ? parseMmSs(toIn.value) : (cs.trimOut ?? clip.duration);
   if (toSec <= fromSec) return;
   const oldSrc = state.reconnectSource;
+  if (oldSrc?.clipId === clipId) {
+    state.reconnectSource = null;
+    saveState();
+    renderReconnectZone(clipId, clip);
+    syncTagSections(clipId);
+    updateCardInPlace(clipId);
+    updateTopbar();
+    refreshSeps();
+    return;
+  }
   state.reconnectSource = { clipId, from: +fromSec.toFixed(2), to: +toSec.toFixed(2) };
   saveState();
   if (oldSrc && oldSrc.clipId !== clipId) {
     renderReconnectZone(oldSrc.clipId, getClip(oldSrc.clipId));
     syncTagSections(oldSrc.clipId);
+    updateCardInPlace(oldSrc.clipId);
   }
   renderReconnectZone(clipId, clip);
   syncTagSections(clipId);
+  updateCardInPlace(clipId);
   updateTopbar();
   refreshSeps();
 }
@@ -1180,8 +1251,8 @@ function addFromBench(clipId) {
   state.order.push(clipId);
   const idx = CLIPS_DATA.bench.findIndex(c => c.id === clipId);
   if (idx !== -1) { CLIPS_DATA.selected.push(CLIPS_DATA.bench.splice(idx, 1)[0]); }
-  if (!state.moved) state.moved = [];
-  if (!state.moved.includes(clipId)) state.moved.push(clipId);
+  if (!state.benched) state.benched = [];
+  state.benched = state.benched.filter(id => id !== clipId);
   saveState();
   renderClipList();
   renderBench();
@@ -1195,11 +1266,24 @@ function sendToBench(e, clipId) {
   if (state.thumbnail?.clipId === clipId) state.thumbnail = null;
   const idx = CLIPS_DATA.selected.findIndex(c => c.id === clipId);
   if (idx !== -1) CLIPS_DATA.bench.push(CLIPS_DATA.selected.splice(idx, 1)[0]);
-  if (state.moved) state.moved = state.moved.filter(id => id !== clipId);
+  if (!state.benched) state.benched = [];
+  if (!state.benched.includes(clipId)) state.benched.push(clipId);
   saveState();
   renderClipList();
   renderBench();
   updateDuration();
+}
+
+function addStandaloneRecon() {
+  state.order.unshift('__recon_' + Date.now());
+  saveState();
+  renderClipList();
+}
+
+function removeStandaloneRecon(reconId) {
+  state.order = state.order.filter(id => id !== reconId);
+  saveState();
+  renderClipList();
 }
 
 function toggleBench(btn) {
@@ -1211,9 +1295,10 @@ function toggleBench(btn) {
 
 // ── TOPBAR ────────────────────────────────────────────────────────────────────
 function updateTopbar() {
+  const clipCount = state.order.filter(id => !id.startsWith('__recon_')).length;
   document.getElementById('count-display').textContent =
-    state.order.length + ' / ' + (CLIPS_DATA.selected.length + CLIPS_DATA.bench.length);
-  const shortCount = state.order.filter(id => !!state.clips[id]?.short).length;
+    clipCount + ' / ' + (CLIPS_DATA.selected.length + CLIPS_DATA.bench.length);
+  const shortCount = state.order.filter(id => !id.startsWith('__recon_') && !!state.clips[id]?.short).length;
   document.getElementById('shorts-display').textContent = shortCount;
   const reconBadge = document.getElementById('reconnect-badge');
   if (state.reconnectSource) {
@@ -1232,9 +1317,10 @@ function updateTopbar() {
 
 function updateDuration() {
   let total = 1.25 + 1.25;
-  const reconCount = Math.max(0, Math.floor(state.order.length / 3) - 1);
+  const clipOrder = state.order.filter(id => !id.startsWith('__recon_'));
+  const reconCount = Math.max(0, Math.floor(clipOrder.length / 3) - 1);
   total += reconCount;
-  state.order.forEach(clipId => {
+  clipOrder.forEach(clipId => {
     const clip = getClip(clipId);
     const cs = state.clips[clipId] || {};
     if (!clip) return;
@@ -1256,18 +1342,19 @@ function buildJSON() {
   const reconnectPositions = Object.keys(state.reconnects || {}).filter(id => state.order.includes(id));
   const out = {
     runId: CLIPS_DATA.runId,
-    clipOrder: state.order,
+    clipOrder: state.order.map(id => id.startsWith('__recon_') ? '__recon' : id),
     reconnectSource: src ? { clipId: src.clipId, from: +src.from.toFixed(2), to: +src.to.toFixed(2) } : null,
     reconnectPositions,
     thumbnail: state.thumbnail || null,
     clips: {}
   };
-  state.order.forEach(clipId => {
-    const cs = state.clips[clipId] || {};
+  state.order.forEach(id => {
+    if (id.startsWith('__recon_')) return;
+    const cs = state.clips[id] || {};
     const entry = {};
     if (cs.keeps && cs.keeps.length > 0) entry.keeps = cs.keeps;
     if (cs.short) entry.short = cs.short;
-    if (Object.keys(entry).length > 0) out.clips[clipId] = entry;
+    if (Object.keys(entry).length > 0) out.clips[id] = entry;
   });
   return out;
 }
@@ -1278,7 +1365,7 @@ function updatePrompt() {
 
 function copyPrompt() {
   const json = buildJSON();
-  const text = `Editorial decisions for /ddos resume — paste this to Claude:\n\n${JSON.stringify(json, null, 2)}`;
+  const text = `/resume\n\n${JSON.stringify(json, null, 2)}`;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.btn-copy');
     const origText = btn.textContent;

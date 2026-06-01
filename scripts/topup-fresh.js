@@ -54,7 +54,6 @@ const RU_KW = ['русский','россия','russian','путін','рф'];
 const ORG   = new Set(['esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem']);
 
 function isRu(c) {
-  if (c.language === 'ru') return true;
   if (RU_KW.some(k=>(c.title||'').toLowerCase().includes(k))) return true;
   if (/[а-яё]/i.test(c.broadcaster_name||'')) return true;
   return false;
@@ -100,11 +99,10 @@ async function main() {
   const filtered = candidates.filter(c => {
     if (existingIds.has(c.id)) return false;
     if (existingStreamers.has(c.broadcaster_name.toLowerCase())) return false; // skip known streamers
+    if (c.language !== 'en') return false;
     if (isRu(c)) return false;
     if (ORG.has((c.broadcaster_name||'').toLowerCase())) return false;
     if (c.duration < 6 || c.duration > 90) return false;
-    if (['ja','ko','zh','th'].includes(c.language)) return false;
-    if (c.language !== 'en' && c.language !== 'uk') return false;
     const t = (c.title||'').toLowerCase();
     if ([' major',' grand final','championship',' tournament','qualifier'].some(k=>t.includes(k))) return false;
     return true;

@@ -63,19 +63,7 @@ function httpsPost(url, body) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const RU_KEYWORDS = ['русский','россия','russian','путін','рф','russki','rossia'];
-const RU_STREAMERS_BL = ['lyasyaa'];
 const ORG_ACCOUNTS = new Set(['esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem']);
-
-function isRu(clip) {
-  if (clip.language === 'ru') return true;
-  const title = (clip.title || '').toLowerCase();
-  if (RU_KEYWORDS.some(k => title.includes(k))) return true;
-  const bn = (clip.broadcaster_name || '').toLowerCase();
-  if (RU_STREAMERS_BL.includes(bn)) return true;
-  // Cyrillic check in name
-  if (/[а-яё]/i.test(clip.broadcaster_name || '')) return true;
-  return false;
-}
 
 function isGambling(clip) {
   const name = (clip.game_name || '').toLowerCase();
@@ -143,12 +131,12 @@ async function main() {
   const rejected = [];
   const filtered = candidates.filter(c => {
     if (existingIds.has(c.id))       { rejected.push({id:c.id,reason:'already_downloaded'}); return false; }
-    if (isRu(c))                     { rejected.push({id:c.id,reason:'ru'}); return false; }
+    if (c.language !== 'en')         { rejected.push({id:c.id,reason:'non_english'}); return false; }
     if (isGambling(c))               { rejected.push({id:c.id,reason:'gambling'}); return false; }
     if (ORG_ACCOUNTS.has((c.broadcaster_name||'').toLowerCase())) { rejected.push({id:c.id,reason:'org'}); return false; }
     if (c.duration < 6 || c.duration > 90) { rejected.push({id:c.id,reason:'duration'}); return false; }
-    if (['ja','ko','zh','th'].includes(c.language)) { rejected.push({id:c.id,reason:'asian_language'}); return false; }
     const title = (c.title||'').toLowerCase();
+    if (RU_KEYWORDS.some(k => title.includes(k))) { rejected.push({id:c.id,reason:'ru_keyword'}); return false; }
     if ([' major',' grand final','championship',' tournament','qualifier'].some(k=>title.includes(k)))
       { rejected.push({id:c.id,reason:'tournament'}); return false; }
     return true;
@@ -171,13 +159,9 @@ async function main() {
     const maxViews = broadcasterMaxViews.get(clip.broadcaster_name) || clip.view_count;
     const ratioScore = Math.min(100, (clip.view_count / Math.max(maxViews, 1)) * 100);
     const durationScore = clip.duration >= 15 && clip.duration <= 60 ? 100 : clip.duration < 15 ? 60 : 70;
-    const isViralLang = velocityScore > 85;
-    const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
-    const languageScore = isViralLang ? 100 : rawLangScore;
     const title = (clip.title || '').toLowerCase();
     const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
-    // JC/IRL is core, categoryScore=88
-    const baseScore = velocityScore*0.25 + ratioScore*0.15 + 88*0.25 + durationScore*0.20 + languageScore*0.15 - riskPenalty;
+    const baseScore = velocityScore*0.40 + ratioScore*0.15 + 88*0.25 + durationScore*0.20 - riskPenalty;
     return Math.max(0, Math.min(100, baseScore));
   }
 

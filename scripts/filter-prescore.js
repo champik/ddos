@@ -29,7 +29,6 @@ const ORG_BLACKLIST = new Set([
 ]);
 const STREAMER_BLACKLIST = new Set(['lyasyaa']);
 const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
-const ASIAN_LANGS = new Set(['ja','ko','zh','th']);
 const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
 const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker','escape from tarkov','marvel rivals','overwatch'];
 
@@ -44,14 +43,13 @@ for (const clip of allClips) {
 
   let rejectReason = null;
 
-  if (lang === 'ru') rejectReason = 'excluded_language';
+  if (lang !== 'en') rejectReason = 'non_english';
   else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
   else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
   else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
   else if (TOURNAMENT_KEYWORDS.some(k => title.includes(k))) rejectReason = 'tournament_event';
   else if (GAMBLING_NAMES.some(k => gameName.includes(k))) rejectReason = 'gambling';
   else if (clip.duration < 6 || clip.duration > 90) rejectReason = 'duration';
-  else if (ASIAN_LANGS.has(lang)) rejectReason = 'asian_language';
 
   if (rejectReason) rejected.push({ ...clip, rejectReason });
   else filtered.push(clip);
@@ -95,19 +93,14 @@ function calcPreScore(clip, seenStreamers, seenCategories) {
   const d = clip.duration;
   const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
 
-  const isViralLang = velocityScore > 85;
-  const rawLangScore = clip.language === 'en' ? 100 : clip.language === 'uk' ? 80 : 20;
-  const languageScore = isViralLang ? 100 : rawLangScore;
-
   const title = (clip.title || '').toLowerCase();
   const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
 
   const baseScore = (
-    velocityScore * 0.25 +
+    velocityScore * 0.40 +
     ratioScore    * 0.15 +
     categoryScore * 0.25 +
-    durationScore * 0.20 +
-    languageScore * 0.15
+    durationScore * 0.20
   ) - riskPenalty;
 
   const streamerCount = seenStreamers.get(clip.broadcaster_name) || 0;
