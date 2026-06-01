@@ -75,7 +75,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
         categoryId: '20',
         defaultLanguage: 'en'
       },
-      status: { privacyStatus: 'unlisted', selfDeclaredMadeForKids: false }
+      status: { privacyStatus: 'private', selfDeclaredMadeForKids: false }
     },
     media: { mimeType: 'video/mp4', body: fs.createReadStream(videoPath) }
   }, {
@@ -87,7 +87,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
 
   const videoId = res.data.id;
   process.stdout.write('\n');
-  console.log(`Uploaded (unlisted): https://youtu.be/${videoId}`);
+  console.log(`Uploaded (private): https://youtu.be/${videoId}`);
 
   if (thumbnailPath && fs.existsSync(thumbnailPath)) {
     const thumbMime = thumbnailPath.endsWith('.jpg') || thumbnailPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
