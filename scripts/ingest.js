@@ -111,6 +111,8 @@ async function main() {
     { id: '493057', name: 'PUBG: BATTLEGROUNDS' },
   ];
   const CORE_IDS = new Set(CORE.map(c => c.id));
+  const JCIRL_IDS     = new Set(['509658', '509672']);
+  const SPECIALTY_IDS = new Set(['26936', '116747788']);
 
   // Dynamic categories: top-5 from top-20, excluding core and banlist
   const BAN_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker', 'tarkov', 'overwatch', 'marvel rivals'];
@@ -358,8 +360,6 @@ async function main() {
     .sort((a, b) => b.preScore - a.preScore);
 
   // Category buckets
-  const JCIRL_IDS    = new Set(['509658', '509672']);
-  const SPECIALTY_IDS = new Set(['26936', '116747788']);
   // Gaming = everything else (CS, VALORANT, LoL, Dota2, PUBG + dynamic)
 
   function pickBucket(pool, viralN, popN, maxPerGame) {
@@ -400,36 +400,65 @@ async function main() {
 
   const seen2 = new Set();
   const toDownload = [];
+  const benchExtra = []; // clips swapped out — still downloaded, appear in editorial bench
+
   for (const c of [...jcIrlPick, ...specialtyPick, ...gamingPick]) {
     if (!seen2.has(c.id)) { seen2.add(c.id); toDownload.push(c); }
   }
 
-  // Cap non-English at 20 — keep top by preScore, replace removed slots with next best English
+  // Cap non-English at 20 — prefer replacing dropped non-EN with same-bucket EN clips
   const NON_EN_MAX = 20;
   const nonEnClips = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk');
   if (nonEnClips.length > NON_EN_MAX) {
-    const dropIds = new Set(
-      [...nonEnClips].sort((a, b) => a.preScore - b.preScore)
-        .slice(0, nonEnClips.length - NON_EN_MAX)
-        .map(c => c.id)
-    );
-    const dropped = toDownload.filter(c => dropIds.has(c.id)).length;
+    const toDrop = [...nonEnClips].sort((a, b) => a.preScore - b.preScore)
+      .slice(0, nonEnClips.length - NON_EN_MAX);
+    const dropIds = new Set(toDrop.map(c => c.id));
+    benchExtra.push(...toDrop); // swapped to bench, still get downloaded
     toDownload.splice(0, toDownload.length, ...toDownload.filter(c => !dropIds.has(c.id)));
-    // Fill removed slots with best remaining English clips not yet selected
+    // Fill slots: JC/IRL EN first, then any EN — to preserve bucket quotas
     const selectedIds = new Set(toDownload.map(c => c.id));
-    const extraEn = scored
-      .filter(c => !selectedIds.has(c.id) && (c.language === 'en' || c.language === 'uk'))
-      .slice(0, dropped);
+    const jcIrlEn = scored.filter(c => JCIRL_IDS.has(c.game_id) && (c.language === 'en' || c.language === 'uk') && !selectedIds.has(c.id));
+    const otherEn = scored.filter(c => !JCIRL_IDS.has(c.game_id) && (c.language === 'en' || c.language === 'uk') && !selectedIds.has(c.id));
+    const extraEn = [...jcIrlEn, ...otherEn].slice(0, toDrop.length);
     toDownload.push(...extraEn);
-    console.log(`[PRE-SCORE] Non-EN cap: dropped ${dropped} clips, added ${extraEn.length} EN replacements`);
+    console.log(`[PRE-SCORE] Non-EN cap: dropped ${toDrop.length} to bench, added ${extraEn.length} replacements (JC/IRL EN preferred)`);
   }
 
-  console.log(`[PRE-SCORE] Selected ${toDownload.length} clips for download`);
-  console.log(`  JC/IRL=${jcIrlPick.length}, Specialty=${specialtyPick.length}, Gaming=${gamingPick.length}`);
+  // Enforce JC/IRL minimum 50: swap lowest non-JC/IRL to bench, add best unselected JC/IRL
+  const JCIRL_MIN_DL = 50;
+  const jcIrlFinal = toDownload.filter(c => JCIRL_IDS.has(c.game_id));
+  if (jcIrlFinal.length < JCIRL_MIN_DL) {
+    const need = JCIRL_MIN_DL - jcIrlFinal.length;
+    const selectedIds = new Set(toDownload.map(c => c.id));
+    const extraJcIrl = jcIrlPool.filter(c => !selectedIds.has(c.id)).slice(0, need);
+    // Remove lowest-preScore non-JC/IRL clips, move them to bench
+    toDownload.sort((a, b) => a.preScore - b.preScore);
+    let removed = 0;
+    for (let i = 0; i < toDownload.length && removed < extraJcIrl.length; i++) {
+      if (!JCIRL_IDS.has(toDownload[i].game_id)) {
+        benchExtra.push(toDownload[i]); // moved to bench, still gets downloaded
+        toDownload.splice(i, 1);
+        i--;
+        removed++;
+      }
+    }
+    toDownload.push(...extraJcIrl.slice(0, removed));
+    console.log(`[PRE-SCORE] JC/IRL minimum enforced: moved ${removed} clips to bench, added ${removed} JC/IRL`);
+  }
+
+  console.log(`[PRE-SCORE] Selected ${toDownload.length} main + ${benchExtra.length} bench clips for download`);
+  const jcIrlCount2 = toDownload.filter(c => JCIRL_IDS.has(c.game_id)).length;
+  const gamingCount2 = toDownload.filter(c => !JCIRL_IDS.has(c.game_id) && !SPECIALTY_IDS.has(c.game_id)).length;
+  const specCount2 = toDownload.filter(c => SPECIALTY_IDS.has(c.game_id)).length;
+  console.log(`  JC/IRL=${jcIrlCount2}, Specialty=${specCount2}, Gaming=${gamingCount2}`);
   const nonEnFinal = toDownload.filter(c => c.language !== 'en' && c.language !== 'uk').length;
   console.log(`  EN/UK=${toDownload.length - nonEnFinal}, non-EN=${nonEnFinal}`);
 
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
+  // bench-extra.json — downloaded and scored, but excluded from main selection
+  if (benchExtra.length > 0) {
+    fs.writeFileSync(path.join(CLIPS_DIR, 'bench-extra.json'), JSON.stringify(benchExtra, null, 2));
+  }
 
   state.stages.prescore = 'done';
   state.stages.download = 'running';

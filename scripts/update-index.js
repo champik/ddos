@@ -8,10 +8,6 @@ if (!runId) { console.error('Usage: node scripts/update-index.js <runId>'); proc
 
 const state = JSON.parse(fs.readFileSync(path.join('projects', runId, 'state.json'), 'utf8'));
 const ep = state.episodeNumber;
-const videoId = state.outputs?.youtubeVideoId;
-const shortsIds = (state.outputs?.youtubeShortsIds || [])
-  .map(x => typeof x === 'string' ? x : x.shortId)
-  .filter(Boolean);
 const editExists = fs.existsSync(path.join('projects', runId, 'edit/edit.html'));
 
 const indexPath = 'projects/index.html';
@@ -19,8 +15,6 @@ let html = fs.readFileSync(indexPath, 'utf8');
 
 const links = [
   `<a class="btn btn-review" href="${runId}/review/review.html">Review</a>`,
-  videoId ? `<a class="btn btn-youtube" href="https://youtu.be/${videoId}" target="_blank">YouTube ↗</a>` : null,
-  ...shortsIds.map((id, i) => `<a class="btn btn-shorts" href="https://youtube.com/shorts/${id}" target="_blank">Short ${i + 1} ↗</a>`),
   editExists ? `<a class="btn btn-edit" href="${runId}/edit/edit.html">✏️ Edit</a>` : null,
 ].filter(Boolean);
 

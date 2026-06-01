@@ -11,6 +11,12 @@ const scored = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scored-clips.jso
 const state = JSON.parse(fs.readFileSync(path.join(RUN_DIR, 'state.json'), 'utf8'));
 const episodeNumber = state.episodeNumber || 13;
 
+// bench-extra.json = clips that were downloaded and scored but swapped out of main 100
+const benchExtraPath = path.join(CLIPS_DIR, 'bench-extra.json');
+const benchExtraRaw = fs.existsSync(benchExtraPath)
+  ? JSON.parse(fs.readFileSync(benchExtraPath, 'utf8'))
+  : [];
+
 // Build clip objects for editorial
 function buildEditorialClip(c) {
   return {
@@ -33,7 +39,7 @@ function buildEditorialClip(c) {
 }
 
 // Order: JC/IRL → Gaming → Music/Specialty, sorted by ddosScore within each group
-// All clips go into selected; bench starts empty — user removes to bench during review
+// Clips marked bench:true go to bench; rest go to selected
 const JC_IRL_IDS = new Set(['509658', '509672']);
 const MUSIC_IDS  = new Set(['26936', '116747788']);
 
@@ -48,7 +54,17 @@ const selected = [...scored].sort((a, b) => {
   return gd !== 0 ? gd : b.ddosScore - a.ddosScore;
 }).map(buildEditorialClip);
 
-const bench = [];
+// bench = swapped-out clips that were scored but excluded from main selection
+// Merge bench-extra scores from processed/<id>/score.json
+const benchExtraScored = benchExtraRaw.map(c => {
+  const scorePath = path.join(RUN_DIR, 'processed', c.id, 'score.json');
+  const score = fs.existsSync(scorePath) ? JSON.parse(fs.readFileSync(scorePath, 'utf8')) : {};
+  return { ...c, ...score };
+});
+
+const bench = benchExtraScored
+  .sort((a, b) => (b.ddosScore || 0) - (a.ddosScore || 0))
+  .map(buildEditorialClip);
 
 const totalDuration = selected.reduce((s, c) => s + c.duration, 0);
 console.log(`[EDITORIAL] All clips: ${selected.length}, total duration: ${totalDuration.toFixed(0)}s (${(totalDuration/60).toFixed(1)} min)`);

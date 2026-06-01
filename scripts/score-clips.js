@@ -10,9 +10,13 @@ const CLIPS_DIR = path.join(RUN_DIR, 'clips');
 const scores = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scores-raw.json'), 'utf8'));
 const downloaded = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'downloaded-clips.json'), 'utf8'));
 const scoringInput = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scoring-input.json'), 'utf8'));
+// bench-extra: downloaded but excluded from main selection — include in scored-clips.json
+const benchExtraPath = path.join(CLIPS_DIR, 'bench-extra.json');
+const benchExtra = fs.existsSync(benchExtraPath) ? JSON.parse(fs.readFileSync(benchExtraPath, 'utf8')) : [];
+const allClips = [...downloaded, ...benchExtra.filter(b => !downloaded.find(d => d.id === b.id))];
 
 const scoreMap = new Map(scores.map(s => [s.clipId, s]));
-const clipMap = new Map(downloaded.map(c => [c.id, c]));
+const clipMap = new Map(allClips.map(c => [c.id, c]));
 
 // Compute ddosScore
 function calcDdosScore(clip, score) {

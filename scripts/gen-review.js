@@ -134,12 +134,16 @@ for (let gi = 0; gi < plan.groups.length; gi++) {
 }
 const rows = rowParts.join('\n');
 
+const selectedTitle = meta.selectedTitle || null;
 const titleOptionsArr = Array.isArray(meta.titleOptions)
   ? meta.titleOptions
   : Object.values(meta.titleOptions || {});
-const titleCards = titleOptionsArr.map((t, i) =>
-  `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
-).join('\n');
+const titleCards = selectedTitle
+  ? `  <div class="title-card title-card--selected"><span class="title-num">✓</span><span>${esc(selectedTitle)}</span></div>`
+  : titleOptionsArr.map((t, i) =>
+      `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
+    ).join('\n');
+const selectedTitleHtml = '';
 
 const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   `  <div class="short-card">
@@ -185,6 +189,7 @@ const html = `<!DOCTYPE html>
   .title-cards { display: flex; flex-direction: column; gap: 10px; max-width: 800px; }
   .title-card { background: #1a1a1e; padding: 14px 18px; border-radius: 8px; border: 2px solid #2a2a2e; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.15s; }
   .title-card:hover { border-color: #f5ff3d; }
+  .title-card--selected { border-color: #f5ff3d; background: #1a2a0a; }
   .title-num { font-family: 'Anton', sans-serif; color: #f5ff3d; font-size: 20px; min-width: 20px; }
   .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #222; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -248,6 +253,7 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 
 <div class="section">
 <h2>Title Options</h2>
+${selectedTitleHtml}
 <div class="title-cards">
 ${titleCards}
 </div>

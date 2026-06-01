@@ -74,8 +74,11 @@ async function runParallel(tasks, concurrency) {
 }
 
 async function main() {
-  const candidates = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), 'utf8'));
-  console.log(`[DOWNLOAD] ${candidates.length} clips to download (max parallel: ${MAX_PARALLEL})`);
+  const main100 = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), 'utf8'));
+  const benchExtraPath = path.join(CLIPS_DIR, 'bench-extra.json');
+  const benchExtra = fs.existsSync(benchExtraPath) ? JSON.parse(fs.readFileSync(benchExtraPath, 'utf8')) : [];
+  const candidates = [...main100, ...benchExtra];
+  console.log(`[DOWNLOAD] ${main100.length} main + ${benchExtra.length} bench clips to download (max parallel: ${MAX_PARALLEL})`);
 
   const tasks = candidates.map((clip, i) => () => {
     process.stdout.write(`\r  ${i+1}/${candidates.length} ...`);

@@ -68,6 +68,15 @@ function getCropX(clipId) {
   // cropX: 0=full-left, 0.5=center (default), 1=full-right
   return editorialClips[clipId]?.short?.cropX ?? 0.5;
 }
+function getCropZoom(clipId) {
+  return editorialClips[clipId]?.short?.zoom ?? 1.0;
+}
+function getCropAnchorY(clipId) {
+  return editorialClips[clipId]?.short?.anchorY ?? 'center';
+}
+function getNoSubs(clipId) {
+  return editorialClips[clipId]?.short?.noSubs === true;
+}
 
 const outDir = path.join(base, 'exports/shorts');
 fs.mkdirSync(outDir, { recursive: true });
@@ -98,7 +107,12 @@ for (const clipId of clipIds) {
       const score = readJson(scoreFile);
       const peak = score.peakMoment;
       if ((score.payoffStrength || 0) > 70 && peak && peak.start > 3) {
-        startOffset = Math.max(0, peak.start - 3);
+        const candidate = Math.max(0, peak.start - 3);
+        // Guard: don't seek past clip duration
+        const durR = spawnSync('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration',
+          '-of', 'csv=p=0', input], { encoding: 'utf8' });
+        const clipDur = parseFloat(durR.stdout) || 999;
+        if (candidate < clipDur - 1) startOffset = candidate;
       }
     } catch {}
   }
@@ -115,26 +129,44 @@ for (const clipId of clipIds) {
     activeAssFile = tmpAssPath;
   }
 
-  const mode    = getShortMode(clipId);
-  const webcam  = getShortWebcam(clipId);
-  const camPos  = getCamPos(clipId);
-  const camCrop = getCamCrop(clipId);
-  const cropX   = getCropX(clipId);
+  const mode     = getShortMode(clipId);
+  const webcam   = getShortWebcam(clipId);
+  const camPos   = getCamPos(clipId);
+  const camCrop  = getCamCrop(clipId);
+  const cropX    = getCropX(clipId);
+  const cropZoom = getCropZoom(clipId);
+  const anchorY  = getCropAnchorY(clipId);
+  const noSubs   = getNoSubs(clipId);
 
-  console.log(`[SHORT:${mode.toUpperCase()}] ${clipId.slice(0, 28)}${hasAss ? ' +captions' : ''}`);
+  const useAss = hasAss && !noSubs;
+  console.log(`[SHORT:${mode.toUpperCase()}] ${clipId.slice(0, 28)}${useAss ? ' +captions' : ''}`);
 
   const seekArgs = startOffset > 0 ? ['-ss', startOffset.toFixed(3)] : [];
   let filterParts, ffInputs, extraArgs;
 
   if (mode === 'mobile') {
-    // ── MOBILE: 9:16 crop; cropX: 0=left, 0.5=center, 1=right ───────────────
-    const cropXExpr = cropX === 0.5 ? '(iw-ih*9/16)/2' : `(iw-ih*9/16)*${cropX}`;
+    // ── MOBILE: 9:16 crop; cropX: 0=left, 0.5=center, 1=right; zoom+anchorY ──
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
-    if (hasAss) {
-      filterParts = [`[0:v]crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920,ass=${ffmpegPath(activeAssFile)}[out]`];
+    let cropFilter;
+    if (cropZoom < 1.0) {
+      // Numeric zoom crop (source assumed 1920×1080)
+      const IW = 1920, IH = 1080;
+      const fullW = IH * 9 / 16;
+      const fullX = (IW - fullW) * cropX;
+      const cW = Math.round(fullW * cropZoom);
+      const cH = Math.round(IH * cropZoom);
+      const cX = Math.round(fullX + (fullW - cW) / 2);
+      const cY = anchorY === 'top' ? 0 : anchorY === 'bottom' ? IH - cH : Math.round((IH - cH) / 2);
+      cropFilter = `crop=${cW}:${cH}:${cX}:${cY},scale=1080:1920`;
     } else {
-      filterParts = [`[0:v]crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920[out]`];
+      const cropXExpr = cropX === 0.5 ? '(iw-ih*9/16)/2' : `(iw-ih*9/16)*${cropX}`;
+      cropFilter = `crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920`;
+    }
+    if (useAss) {
+      filterParts = [`[0:v]${cropFilter},ass=${ffmpegPath(activeAssFile)}[out]`];
+    } else {
+      filterParts = [`[0:v]${cropFilter}[out]`];
     }
 
   } else if (mode === 'split' && webcam) {
@@ -173,7 +205,7 @@ for (const clipId of clipIds) {
     ffInputs  = [...seekArgs, '-i', input];
     extraArgs = [];
 
-    if (hasAss) {
+    if (useAss) {
       fc.push(`[stacked]ass=${ffmpegPath(activeAssFile)}[out]`);
     } else {
       fc[fc.length - 1] = fc[fc.length - 1].replace('[stacked]', '[out]');
@@ -191,7 +223,7 @@ for (const clipId of clipIds) {
       '[main]scale=1080:-2[fg]'
     ];
 
-    if (hasAss) {
+    if (useAss) {
       filterParts = [
         ...blurFilters,
         `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`
