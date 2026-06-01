@@ -51,6 +51,9 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .tl-handle{position:absolute;top:-4px;width:12px;height:42px;background:#f5ff3d;border-radius:3px;cursor:ew-resize;transform:translateX(-50%)}
 .tl-handle-out{transform:translateX(50%)}
 .tl-playhead{position:absolute;top:-5px;width:2px;height:44px;background:#fff;opacity:.45;pointer-events:none}
+.tl-thumb-mark{position:absolute;top:-5px;width:2px;height:44px;background:#4ade80;opacity:.9;pointer-events:none;display:none}
+.tl-wrap.thumb-mode .tl-handle,.tl-wrap.thumb-mode .tl-fill{display:none}
+.tl-wrap.preview-mode .tl-handle{display:none}
 .tl-times{display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:4px;font-family:monospace}
 .ctrl-row{display:flex;gap:7px;margin-top:9px;align-items:center;flex-wrap:wrap}
 .ctrl-lbl{color:#555;font-size:11px}
@@ -555,21 +558,36 @@ function buildCardBody(clip) {
       <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
       <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
       <button class="play-mode-btn" id="recon-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','reconnect',this)" style="display:none">Reconnect</button>
-      <button class="play-mode-btn" id="thumb-mode-btn-${clip.id}" onclick="playThumbnail('${clip.id}')" style="display:none">Thumbnail</button>
+      <button class="play-mode-btn" id="thumb-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','thumbnail',this)" style="display:none">Thumbnail</button>
       <span class="playpos" id="playpos-${clip.id}">0:00 / ${fmtTimeSec(clip.duration)}</span>
     </div>
-    <div class="tl-wrap">
+    <div class="tl-wrap" id="tl-wrap-std-${clip.id}">
       <div class="tl-label"><span>🟡 виділи ділянку → натисни "+ Зберегти". Без ділянок — весь кліп</span></div>
       <div class="tl-track" id="tl-${clip.id}">
         <div class="tl-fill" id="tl-fill-${clip.id}"></div>
         <div class="tl-handle tl-handle-in" id="tl-in-${clip.id}" style="left:0%"></div>
         <div class="tl-handle tl-handle-out tl-handle-out" id="tl-out-${clip.id}" style="right:0%"></div>
         <div class="tl-playhead" id="tl-ph-${clip.id}" style="left:0%"></div>
+        <div class="tl-thumb-mark" id="tl-thumb-mark-${clip.id}"></div>
       </div>
       <div class="tl-times">
         <span id="tl-time-in-${clip.id}">in: 0:00.0</span>
         <span>${fmtTimeSec(clip.duration)} total</span>
         <span id="tl-time-out-${clip.id}">out: ${fmtTimeSec(clip.duration)}</span>
+      </div>
+    </div>
+    <div class="tl-wrap" id="tl-wrap-recon-${clip.id}" style="display:none">
+      <div class="tl-label"><span style="color:#ff4a4a88">⟳ reconnect · тягни червоні межі</span></div>
+      <div class="tl-track" id="tl-recon-${clip.id}">
+        <div class="tl-fill" id="tl-recon-fill-${clip.id}" style="background:#ff4a4a22;cursor:grab"></div>
+        <div class="tl-handle tl-handle-in" id="tl-recon-in-${clip.id}" style="left:0%;background:#ff6b6b"></div>
+        <div class="tl-handle tl-handle-out" id="tl-recon-out-${clip.id}" style="right:0%;background:#ff6b6b"></div>
+        <div class="tl-playhead" id="tl-recon-ph-${clip.id}" style="left:0%"></div>
+      </div>
+      <div class="tl-times">
+        <span id="tl-recon-time-in-${clip.id}">from: 0:00.0</span>
+        <span>${fmtTimeSec(clip.duration)} total</span>
+        <span id="tl-recon-time-out-${clip.id}">to: 0:00.0</span>
       </div>
     </div>
     <div class="ctrl-row">
@@ -649,6 +667,7 @@ function initCardMedia(card) {
   // Drag whole interval (fill) left/right preserving width
   fill.addEventListener('mousedown', e => {
     if (e.target === handleIn || e.target === handleOut) return;
+    if (card.dataset.playMode === 'preview') return;
     e.preventDefault();
     const rect = track.getBoundingClientRect();
     const width = outPct - inPct;
@@ -678,6 +697,7 @@ function initCardMedia(card) {
     if (e.target === handleIn || e.target === handleOut) return;
     const rect = track.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
+    if (card.dataset.playMode === 'preview' && (pct * 100 < inPct || pct * 100 > outPct)) return;
     if (video) video.currentTime = pct * clip.duration;
   });
 
@@ -742,6 +762,17 @@ function setPlayMode(clipId, mode, btn) {
   card.dataset.playMode = mode;
   card.querySelectorAll('.play-mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  const tlStd = document.getElementById('tl-wrap-std-' + clipId);
+  const tlRecon = document.getElementById('tl-wrap-recon-' + clipId);
+  if (tlStd) {
+    tlStd.style.display = mode === 'reconnect' ? 'none' : '';
+    tlStd.classList.toggle('thumb-mode', mode === 'thumbnail');
+    tlStd.classList.toggle('preview-mode', mode === 'preview');
+  }
+  if (tlRecon) {
+    tlRecon.style.display = mode === 'reconnect' ? '' : 'none';
+    if (mode === 'reconnect') initReconTimeline(clipId);
+  }
   const cs = getClipState(clipId);
   const video = document.getElementById('vid-' + clipId);
   if (mode === 'preview' && video) {
@@ -752,9 +783,10 @@ function setPlayMode(clipId, mode, btn) {
   }
   if (mode === 'reconnect' && video) {
     const src = state.reconnectSource;
-    if (!src || src.clipId !== clipId) return;
-    video.currentTime = src.from;
-    video.play();
+    if (src && src.clipId === clipId) { video.currentTime = src.from; video.play(); }
+  }
+  if (mode === 'thumbnail' && video) {
+    if (state.thumbnail?.clipId === clipId) { video.currentTime = state.thumbnail.at; video.pause(); }
   }
 }
 
@@ -836,11 +868,128 @@ function renderReconnectZone(clipId, clip) {
   track.appendChild(zone);
 }
 
-function playThumbnail(clipId) {
+function updateReconFillUI(clipId) {
+  const clip = getClip(clipId);
+  const src = state.reconnectSource;
+  if (!clip || !src || src.clipId !== clipId) return;
+  const fill = document.getElementById('tl-recon-fill-' + clipId);
+  const handleIn = document.getElementById('tl-recon-in-' + clipId);
+  const handleOut = document.getElementById('tl-recon-out-' + clipId);
+  const timeIn = document.getElementById('tl-recon-time-in-' + clipId);
+  const timeOut = document.getElementById('tl-recon-time-out-' + clipId);
+  if (!fill) return;
+  const fromPct = src.from / clip.duration * 100;
+  const toPct = src.to / clip.duration * 100;
+  fill.style.left = fromPct + '%';
+  fill.style.right = (100 - toPct) + '%';
+  handleIn.style.left = fromPct + '%';
+  handleOut.style.right = (100 - toPct) + '%';
+  if (timeIn) timeIn.textContent = 'from: ' + fmtTime(src.from);
+  if (timeOut) timeOut.textContent = 'to: ' + fmtTime(src.to);
+}
+
+function initReconTimeline(clipId) {
+  const clip = getClip(clipId);
+  const track = document.getElementById('tl-recon-' + clipId);
+  if (!clip || !track) return;
+  updateReconFillUI(clipId);
+  if (track.dataset.reconInited) return;
+  track.dataset.reconInited = '1';
+
+  const fill = document.getElementById('tl-recon-fill-' + clipId);
+  const handleIn = document.getElementById('tl-recon-in-' + clipId);
+  const handleOut = document.getElementById('tl-recon-out-' + clipId);
+
+  function liveUpdate() {
+    updateReconFillUI(clipId);
+    renderReconnectZone(clipId, clip);
+    const src = state.reconnectSource;
+    const detail = src
+      ? `джерело: ${getClip(src.clipId)?.streamer || '?'} · ${fmtTime(src.from)} → ${fmtTime(src.to)}`
+      : 'джерело не вибрано';
+    document.querySelectorAll('[id^="recon-sep-detail-"]').forEach(el => el.textContent = detail);
+    document.querySelectorAll('.recon-sep-standalone .recon-sep-detail').forEach(el => el.textContent = detail);
+    const reconDisp = document.getElementById('reconnect-display');
+    if (reconDisp && src) reconDisp.textContent = `${getClip(src.clipId)?.streamer || '?'} ${fmtTime(src.from)}–${fmtTime(src.to)}`;
+  }
+
+  function makeHandle(handle, type) {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = track.getBoundingClientRect();
+      const onMove = e => {
+        const src = state.reconnectSource;
+        if (!src || src.clipId !== clipId) return;
+        const pct = Math.max(0, Math.min(100, (e.clientX - rect.left) / rect.width * 100));
+        const sec = +(pct / 100 * clip.duration).toFixed(2);
+        if (type === 'in') {
+          src.from = Math.min(sec, src.to - 0.5);
+          const v = document.getElementById('vid-' + clipId);
+          if (v) v.currentTime = src.from;
+        } else {
+          src.to = Math.max(sec, src.from + 0.5);
+          const v = document.getElementById('vid-' + clipId);
+          if (v) v.currentTime = src.to;
+        }
+        liveUpdate();
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        saveState();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  fill.addEventListener('mousedown', e => {
+    if (e.target === handleIn || e.target === handleOut) return;
+    e.preventDefault();
+    const src = state.reconnectSource;
+    if (!src || src.clipId !== clipId) return;
+    const rect = track.getBoundingClientRect();
+    const width = src.to - src.from;
+    const startX = e.clientX;
+    const startFrom = src.from;
+    fill.style.cursor = 'grabbing';
+    const onMove = ev => {
+      const srcNow = state.reconnectSource;
+      if (!srcNow || srcNow.clipId !== clipId) return;
+      const delta = (ev.clientX - startX) / rect.width * clip.duration;
+      srcNow.from = Math.max(0, Math.min(clip.duration - width, startFrom + delta));
+      srcNow.to = srcNow.from + width;
+      liveUpdate();
+    };
+    const onUp = () => {
+      fill.style.cursor = 'grab';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      saveState();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  makeHandle(handleIn, 'in');
+  makeHandle(handleOut, 'out');
+
   const video = document.getElementById('vid-' + clipId);
-  if (!video || !state.thumbnail || state.thumbnail.clipId !== clipId) return;
-  video.currentTime = state.thumbnail.at;
-  video.pause();
+  if (video) {
+    video.addEventListener('timeupdate', () => {
+      const ph = document.getElementById('tl-recon-ph-' + clipId);
+      if (ph) ph.style.left = (video.currentTime / clip.duration * 100) + '%';
+    });
+  }
+
+  track.addEventListener('click', e => {
+    if (e.target === handleIn || e.target === handleOut || e.target === fill) return;
+    const rect = track.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const v = document.getElementById('vid-' + clipId);
+    if (v) v.currentTime = pct * clip.duration;
+  });
 }
 
 // ── TAG SECTIONS ──────────────────────────────────────────────────────────────
@@ -939,6 +1088,19 @@ function syncTagSections(clipId) {
       }
     }
   }
+  updateThumbMark(clipId);
+}
+
+function updateThumbMark(clipId) {
+  const mark = document.getElementById('tl-thumb-mark-' + clipId);
+  if (!mark) return;
+  const clip = getClip(clipId);
+  if (state.thumbnail?.clipId === clipId && clip) {
+    mark.style.left = (state.thumbnail.at / clip.duration * 100) + '%';
+    mark.style.display = 'block';
+  } else {
+    mark.style.display = 'none';
+  }
 }
 
 function setShortMode(clipId, mode, btn) {
@@ -973,6 +1135,11 @@ function setReconnectSource(clipId) {
     state.reconnectSource = null;
     saveState();
     renderReconnectZone(clipId, clip);
+    const cardEl = document.querySelector(`[data-clip-id="${clipId}"]`);
+    if (cardEl && cardEl.dataset.playMode === 'reconnect') {
+      const fullBtn = cardEl.querySelector('.play-mode-btn');
+      if (fullBtn) setPlayMode(clipId, 'full', fullBtn);
+    }
     syncTagSections(clipId);
     updateCardInPlace(clipId);
     updateTopbar();
@@ -987,7 +1154,19 @@ function setReconnectSource(clipId) {
     updateCardInPlace(oldSrc.clipId);
   }
   renderReconnectZone(clipId, clip);
+  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
+  if (card) {
+    const body = card.querySelector('.card-body');
+    const icon = card.querySelector('.expand-icon');
+    if (!body.classList.contains('open')) {
+      body.classList.add('open');
+      if (icon) icon.textContent = '▲';
+      initCardMedia(card);
+    }
+  }
   syncTagSections(clipId);
+  const reconBtn = document.getElementById('recon-mode-btn-' + clipId);
+  if (reconBtn) setPlayMode(clipId, 'reconnect', reconBtn);
   updateCardInPlace(clipId);
   updateTopbar();
   refreshSeps();
