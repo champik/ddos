@@ -45,38 +45,19 @@ const base      = path.resolve(projectDir);
 const plan      = readJson(path.join(base, 'edit/episode-plan.json'));
 const clipIds   = plan.shortClipIds || [];
 
-// Read editorial.json for short mode / webcam coords / camPos
+// Read editorial.json for short crop data
 let editorialClips = {};
 try {
   const ed = readJson(path.join(base, 'edit/editorial.json'));
   editorialClips = ed.clips || {};
 } catch {}
 
-function getShortMode(clipId) {
-  return editorialClips[clipId]?.short?.mode || 'desktop';
-}
-function getShortWebcam(clipId) {
-  return editorialClips[clipId]?.short?.webcam || null;
-}
-function getCamPos(clipId) {
-  return editorialClips[clipId]?.short?.camPos || 'top';
-}
-function getCamCrop(clipId) {
-  return editorialClips[clipId]?.short?.camCrop || null;
-}
-function getCropX(clipId) {
-  // cropX: 0=full-left, 0.5=center (default), 1=full-right
-  return editorialClips[clipId]?.short?.cropX ?? 0.5;
-}
-function getCropZoom(clipId) {
-  return editorialClips[clipId]?.short?.zoom ?? 1.0;
-}
-function getCropAnchorY(clipId) {
-  return editorialClips[clipId]?.short?.anchorY ?? 'center';
-}
-function getNoSubs(clipId) {
-  return editorialClips[clipId]?.short?.noSubs === true;
-}
+// % of source frame → pixels (assumes 1920×1080 source)
+function px(pct, axis) { return Math.round(pct / 100 * (axis === 'w' ? 1920 : 1080)); }
+function even(n) { return n % 2 === 0 ? n : n + 1; }
+
+function getShort(clipId) { return editorialClips[clipId]?.short || null; }
+function getNoSubs(clipId) { return editorialClips[clipId]?.short?.noSubs === true; }
 
 const outDir = path.join(base, 'exports/shorts');
 fs.mkdirSync(outDir, { recursive: true });
@@ -129,111 +110,60 @@ for (const clipId of clipIds) {
     activeAssFile = tmpAssPath;
   }
 
-  const mode     = getShortMode(clipId);
-  const webcam   = getShortWebcam(clipId);
-  const camPos   = getCamPos(clipId);
-  const camCrop  = getCamCrop(clipId);
-  const cropX    = getCropX(clipId);
-  const cropZoom = getCropZoom(clipId);
-  const anchorY  = getCropAnchorY(clipId);
-  const noSubs   = getNoSubs(clipId);
-
+  const short  = getShort(clipId);
+  const mode   = short?.mode || 'desktop';
+  const noSubs = getNoSubs(clipId);
   const useAss = hasAss && !noSubs;
   console.log(`[SHORT:${mode.toUpperCase()}] ${clipId.slice(0, 28)}${useAss ? ' +captions' : ''}`);
 
   const seekArgs = startOffset > 0 ? ['-ss', startOffset.toFixed(3)] : [];
-  let filterParts, ffInputs, extraArgs;
+  let filterParts, ffInputs = [...seekArgs, '-i', input];
 
   if (mode === 'mobile') {
-    // ── MOBILE: 9:16 crop; cropX: 0=left, 0.5=center, 1=right; zoom+anchorY ──
-    ffInputs  = [...seekArgs, '-i', input];
-    extraArgs = [];
-    let cropFilter;
-    if (cropZoom < 1.0) {
-      // Numeric zoom crop (source assumed 1920×1080)
-      const IW = 1920, IH = 1080;
-      const fullW = IH * 9 / 16;
-      const fullX = (IW - fullW) * cropX;
-      const cW = Math.round(fullW * cropZoom);
-      const cH = Math.round(IH * cropZoom);
-      const cX = Math.round(fullX + (fullW - cW) / 2);
-      const cY = anchorY === 'top' ? 0 : anchorY === 'bottom' ? IH - cH : Math.round((IH - cH) / 2);
-      cropFilter = `crop=${cW}:${cH}:${cX}:${cY},scale=1080:1920`;
-    } else {
-      const cropXExpr = cropX === 0.5 ? '(iw-ih*9/16)/2' : `(iw-ih*9/16)*${cropX}`;
-      cropFilter = `crop=ih*9/16:ih:${cropXExpr}:0,scale=1080:1920`;
-    }
-    if (useAss) {
-      filterParts = [`[0:v]${cropFilter},ass=${ffmpegPath(activeAssFile)}[out]`];
-    } else {
-      filterParts = [`[0:v]${cropFilter}[out]`];
-    }
+    // ── MOBILE: crop selected 9:16 region ────────────────────────────────────
+    const c = short?.mobile || { x: 34.18, y: 0, w: 31.64, h: 100 };
+    const cw = px(c.w, 'w'), ch = px(c.h, 'h'), cx = px(c.x, 'w'), cy = px(c.y, 'h');
+    const cropFilter = `crop=${cw}:${ch}:${cx}:${cy},scale=1080:1920`;
+    filterParts = useAss
+      ? [`[0:v]${cropFilter},ass=${ffmpegPath(activeAssFile)}[out]`]
+      : [`[0:v]${cropFilter}[out]`];
 
-  } else if (mode === 'split' && webcam) {
-    // ── SPLIT: webcam crop (top or bottom) + scaled gameplay ──────────────────
-    const [rx, ry, rw, rh] = webcam;
-    const CAM_X = Math.round(rx * 1920);
-    const CAM_Y = Math.round(ry * 1080);
-    const CAM_W = Math.round(rw * 1920);
-    const CAM_H = Math.round(rh * 1080);
+  } else if (mode === 'split' && short?.split) {
+    // ── SPLIT: webcam top + gameplay bottom ───────────────────────────────────
+    const sp = short.split;
+    const ratio   = sp.ratio ?? 0.7;
+    const GAME_H  = even(Math.round(1920 * ratio));
+    const CAM_H   = 1920 - GAME_H;
 
-    // Apply camCrop: trim top/bottom fraction then optionally squish by scale factor
-    let srcCAM_Y = CAM_Y, srcCAM_H = CAM_H;
-    if (camCrop) {
-      const topPx = Math.round(CAM_H * (camCrop.top || 0));
-      const botPx = Math.round(CAM_H * (camCrop.bottom || 0));
-      srcCAM_Y = CAM_Y + topPx;
-      srcCAM_H = CAM_H - topPx - botPx;
-    }
+    const g  = sp.gameplay || { x: 0, y: 0, w: 100, h: 100 };
+    const wc = sp.webcam   || { x: 2,  y: 2, w: 30,  h: 30  };
+    const GW = px(g.w,'w'), GH = px(g.h,'h'), GX = px(g.x,'w'), GY = px(g.y,'h');
+    const WW = px(wc.w,'w'), WH = px(wc.h,'h'), WX = px(wc.x,'w'), WY = px(wc.y,'h');
 
-    // Webcam: full 1080px wide, natural AR; squishScale shrinks output height
-    let camNaturalH = Math.round(1080 * srcCAM_H / CAM_W);
-    if (camCrop?.squishScale != null) camNaturalH = Math.round(camNaturalH * camCrop.squishScale);
-    else if (camCrop?.squishHalf) camNaturalH = Math.round(camNaturalH / 2);
-    const CAM_OUT_H  = camNaturalH % 2 === 0 ? camNaturalH : camNaturalH + 1;
-    const GAME_OUT_H = 1920 - CAM_OUT_H;
-    const gameOffset = (1920 - GAME_OUT_H) / 2;
-
-    const order = camPos === 'bottom' ? '[game][cam]' : '[cam][game]';
     const fc = [
       '[0:v]split=2[vsrc1][vsrc2]',
-      `[vsrc1]crop=${CAM_W}:${srcCAM_H}:${CAM_X}:${srcCAM_Y},scale=1080:${CAM_OUT_H}[cam]`,
-      `[vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,crop=1080:${GAME_OUT_H}:0:${gameOffset}[game]`,
-      `${order}vstack=inputs=2[stacked]`
+      `[vsrc1]crop=${WW}:${WH}:${WX}:${WY},scale=1080:${CAM_H}[cam]`,
+      `[vsrc2]crop=${GW}:${GH}:${GX}:${GY},scale=1080:${GAME_H}[game]`,
+      '[cam][game]vstack=inputs=2[stacked]'
     ];
-
-    ffInputs  = [...seekArgs, '-i', input];
-    extraArgs = [];
-
-    if (useAss) {
-      fc.push(`[stacked]ass=${ffmpegPath(activeAssFile)}[out]`);
-    } else {
-      fc[fc.length - 1] = fc[fc.length - 1].replace('[stacked]', '[out]');
-    }
+    if (useAss) fc.push(`[stacked]ass=${ffmpegPath(activeAssFile)}[out]`);
+    else fc[fc.length - 1] = fc[fc.length - 1].replace('[stacked]', '[out]');
     filterParts = fc;
 
   } else {
-    // ── DESKTOP: blur background (default / fallback) ─────────────────────────
-    ffInputs  = [...seekArgs, '-i', input];
-    extraArgs = [];
+    // ── DESKTOP: crop selected 16:9 region + blur background ─────────────────
+    const c = short?.desktop || { x: 0, y: 0, w: 100, h: 100 };
+    const cropStep = c.w >= 99 ? '' :
+      `crop=${px(c.w,'w')}:${px(c.h,'h')}:${px(c.x,'w')}:${px(c.y,'h')},`;
 
     const blurFilters = [
-      '[0:v]split[main][bg]',
+      `[0:v]${cropStep}split[main][bg]`,
       '[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.3[blurred]',
       '[main]scale=1080:-2[fg]'
     ];
-
-    if (useAss) {
-      filterParts = [
-        ...blurFilters,
-        `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`
-      ];
-    } else {
-      filterParts = [
-        ...blurFilters,
-        '[blurred][fg]overlay=(W-w)/2:(H-h)/2[out]'
-      ];
-    }
+    filterParts = useAss
+      ? [...blurFilters, `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`]
+      : [...blurFilters, '[blurred][fg]overlay=(W-w)/2:(H-h)/2[out]'];
   }
 
   // Ensure SAR=1:1 so players don't add black bars from incorrect pixel AR
@@ -248,7 +178,6 @@ for (const clipId of clipIds) {
     '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
     '-movflags', '+faststart',
-    ...extraArgs,
     '-y', output
   ], { stdio: 'pipe', encoding: 'utf8' });
 
