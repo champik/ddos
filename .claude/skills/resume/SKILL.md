@@ -10,16 +10,16 @@
 
 ## Що отримує Claude
 
-Повідомлення містить JSON блок виду:
+Повідомлення містить JSON блок виду (формат editorial.json):
 ```json
 {
   "runId": "Episode_N_YYYY_MM_DD",
-  "clipOrder": ["id1", "id2", "..."],
-  "reconnect": { "clipId": "id1", "from": 3.0, "to": 5.0, "afterIndex": 1 },
-  "thumbnail": { "clipId": "id4", "at": 25.5 },
+  "clipOrder": ["id1", "id2", "id3", "..."],
+  "reconnectSource": { "clipId": "id1", "from": 3.0, "to": 5.0 },
+  "reconnectPositions": ["id1"],
+  "thumbnail": { "clipId": "id4", "at": 25.5, "crop": { "x": 10, "y": 0, "w": 80, "h": 80 } },
   "clips": {
-    "id1": { "short": { "mode": "split", "webcam": [0.72, 0.07, 0.23, 0.36], "camPos": "top" } },
-    "id2": { "cuts": [[3.0, 5.0], [13.0, 25.0]], "trim": { "in": 0, "out": 41.0 } }
+    "id1": { "keeps": [[3.0, 25.0]], "short": { "mode": "desktop", "desktop": { "x": 0, "y": 0, "w": 100, "h": 100 } } }
   }
 }
 ```
@@ -31,13 +31,14 @@
 
 ## Крок 2 — Згенерувати episode-plan.json
 
-З editorial.json побудувати `edit/episode-plan.json` для сумісності з downstream skills:
+З editorial.json побудувати `edit/episode-plan.json`:
 ```javascript
 {
   clipOrder: editorial.clipOrder,
-  groups: buildGroups(editorial.clipOrder),  // розбити на групи по 4 кліпи
+  // Groups = splits at reconnectPositions; reconnect separator inserted after each group except last
+  groups: buildGroups(editorial.clipOrder, editorial.reconnectPositions || []),
   openerClipId: editorial.thumbnail?.clipId || editorial.clipOrder[0],
-  reconnectingClipId: editorial.reconnect?.clipId || null,
+  reconnectingClipId: editorial.reconnectSource?.clipId || null,
   chillPlan: { type: "skip" },
   shortClipIds: Object.entries(editorial.clips || {})
     .filter(([id, c]) => c.short)
@@ -46,7 +47,10 @@
 }
 ```
 
-`buildGroups` — поділити clipOrder на групи по 4 кліпи (VIBE_GROUP).
+`buildGroups(clipOrder, reconnectPositions)`:
+- Ділить clipOrder на групи за позиціями reconnect (clip після якого стоїть сепаратор)
+- Якщо reconnectPositions порожній → одна група з усіх кліпів
+- Приклад: clipOrder=[A,B,C,D], reconnectPositions=[B] → [[A,B],[C,D]]
 
 Зберегти також як `edit/shorts-selection.json` з полем `shortClipIds`.
 
