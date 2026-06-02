@@ -200,7 +200,7 @@ async function main() {
     'esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2',
     'weplay_esports','faceit','dreamhack','esltv','iem'
   ]);
-  const STREAMER_BLACKLIST = new Set(['lyasyaa']);
+  const STREAMER_BLACKLIST = new Set(['lyasyaa', 'qoqsik']);
   const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
   const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
   const GAMBLING_NAMES = ['slots','casino','gambling','betting','poker','tarkov','overwatch','marvel rivals','sports betting'];
@@ -381,6 +381,11 @@ async function main() {
 
     for (const c of byVelocity)   { if (result.length >= viralN) break; tryAdd(c); }
     for (const c of byPopularity) { if (result.length >= viralN + popN) break; tryAdd(c); }
+    // If still below target, fill with remaining pool clips (sorted by preScore)
+    const maxTotal = viralN + popN;
+    if (result.length < maxTotal) {
+      for (const c of pool) { if (result.length >= maxTotal) break; tryAdd(c); }
+    }
     return result;
   }
 

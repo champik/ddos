@@ -310,6 +310,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     // Ensure order only has valid non-benched clips (keep standalone recons)
     state.order = state.order.filter(id => id.startsWith('__recon_') || (!state.benched.includes(id) && CLIPS_DATA.selected.some(c => c.id === id)));
+    // Add any new clips not yet in order or bench (e.g. manually added after save)
+    const knownIds = new Set([...state.order, ...state.benched]);
+    CLIPS_DATA.selected.forEach(c => { if (!knownIds.has(c.id)) state.order.push(c.id); });
   }
 
   document.getElementById('meta-line').textContent =

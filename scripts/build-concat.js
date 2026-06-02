@@ -16,6 +16,12 @@ const lines = [];
 lines.push("file '" + introPath + "'");
 
 for (const clipId of editorial.clipOrder) {
+  if (clipId.startsWith('__recon')) {
+    if (fs.existsSync(path.resolve(projectDir, 'edit/reconnecting.mp4'))) {
+      lines.push("file '" + reconnectPath + "'");
+    }
+    continue;
+  }
   const overlayed = path.resolve(projectDir, 'processed', clipId, 'overlayed.mp4');
   const clean     = path.resolve(projectDir, 'processed', clipId, 'clean.mp4');
   const src = fs.existsSync(overlayed) ? overlayed : clean;

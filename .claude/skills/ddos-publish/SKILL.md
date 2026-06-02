@@ -108,4 +108,4 @@ node scripts/update-index.js "<runId>"
 ```
 
 `gen-review.js` — оновить статус на "✓ Published", додасть YouTube + Shorts лінки під заголовком review.html.  
-`update-index.js` — в `projects/index.html` змінить статус на "✓ published", додасть YouTube ↗, всі Shorts ↗, і Edit лінк якщо є `edit/edit.html`.
+`update-index.js` — в `projects/index.html` змінить статус на "✓ published". **ТІЛЬКИ** кнопки Review і Edit — ніяких YouTube ↗ або Shorts ↗ в index.html.

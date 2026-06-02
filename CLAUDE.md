@@ -121,7 +121,7 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 - language != "en" — будь-яка мова крім англійської (RU, UK, JA, KO, ZH, TH та всі інші)
 - title містить: русский, россия, russian, путін, рф (додатковий захист для хибно-класифікованих кліпів)
 - category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals
-- стрімер у blacklist: Lyasyaa
+- стрімер у blacklist: Lyasyaa, Qoqsik
 
 ### DDOS Score формула
 ```
