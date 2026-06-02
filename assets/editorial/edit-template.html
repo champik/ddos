@@ -53,7 +53,7 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .tl-playhead{position:absolute;top:-5px;width:2px;height:44px;background:#fff;opacity:.45;pointer-events:none}
 .tl-thumb-mark{position:absolute;top:-5px;width:2px;height:44px;background:#4ade80;opacity:.9;pointer-events:none;display:none}
 .tl-wrap.thumb-mode .tl-handle,.tl-wrap.thumb-mode .tl-fill{display:none}
-.tl-wrap.preview-mode .tl-handle{display:none}
+.tl-wrap.preview-mode .tl-handle,.tl-wrap.preview-mode .tl-fill{display:none}
 .tl-times{display:flex;justify-content:space-between;font-size:10px;color:#666;margin-top:4px;font-family:monospace}
 .ctrl-row{display:flex;gap:7px;margin-top:9px;align-items:center;flex-wrap:wrap}
 .ctrl-lbl{color:#555;font-size:11px}
@@ -119,6 +119,20 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .btn-copy-json{background:transparent;border:1px solid #f5ff3d;color:#f5ff3d;border-radius:6px;padding:7px 15px;font-size:12px;cursor:pointer}
 .btn-add-recon{background:#160a0a;border:1px solid #ff4a4a44;border-radius:6px;padding:3px 10px;color:#ff6b6b;font-size:11px;cursor:pointer;font-weight:600;line-height:1}
 .btn-add-recon:hover{border-color:#ff6b6b88;background:#1a0808}
+.thumb-crop-box{position:absolute;border:2px solid #f5ff3d;background:rgba(245,255,61,.06);cursor:move;box-sizing:border-box;user-select:none}
+.rh{position:absolute;width:10px;height:10px;border-radius:50%;pointer-events:all}
+.rh.nw{top:-5px;left:-5px;cursor:nw-resize}
+.rh.ne{top:-5px;right:-5px;cursor:ne-resize}
+.rh.sw{bottom:-5px;left:-5px;cursor:sw-resize}
+.rh.se{bottom:-5px;right:-5px;cursor:se-resize}
+.vid-outer-wrap{display:flex;gap:8px;align-items:flex-start}
+.vid-outer-wrap .video-wrap{flex:1;min-width:0}
+.shorts-preview-col{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px}
+.split-preview-canvas{border-radius:4px;border:1px solid #222;background:#111;display:block;cursor:ns-resize}
+.split-preview-canvas:hover{border-color:#333}
+.shorts-sub-btn{flex:1;background:#1a1824;border:1px solid #2a2a2f;border-radius:6px;padding:5px 4px;text-align:center;cursor:pointer;font-size:11px;color:#666}
+.shorts-sub-btn.active{border-color:#a78bfa;color:#a78bfa;background:#a78bfa14}
+.region-label{position:absolute;top:2px;left:4px;font-size:9px;background:#0e0e10cc;padding:1px 4px;border-radius:2px;pointer-events:none}
 .ctrl-btn.tag-thumb{color:#4ade8055;border-color:#4ade8022}
 .ctrl-btn.tag-thumb.on{color:#4ade80;border-color:#4ade8066;background:#4ade8011}
 .ctrl-btn.tag-short{color:#a78bfa55;border-color:#a78bfa22}
@@ -372,6 +386,7 @@ function buildClipCard(clip, num) {
       <span class="clip-cat">· ${clip.category}</span>
       <span class="clip-dur-used" id="dur-used-${clip.id}" style="font-family:monospace;font-size:11px;color:#555"><span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clip.id))}</span>/${fmtTimeSec(clip.duration)}</span>
       <span class="clip-score">${clip.ddosScore}</span>
+      <span style="color:#555;font-family:monospace;font-size:10px">${clip.viewCount >= 1000 ? (clip.viewCount >= 10000 ? Math.round(clip.viewCount/1000)+'k' : (clip.viewCount/1000).toFixed(1)+'k') : clip.viewCount}</span>
       <div class="card-tags">
         ${isShort ? `<span class="tag tag-short on" style="cursor:default">SHORT</span>` : ''}
         ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB</span>` : ''}
@@ -440,12 +455,18 @@ function toggleTag(e, clipId, tag) {
   if (tag === 'short') {
     if (cs.short) { delete cs.short; } else { cs.short = { mode: 'desktop' }; }
   } else if (tag === 'thumb') {
+    const video = document.getElementById('vid-' + clipId);
+    const currentTime = video ? +video.currentTime.toFixed(2) : 0;
     if (state.thumbnail && state.thumbnail.clipId === clipId) {
-      state.thumbnail = null;
+      if (Math.abs(state.thumbnail.at - currentTime) < 0.1) {
+        state.thumbnail = null;
+      } else {
+        state.thumbnail.at = currentTime;
+      }
     } else {
       const oldId = state.thumbnail?.clipId;
       if (oldId && oldId !== clipId) extraUpdates.push(oldId);
-      state.thumbnail = { clipId, at: +((cs.trimOut ?? clip.duration) * 0.6).toFixed(2) };
+      state.thumbnail = { clipId, at: currentTime };
     }
   } else if (tag === 'reconnect') {
     if (state.reconnects[clipId]) {
@@ -543,8 +564,24 @@ function updateCardInPlace(clipId) {
       : 'джерело не вибрано';
   }
 
+  updateTimingExtras(clipId);
   updateTopbar();
   updatePrompt();
+}
+
+function updateTimingExtras(clipId) {
+  const el = document.getElementById('timing-extras-' + clipId);
+  if (!el) return;
+  let html = '';
+  const src = state.reconnectSource;
+  if (src && src.clipId === clipId) {
+    html += `<div class="ctrl-row" style="margin-top:5px"><span style="color:#ff6b6b;font-size:11px;font-family:monospace">⟳ ${fmtTime(src.from)} → ${fmtTime(src.to)}</span></div>`;
+  }
+  const thumb = state.thumbnail;
+  if (thumb && thumb.clipId === clipId) {
+    html += `<div class="ctrl-row" style="margin-top:5px"><span style="color:#4ade80;font-size:11px;font-family:monospace">🖼 ${fmtTime(thumb.at)}</span></div>`;
+  }
+  el.innerHTML = html;
 }
 
 // ── CARD BODY ─────────────────────────────────────────────────────────────────
@@ -554,14 +591,50 @@ function buildCardBody(clip) {
   const isThumb = state.thumbnail?.clipId === clip.id;
   const isReconSrc = state.reconnectSource?.clipId === clip.id;
   return `
-    <div class="video-wrap">
-      <video id="vid-${clip.id}" preload="metadata" controls src="${clip.videoPath}"></video>
+    <div style="font-size:11px;color:#666;font-style:italic;margin-bottom:6px;line-height:1.3">${clip.title || ''}</div>
+    <div id="shorts-mode-row-${clip.id}" style="display:none;gap:5px;margin-bottom:7px" class="ctrl-row">
+      <button class="shorts-sub-btn" id="shorts-sub-desktop-${clip.id}" onclick="setShortsSubMode('${clip.id}','desktop',this)">🖥 Desktop</button>
+      <button class="shorts-sub-btn" id="shorts-sub-mobile-${clip.id}" onclick="setShortsSubMode('${clip.id}','mobile',this)">📱 Mobile</button>
+      <button class="shorts-sub-btn" id="shorts-sub-split-${clip.id}" onclick="setShortsSubMode('${clip.id}','split',this)">🎭 Split</button>
+    </div>
+    <div class="vid-outer-wrap">
+      <div class="video-wrap">
+        <video id="vid-${clip.id}" preload="metadata" controls src="${clip.videoPath}"></video>
+        <div id="thumb-crop-${clip.id}" class="thumb-crop-box" style="display:none">
+          <div class="rh nw" style="background:#f5ff3d"></div><div class="rh ne" style="background:#f5ff3d"></div>
+          <div class="rh sw" style="background:#f5ff3d"></div><div class="rh se" style="background:#f5ff3d"></div>
+        </div>
+        <div id="shorts-crop-desktop-${clip.id}" class="thumb-crop-box" style="display:none;border-color:#a78bfa;background:rgba(167,139,250,.07)">
+          <div class="rh nw" style="background:#a78bfa"></div><div class="rh ne" style="background:#a78bfa"></div>
+          <div class="rh sw" style="background:#a78bfa"></div><div class="rh se" style="background:#a78bfa"></div>
+        </div>
+        <div id="shorts-crop-mobile-${clip.id}" class="thumb-crop-box" style="display:none;border-color:#4ade80;background:rgba(74,222,128,.07)">
+          <div class="rh nw" style="background:#4ade80"></div><div class="rh ne" style="background:#4ade80"></div>
+          <div class="rh sw" style="background:#4ade80"></div><div class="rh se" style="background:#4ade80"></div>
+        </div>
+        <div id="shorts-gameplay-${clip.id}" class="thumb-crop-box" style="display:none;border-color:#4ade80;background:rgba(74,222,128,.06)">
+          <span class="region-label" style="color:#4ade80">🎮 gameplay</span>
+          <div class="rh nw" style="background:#4ade80"></div><div class="rh ne" style="background:#4ade80"></div>
+          <div class="rh sw" style="background:#4ade80"></div><div class="rh se" style="background:#4ade80"></div>
+        </div>
+        <div id="shorts-webcam-${clip.id}" class="thumb-crop-box" style="display:none;border-color:#a78bfa;background:rgba(167,139,250,.06)">
+          <span class="region-label" style="color:#a78bfa">📷 webcam</span>
+          <div class="rh nw" style="background:#a78bfa"></div><div class="rh ne" style="background:#a78bfa"></div>
+          <div class="rh sw" style="background:#a78bfa"></div><div class="rh se" style="background:#a78bfa"></div>
+        </div>
+      </div>
+      <div id="shorts-split-preview-${clip.id}" style="display:none;flex-shrink:0;position:relative">
+        <canvas id="split-preview-${clip.id}" class="split-preview-canvas" width="108" height="192" style="display:block;cursor:ns-resize;width:108px;height:192px"></canvas>
+        <span style="position:absolute;top:5px;left:5px;font-size:9px;font-weight:700;color:#a78bfa;pointer-events:none;text-shadow:0 1px 2px #000,0 0 6px #000">webcam</span>
+        <span style="position:absolute;bottom:5px;left:5px;font-size:9px;font-weight:700;color:#4ade80;pointer-events:none;text-shadow:0 1px 2px #000,0 0 6px #000">gameplay</span>
+      </div>
     </div>
     <div class="play-mode-row">
       <button class="play-mode-btn active" onclick="setPlayMode('${clip.id}','full',this)">Full</button>
       <button class="play-mode-btn" onclick="setPlayMode('${clip.id}','preview',this)">Preview</button>
       <button class="play-mode-btn" id="recon-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','reconnect',this)" style="display:none">Reconnect</button>
       <button class="play-mode-btn" id="thumb-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','thumbnail',this)" style="display:none">Thumbnail</button>
+      <button class="play-mode-btn" id="shorts-mode-btn-${clip.id}" onclick="setPlayMode('${clip.id}','shorts',this)" style="display:none">Shorts</button>
       <span class="playpos" id="playpos-${clip.id}">0:00 / ${fmtTimeSec(clip.duration)}</span>
     </div>
     <div class="tl-wrap" id="tl-wrap-std-${clip.id}">
@@ -586,6 +659,7 @@ function buildCardBody(clip) {
         <div class="tl-handle tl-handle-in" id="tl-recon-in-${clip.id}" style="left:0%;background:#ff6b6b"></div>
         <div class="tl-handle tl-handle-out" id="tl-recon-out-${clip.id}" style="right:0%;background:#ff6b6b"></div>
         <div class="tl-playhead" id="tl-recon-ph-${clip.id}" style="left:0%"></div>
+        <div class="tl-thumb-mark" id="tl-recon-thumb-mark-${clip.id}"></div>
       </div>
       <div class="tl-times">
         <span id="tl-recon-time-in-${clip.id}">from: 0:00.0</span>
@@ -604,6 +678,7 @@ function buildCardBody(clip) {
       <button class="ctrl-btn tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">✂ Short</button>
     </div>
     <div id="cuts-list-${clip.id}"></div>
+    <div id="timing-extras-${clip.id}"></div>
     ${buildTagSections(clip)}`;
 }
 
@@ -638,6 +713,8 @@ function initCardMedia(card) {
     if (fromIn) fromIn.value = fmtTime(inSec);
     if (toIn) toIn.value = fmtTime(outSec);
   }
+
+  card._updateFill = updateFill;
 
   function makeDragHandle(handle, type) {
     handle.addEventListener('mousedown', e => {
@@ -700,7 +777,15 @@ function initCardMedia(card) {
     if (e.target === handleIn || e.target === handleOut) return;
     const rect = track.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    if (card.dataset.playMode === 'preview' && (pct * 100 < inPct || pct * 100 > outPct)) return;
+    if (card.dataset.playMode === 'preview') {
+      const keeps = cs.keeps;
+      if (keeps && keeps.length > 0) {
+        const clickSec = pct * clip.duration;
+        if (!keeps.some(([s, en]) => clickSec >= s && clickSec <= en)) return;
+      } else {
+        if (pct * 100 < inPct || pct * 100 > outPct) return;
+      }
+    }
     if (video) video.currentTime = pct * clip.duration;
   });
 
@@ -710,24 +795,46 @@ function initCardMedia(card) {
   if (fromIn) fromIn.addEventListener('input', () => {
     const sec = parseMmSs(fromIn.value);
     if (isNaN(sec)) return;
-    inPct = Math.min(Math.max(0, sec / clip.duration * 100), outPct - 2);
-    handleIn.style.left = inPct + '%';
-    fill.style.left = inPct + '%';
-    document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inPct / 100 * clip.duration);
-    cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
-    if (video) video.currentTime = cs.trimIn;
-    saveState();
+    if (card.dataset.playMode === 'reconnect') {
+      const src = state.reconnectSource;
+      if (!src || src.clipId !== clipId) return;
+      src.from = Math.min(Math.max(0, sec), src.to - 0.5);
+      updateReconFillUI(clipId);
+      renderReconnectZone(clipId, clip);
+      if (video) video.currentTime = src.from;
+      saveState();
+      updateTimingExtras(clipId);
+    } else {
+      inPct = Math.min(Math.max(0, sec / clip.duration * 100), outPct - 2);
+      handleIn.style.left = inPct + '%';
+      fill.style.left = inPct + '%';
+      document.getElementById('tl-time-in-' + clipId).textContent = 'in: ' + fmtTime(inPct / 100 * clip.duration);
+      cs.trimIn = +(inPct / 100 * clip.duration).toFixed(2);
+      if (video) video.currentTime = cs.trimIn;
+      saveState();
+    }
   });
   if (toIn) toIn.addEventListener('input', () => {
     const sec = parseMmSs(toIn.value);
     if (isNaN(sec)) return;
-    outPct = Math.max(Math.min(100, sec / clip.duration * 100), inPct + 2);
-    handleOut.style.right = (100 - outPct) + '%';
-    fill.style.right = (100 - outPct) + '%';
-    document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outPct / 100 * clip.duration);
-    cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
-    if (video) video.currentTime = cs.trimOut;
-    saveState();
+    if (card.dataset.playMode === 'reconnect') {
+      const src = state.reconnectSource;
+      if (!src || src.clipId !== clipId) return;
+      src.to = Math.max(Math.min(clip.duration, sec), src.from + 0.5);
+      updateReconFillUI(clipId);
+      renderReconnectZone(clipId, clip);
+      if (video) video.currentTime = src.to;
+      saveState();
+      updateTimingExtras(clipId);
+    } else {
+      outPct = Math.max(Math.min(100, sec / clip.duration * 100), inPct + 2);
+      handleOut.style.right = (100 - outPct) + '%';
+      fill.style.right = (100 - outPct) + '%';
+      document.getElementById('tl-time-out-' + clipId).textContent = 'out: ' + fmtTime(outPct / 100 * clip.duration);
+      cs.trimOut = +(outPct / 100 * clip.duration).toFixed(2);
+      if (video) video.currentTime = cs.trimOut;
+      saveState();
+    }
   });
 
   if (video) {
@@ -758,6 +865,7 @@ function initCardMedia(card) {
   renderCutZones(clipId, clip);
   renderReconnectZone(clipId, clip);
   syncTagSections(clipId);
+  updateTimingExtras(clipId);
 }
 
 function setPlayMode(clipId, mode, btn) {
@@ -778,6 +886,16 @@ function setPlayMode(clipId, mode, btn) {
   }
   const cs = getClipState(clipId);
   const video = document.getElementById('vid-' + clipId);
+  const cropBox = document.getElementById('thumb-crop-' + clipId);
+  if (cropBox) cropBox.style.display = (mode === 'thumbnail' && state.thumbnail?.clipId === clipId) ? 'block' : 'none';
+  // Hide all shorts overlays; show only when in 'shorts' mode
+  ['shorts-crop-desktop-','shorts-crop-mobile-','shorts-gameplay-','shorts-webcam-'].forEach(p => {
+    const el = document.getElementById(p + clipId); if (el) el.style.display = 'none';
+  });
+  const splitPreviewWrap = document.getElementById('shorts-split-preview-' + clipId);
+  if (splitPreviewWrap) splitPreviewWrap.style.display = 'none';
+  const shortsModeRow = document.getElementById('shorts-mode-row-' + clipId);
+  if (shortsModeRow) shortsModeRow.style.display = mode === 'shorts' ? '' : 'none';
   if (mode === 'preview' && video) {
     const keeps = cs.keeps;
     const startAt = (keeps && keeps.length > 0) ? keeps[0][0] : (cs.trimIn ?? 0);
@@ -786,11 +904,338 @@ function setPlayMode(clipId, mode, btn) {
   }
   if (mode === 'reconnect' && video) {
     const src = state.reconnectSource;
-    if (src && src.clipId === clipId) { video.currentTime = src.from; video.play(); }
+    if (src && src.clipId === clipId) {
+      video.currentTime = src.from;
+      video.play();
+      const fromIn = document.getElementById('cut-from-' + clipId);
+      const toIn = document.getElementById('cut-to-' + clipId);
+      if (fromIn) fromIn.value = fmtTime(src.from);
+      if (toIn) toIn.value = fmtTime(src.to);
+    }
+  } else if (mode !== 'reconnect') {
+    const cardEl = document.querySelector(`[data-clip-id="${clipId}"]`);
+    if (cardEl?._updateFill) cardEl._updateFill();
   }
-  if (mode === 'thumbnail' && video) {
-    if (state.thumbnail?.clipId === clipId) { video.currentTime = state.thumbnail.at; video.pause(); }
+  if (mode === 'thumbnail' && video && state.thumbnail?.clipId === clipId) {
+    video.currentTime = state.thumbnail.at;
+    video.pause();
+    if (cropBox) {
+      const crop = state.thumbnail.crop || { x: 0, y: 0, w: 100, h: 100 };
+      cropBox.style.left = crop.x + '%';
+      cropBox.style.top = crop.y + '%';
+      cropBox.style.width = crop.w + '%';
+      cropBox.style.height = crop.h + '%';
+      initThumbCrop(clipId);
+    }
   }
+  if (mode === 'shorts') {
+    migrateShortState(clipId);
+    if (!cs.short) { cs.short = { mode: 'desktop' }; saveState(); }
+    const subMode = cs.short.mode || 'desktop';
+    // Highlight active sub-button
+    ['desktop','mobile','split'].forEach(m => {
+      const b = document.getElementById('shorts-sub-' + m + '-' + clipId);
+      if (b) b.classList.toggle('active', m === subMode);
+    });
+    showShortsOverlay(clipId, subMode);
+  }
+}
+
+function initThumbCrop(clipId) {
+  const box = document.getElementById('thumb-crop-' + clipId);
+  if (!box || box.dataset.cropInited) return;
+  box.dataset.cropInited = '1';
+  const wrap = box.parentElement;
+
+  function getCrop() {
+    return { x: parseFloat(box.style.left)||0, y: parseFloat(box.style.top)||0,
+             w: parseFloat(box.style.width)||100, h: parseFloat(box.style.height)||100 };
+  }
+  function save() {
+    if (!state.thumbnail || state.thumbnail.clipId !== clipId) return;
+    state.thumbnail.crop = getCrop(); saveState();
+  }
+
+  box.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('rh')) return;
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const { x: cx, y: cy, w, h } = getCrop();
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = e => {
+      const dx = (e.clientX - sx) / rect.width * 100;
+      const dy = (e.clientY - sy) / rect.height * 100;
+      positionBox(box, { x: Math.max(0, Math.min(100-w, cx+dx)), y: Math.max(0, Math.min(100-h, cy+dy)), w, h });
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); save(); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  box.querySelectorAll('.rh').forEach(handle => {
+    const isTop  = handle.classList.contains('nw') || handle.classList.contains('ne');
+    const isLeft = handle.classList.contains('nw') || handle.classList.contains('sw');
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const rect = wrap.getBoundingClientRect();
+      const { x: ox, y: oy, w: ow, h: oh } = getCrop();
+      const anchorX = isLeft ? ox + ow : ox;
+      const anchorY = isTop  ? oy + oh : oy;
+      const sx = e.clientX;
+      const onMove = e => {
+        const dx = (e.clientX - sx) / rect.width * 100;
+        let nw = Math.max(10, isLeft ? ow - dx : ow + dx);
+        nw = isLeft ? Math.min(anchorX, nw) : Math.min(100 - anchorX, nw);
+        let nh = nw;
+        const maxH = isTop ? anchorY : 100 - anchorY;
+        if (nh > maxH) { nh = maxH; nw = nh; }
+        positionBox(box, { x: isLeft ? anchorX - nw : anchorX, y: isTop ? anchorY - nh : anchorY, w: nw, h: nh });
+      };
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); save(); };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// ── SHORTS TAB ────────────────────────────────────────────────────────────────
+
+function migrateShortState(clipId) {
+  const cs = getClipState(clipId);
+  if (!cs.short) return;
+  // Old format: cs.short.webcam = [rx,ry,rw,rh] (fractions 0-1)
+  if (Array.isArray(cs.short.webcam)) {
+    const [rx, ry, rw, rh] = cs.short.webcam;
+    cs.short.split = {
+      gameplay: { x: 0, y: 0, w: 100, h: 100 },
+      webcam:   { x: +(rx*100).toFixed(2), y: +(ry*100).toFixed(2), w: +(rw*100).toFixed(2), h: +(rh*100).toFixed(2) },
+      ratio: 726/1920
+    };
+    delete cs.short.webcam;
+    delete cs.short.camPos;
+    saveState();
+  }
+}
+
+function defaultShortsCrop(mode) {
+  if (mode === 'desktop') return { x: 0, y: 0, w: 100, h: 100 };
+  if (mode === 'mobile')  return { x: 34.18, y: 0, w: 31.64, h: 100 };
+  return null;
+}
+
+function setShortsSubMode(clipId, subMode, btn) {
+  const cs = getClipState(clipId);
+  if (!cs.short) cs.short = {};
+  cs.short.mode = subMode;
+  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
+  if (card) card.querySelectorAll('[id^="shorts-sub-"]').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  showShortsOverlay(clipId, subMode);
+  saveState();
+}
+
+function showShortsOverlay(clipId, subMode) {
+  const cs = getClipState(clipId);
+  // Hide all overlays first
+  ['shorts-crop-desktop-','shorts-crop-mobile-','shorts-gameplay-','shorts-webcam-'].forEach(p => {
+    const el = document.getElementById(p + clipId); if (el) el.style.display = 'none';
+  });
+  const splitPreviewWrap = document.getElementById('shorts-split-preview-' + clipId);
+
+  if (subMode === 'desktop') {
+    if (splitPreviewWrap) splitPreviewWrap.style.display = 'none';
+    const box = document.getElementById('shorts-crop-desktop-' + clipId);
+    if (!box) return;
+    const crop = cs.short?.desktop || defaultShortsCrop('desktop');
+    if (!cs.short.desktop) { cs.short.desktop = crop; saveState(); }
+    positionBox(box, crop);
+    box.style.display = 'block';
+    initRegionBox(clipId, 'shorts-crop-desktop-', '16:9', c => { cs.short.desktop = c; saveState(); });
+  } else if (subMode === 'mobile') {
+    if (splitPreviewWrap) splitPreviewWrap.style.display = 'none';
+    const box = document.getElementById('shorts-crop-mobile-' + clipId);
+    if (!box) return;
+    const crop = cs.short?.mobile || defaultShortsCrop('mobile');
+    if (!cs.short.mobile) { cs.short.mobile = crop; saveState(); }
+    positionBox(box, crop);
+    box.style.display = 'block';
+    initRegionBox(clipId, 'shorts-crop-mobile-', '9:16', c => { cs.short.mobile = c; saveState(); });
+  } else if (subMode === 'split') {
+    if (!cs.short.split) {
+      cs.short.split = {
+        gameplay: { x: 0, y: 0, w: 100, h: 100 },
+        webcam:   { x: 2, y: 2, w: 30, h: 30 },
+        ratio: 0.7
+      };
+      saveState();
+    }
+    const gBox = document.getElementById('shorts-gameplay-' + clipId);
+    const wBox = document.getElementById('shorts-webcam-' + clipId);
+    if (gBox) { positionBox(gBox, cs.short.split.gameplay); gBox.style.display = 'block'; }
+    if (wBox) { positionBox(wBox, cs.short.split.webcam);   wBox.style.display = 'block'; }
+    initRegionBox(clipId, 'shorts-gameplay-', 'free', c => { if (cs.short.split) cs.short.split.gameplay = c; saveState(); drawSplitPreview(clipId); });
+    initRegionBox(clipId, 'shorts-webcam-',   'free', c => { if (cs.short.split) cs.short.split.webcam = c;   saveState(); drawSplitPreview(clipId); });
+    if (splitPreviewWrap) splitPreviewWrap.style.display = '';
+    initSplitPreviewDrag(clipId);
+    resizeSplitCanvas(clipId);
+  }
+}
+
+function positionBox(box, crop) {
+  box.style.left   = crop.x + '%';
+  box.style.top    = crop.y + '%';
+  box.style.width  = crop.w + '%';
+  box.style.height = crop.h + '%';
+}
+
+function initRegionBox(clipId, prefix, ar, onSave) {
+  const box = document.getElementById(prefix + clipId);
+  if (!box || box.dataset.regionInited === ar) return;
+  box.dataset.regionInited = ar;
+  const wrap = box.parentElement;
+  const AR_RATIO = ar === '16:9' ? 1 : ar === '9:16' ? 256/81 : null;
+
+  function getCrop() {
+    return { x: parseFloat(box.style.left)||0, y: parseFloat(box.style.top)||0,
+             w: parseFloat(box.style.width)||100, h: parseFloat(box.style.height)||100 };
+  }
+
+  // Drag move
+  box.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('rh')) return;
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const { x: cx, y: cy, w, h } = getCrop();
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = e => {
+      const dx = (e.clientX - sx) / rect.width * 100;
+      const dy = (e.clientY - sy) / rect.height * 100;
+      positionBox(box, { x: Math.max(0, Math.min(100-w, cx+dx)), y: Math.max(0, Math.min(100-h, cy+dy)), w, h });
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); onSave(getCrop()); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Resize — all 4 corners
+  box.querySelectorAll('.rh').forEach(handle => {
+    const isTop  = handle.classList.contains('nw') || handle.classList.contains('ne');
+    const isLeft = handle.classList.contains('nw') || handle.classList.contains('sw');
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const rect = wrap.getBoundingClientRect();
+      const { x: ox, y: oy, w: ow, h: oh } = getCrop();
+      const anchorX = isLeft ? ox + ow : ox;
+      const anchorY = isTop  ? oy + oh : oy;
+      const sx = e.clientX, sy = e.clientY;
+      const onMove = e => {
+        const dx = (e.clientX - sx) / rect.width * 100;
+        const dy = (e.clientY - sy) / rect.height * 100;
+        let nx, ny, nw, nh;
+        if (AR_RATIO !== null) {
+          const rawW = isLeft ? ow - dx : ow + dx;
+          nw = Math.max(10, rawW);
+          nw = isLeft ? Math.min(anchorX, nw) : Math.min(100 - anchorX, nw);
+          nh = nw * AR_RATIO;
+          const maxH = isTop ? anchorY : 100 - anchorY;
+          if (nh > maxH) { nh = maxH; nw = nh / AR_RATIO; }
+          nx = isLeft ? anchorX - nw : anchorX;
+          ny = isTop  ? anchorY - nh : anchorY;
+        } else {
+          nw = isLeft ? Math.max(10, Math.min(anchorX, ow - dx))       : Math.max(10, Math.min(100 - anchorX, ow + dx));
+          nh = isTop  ? Math.max(10, Math.min(anchorY, oh - dy))       : Math.max(10, Math.min(100 - anchorY, oh + dy));
+          nx = isLeft ? anchorX - nw : anchorX;
+          ny = isTop  ? anchorY - nh : anchorY;
+        }
+        positionBox(box, { x: nx, y: ny, w: nw, h: nh });
+      };
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); onSave(getCrop()); };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+function resizeSplitCanvas(clipId) {
+  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
+  if (!card) return;
+  const outer = card.querySelector('.vid-outer-wrap');
+  const canvas = document.getElementById('split-preview-' + clipId);
+  if (!outer || !canvas) return;
+
+  // Solve mathematically so layout never needs to re-settle:
+  // outer_w = video_w + gap + canvas_w
+  // video_h = video_w * 9/16  (aspect-ratio 16:9)
+  // canvas_h = video_h         (equal heights)
+  // canvas_w = canvas_h * 9/16 = video_w * (9/16)²
+  // → video_w = (outer_w - gap) * 256 / 337
+  const gap = 8;
+  const outerW = outer.getBoundingClientRect().width;
+  if (outerW < 50) return;
+  const videoW = (outerW - gap) * 256 / 337;
+  const canvasH = Math.round(videoW * 9 / 16);
+  const canvasW = Math.round(canvasH * 9 / 16);
+
+  canvas.style.height = canvasH + 'px';
+  canvas.style.width  = canvasW + 'px';
+  drawSplitPreview(clipId);
+}
+
+function initSplitPreviewDrag(clipId) {
+  const canvas = document.getElementById('split-preview-' + clipId);
+  if (!canvas || canvas.dataset.splitDragInited) return;
+  canvas.dataset.splitDragInited = '1';
+  canvas.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const onMove = e => {
+      const cs = getClipState(clipId);
+      if (!cs.short?.split) return;
+      cs.short.split.ratio = Math.max(0.1, Math.min(0.9, 1 - (e.clientY - rect.top) / rect.height));
+      saveState();
+      drawSplitPreview(clipId);
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function drawSplitPreview(clipId) {
+  const canvas = document.getElementById('split-preview-' + clipId);
+  const cs = getClipState(clipId);
+  if (!canvas || !cs.short?.split) return;
+  const vid = document.getElementById('vid-' + clipId);
+  const ctx = canvas.getContext('2d');
+  const PW = 108, PH = 192;
+  const split = cs.short.split;
+  const ratio = split.ratio ?? 0.7;
+  const gameH = Math.round(PH * ratio);
+  const camH = PH - gameH;
+
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, PW, PH);
+
+  const hasVideo = vid && vid.readyState >= 2 && vid.videoWidth > 0;
+  if (hasVideo) {
+    const vw = vid.videoWidth, vh = vid.videoHeight;
+    function drawRegion(crop, destY, destH) {
+      const sx = crop.x/100 * vw, sy = crop.y/100 * vh;
+      const sw = crop.w/100 * vw, sh = crop.h/100 * vh;
+      if (sw > 0 && sh > 0) try { ctx.drawImage(vid, sx, sy, sw, sh, 0, destY, PW, destH); } catch {}
+    }
+    drawRegion(split.webcam, 0, camH);
+    drawRegion(split.gameplay, camH, gameH);
+  } else {
+    ctx.fillStyle = '#1a0a1a'; ctx.fillRect(0, 0, PW, camH);
+    ctx.fillStyle = '#0a0a1a'; ctx.fillRect(0, camH, PW, gameH);
+    ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('📷', PW/2, camH/2);
+    ctx.fillText('🎮', PW/2, camH + gameH/2);
+  }
+  // Divider
+  ctx.fillStyle = '#f5ff3d';
+  ctx.fillRect(0, camH, PW, 2);
 }
 
 function togglePlay(clipId) {
@@ -837,13 +1282,17 @@ function renderCutZones(clipId, clip) {
   const cs = getClipState(clipId);
   const track = document.getElementById('tl-' + clipId);
   if (!track) return;
-  track.querySelectorAll('.tl-cut-zone').forEach(el => el.remove());
-  (cs.keeps || []).forEach(([from, to]) => {
-    const zone = document.createElement('div');
-    zone.className = 'tl-cut-zone';
-    zone.style.left = (from / clip.duration * 100) + '%';
-    zone.style.width = ((to - from) / clip.duration * 100) + '%';
-    track.appendChild(zone);
+  const reconTrack = document.getElementById('tl-recon-' + clipId);
+  [track, reconTrack].forEach(t => {
+    if (!t) return;
+    t.querySelectorAll('.tl-cut-zone').forEach(el => el.remove());
+    (cs.keeps || []).forEach(([from, to]) => {
+      const zone = document.createElement('div');
+      zone.className = 'tl-cut-zone';
+      zone.style.left = (from / clip.duration * 100) + '%';
+      zone.style.width = ((to - from) / clip.duration * 100) + '%';
+      t.appendChild(zone);
+    });
   });
   const list = document.getElementById('cuts-list-' + clipId);
   if (!list) return;
@@ -853,7 +1302,7 @@ function renderCutZones(clipId, clip) {
     row.className = 'ctrl-row';
     row.style.marginTop = '5px';
     row.innerHTML = `<span style="color:#f5ff3d;font-size:11px;font-family:monospace">🟡 ${fmtTime(from)} → ${fmtTime(to)}</span>
-      <button class="ctrl-btn" style="padding:2px 8px;font-size:10px;border-color:#f5ff3d22;color:#888" onclick="removeCut('${clipId}',${i})">× прибрати</button>`;
+      <button class="ctrl-btn" style="padding:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px;border-color:#f5ff3d22;color:#888;flex-shrink:0" onclick="removeCut('${clipId}',${i})">×</button>`;
     list.appendChild(row);
   });
 }
@@ -891,6 +1340,32 @@ function updateReconFillUI(clipId) {
   if (timeOut) timeOut.textContent = 'to: ' + fmtTime(src.to);
 }
 
+function setReconnectSource(clipId) {
+  const clip = getClip(clipId);
+  const cs = getClipState(clipId);
+  const oldSrc = state.reconnectSource;
+
+  if (state.reconnectSource?.clipId === clipId) {
+    state.reconnectSource = null;
+  } else {
+    const from = +(cs.trimIn ?? 0).toFixed(2);
+    const to = +Math.min((cs.trimOut ?? clip?.duration ?? 10), from + 3).toFixed(2);
+    state.reconnectSource = { clipId, from, to };
+  }
+
+  if (oldSrc && oldSrc.clipId !== clipId) {
+    renderReconnectZone(oldSrc.clipId, getClip(oldSrc.clipId));
+    syncTagSections(oldSrc.clipId);
+    updateCardInPlace(oldSrc.clipId);
+  }
+  renderReconnectZone(clipId, clip);
+  const reconBtn = document.getElementById('recon-mode-btn-' + clipId);
+  if (reconBtn) reconBtn.style.display = state.reconnectSource?.clipId === clipId ? '' : 'none';
+  syncTagSections(clipId);
+  updateCardInPlace(clipId);
+  saveState();
+}
+
 function initReconTimeline(clipId) {
   const clip = getClip(clipId);
   const track = document.getElementById('tl-recon-' + clipId);
@@ -914,6 +1389,11 @@ function initReconTimeline(clipId) {
     document.querySelectorAll('.recon-sep-standalone .recon-sep-detail').forEach(el => el.textContent = detail);
     const reconDisp = document.getElementById('reconnect-display');
     if (reconDisp && src) reconDisp.textContent = `${getClip(src.clipId)?.streamer || '?'} ${fmtTime(src.from)}–${fmtTime(src.to)}`;
+    updateTimingExtras(clipId);
+    const fromIn = document.getElementById('cut-from-' + clipId);
+    const toIn = document.getElementById('cut-to-' + clipId);
+    if (src && fromIn) fromIn.value = fmtTime(src.from);
+    if (src && toIn) toIn.value = fmtTime(src.to);
   }
 
   function makeHandle(handle, type) {
@@ -997,68 +1477,7 @@ function initReconTimeline(clipId) {
 
 // ── TAG SECTIONS ──────────────────────────────────────────────────────────────
 function buildTagSections(clip) {
-  return `
-    <div id="sec-thumb-${clip.id}" style="display:none">
-      <div class="sec thumb">
-        <div class="sec-title green">🖼 THUMBNAIL — кадр</div>
-        <div class="ctrl-row" style="margin-top:0">
-          <span class="ctrl-lbl">Секунда:</span>
-          <input class="ctrl-in" id="thumb-at-${clip.id}" value="0:00">
-          <button class="ctrl-btn" onclick="applyThumbAt('${clip.id}')">✓ Зберегти</button>
-          <button class="ctrl-btn" onclick="setThumbFromPlayhead('${clip.id}')">📍 З поточної позиції</button>
-        </div>
-      </div>
-    </div>
-    <div id="sec-short-${clip.id}" style="display:none">
-      <div class="sec shorts">
-        <div class="sec-title purple">🎬 SHORTS — режим</div>
-        <div class="mode-row">
-          <div class="mode-btn" data-mode="desktop" onclick="setShortMode('${clip.id}','desktop',this)">
-            <span class="mode-icon">🖥</span><span class="mode-lbl">Desktop</span>
-          </div>
-          <div class="mode-btn" data-mode="mobile" onclick="setShortMode('${clip.id}','mobile',this)">
-            <span class="mode-icon">📱</span><span class="mode-lbl">Mobile</span>
-          </div>
-          <div class="mode-btn" data-mode="split" onclick="setShortMode('${clip.id}','split',this)">
-            <span class="mode-icon">🎭</span><span class="mode-lbl">Split</span>
-          </div>
-        </div>
-        <div id="split-editor-${clip.id}" style="display:none">${buildSplitEditor(clip)}</div>
-      </div>
-    </div>`;
-}
-
-function buildSplitEditor(clip) {
-  return `
-    <div class="split-editor">
-      <div>
-        <div style="font-size:10px;color:#555;margin-bottom:6px">📷 Тягни жовту рамку на вебку · 🎮 Gameplay = увесь кадр</div>
-        <div class="split-canvas" id="canvas-${clip.id}">
-          <video id="canvas-vid-${clip.id}" src="${clip.videoPath}" preload="metadata"
-            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;pointer-events:none"
-            onloadeddata="onSplitVideoReady('${clip.id}')"></video>
-          <div class="drag-box cam-box-el" id="cam-${clip.id}"
-            style="top:7%;right:3%;width:23%;height:36%;left:auto"
-            onmousedown="startBoxDrag(event,'${clip.id}','cam')">
-            <div class="box-label">📷 webcam</div>
-            <div class="resize-handle" onmousedown="startBoxResize(event,'${clip.id}')"></div>
-          </div>
-        </div>
-        <div class="coord-hint" id="coord-hint-${clip.id}">cam: — · gameplay: повний кадр</div>
-        <button class="ctrl-btn" style="margin-top:7px;font-size:10px"
-          onclick="saveCamForStreamer('${clip.id}','${clip.streamer}')">💾 зберегти для ${clip.streamer}</button>
-      </div>
-      <div class="preview-col">
-        <div class="preview-lbl">9:16 preview</div>
-        <canvas class="split-preview-canvas" id="split-preview-${clip.id}"
-          width="108" height="192" style="width:108px;height:192px"
-          title="Клік — змінити позицію cam"
-          onclick="toggleCamPos('${clip.id}')"></canvas>
-        <div style="font-size:9px;color:#444;text-align:center;line-height:1.3">
-          клік = cam<br>зверху/знизу
-        </div>
-      </div>
-    </div>`;
+  return ``;
 }
 
 function syncTagSections(clipId) {
@@ -1069,329 +1488,24 @@ function syncTagSections(clipId) {
   if (reconModeBtn) reconModeBtn.style.display = (state.reconnectSource?.clipId === clipId) ? '' : 'none';
   const thumbModeBtn = document.getElementById('thumb-mode-btn-' + clipId);
   if (thumbModeBtn) thumbModeBtn.style.display = isThumb ? '' : 'none';
-  const secT = document.getElementById('sec-thumb-' + clipId);
-  const secS = document.getElementById('sec-short-' + clipId);
-  if (secT) {
-    secT.style.display = isThumb ? 'block' : 'none';
-    if (isThumb) { const inp = document.getElementById('thumb-at-' + clipId); if (inp) inp.value = fmtTime(state.thumbnail.at); }
-  }
-  if (secS) {
-    secS.style.display = isShort ? 'block' : 'none';
-    if (isShort && cs.short.mode) {
-      secS.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === cs.short.mode));
-      const splitEd = document.getElementById('split-editor-' + clipId);
-      if (splitEd) {
-        const isSplit = cs.short.mode === 'split';
-        splitEd.style.display = isSplit ? 'block' : 'none';
-        if (isSplit) {
-          // Restore cam box position from state, then init video
-          if (cs.short.webcam) restoreCamBox(clipId, cs.short.webcam);
-          initCanvasVideo(clipId);
-        }
-      }
-    }
-  }
+  const shortsModeBtn = document.getElementById('shorts-mode-btn-' + clipId);
+  if (shortsModeBtn) shortsModeBtn.style.display = isShort ? '' : 'none';
   updateThumbMark(clipId);
 }
 
 function updateThumbMark(clipId) {
-  const mark = document.getElementById('tl-thumb-mark-' + clipId);
-  if (!mark) return;
   const clip = getClip(clipId);
-  if (state.thumbnail?.clipId === clipId && clip) {
-    mark.style.left = (state.thumbnail.at / clip.duration * 100) + '%';
-    mark.style.display = 'block';
-  } else {
-    mark.style.display = 'none';
-  }
-}
-
-function setShortMode(clipId, mode, btn) {
-  const cs = getClipState(clipId);
-  if (!cs.short) cs.short = {};
-  cs.short.mode = mode;
-  const sec = document.getElementById('sec-short-' + clipId);
-  sec.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const splitEd = document.getElementById('split-editor-' + clipId);
-  if (splitEd) splitEd.style.display = mode === 'split' ? 'block' : 'none';
-  if (mode === 'split') {
-    const saved = getSavedCam(getClip(clipId)?.streamer || '');
-    if (saved) restoreCamBox(clipId, saved);
-    initCanvasVideo(clipId);
-    drawSplitPreview(clipId);
-  }
-  saveState();
-}
-
-function setReconnectSource(clipId) {
-  const clip = getClip(clipId);
-  if (!clip) return;
-  const fromIn = document.getElementById('cut-from-' + clipId);
-  const toIn = document.getElementById('cut-to-' + clipId);
-  const cs = getClipState(clipId);
-  const fromSec = fromIn ? parseMmSs(fromIn.value) : (cs.trimIn ?? 0);
-  const toSec = toIn ? parseMmSs(toIn.value) : (cs.trimOut ?? clip.duration);
-  if (toSec <= fromSec) return;
-  const oldSrc = state.reconnectSource;
-  if (oldSrc?.clipId === clipId) {
-    state.reconnectSource = null;
-    saveState();
-    renderReconnectZone(clipId, clip);
-    const cardEl = document.querySelector(`[data-clip-id="${clipId}"]`);
-    if (cardEl && cardEl.dataset.playMode === 'reconnect') {
-      const fullBtn = cardEl.querySelector('.play-mode-btn');
-      if (fullBtn) setPlayMode(clipId, 'full', fullBtn);
+  ['tl-thumb-mark-', 'tl-recon-thumb-mark-'].forEach(prefix => {
+    const mark = document.getElementById(prefix + clipId);
+    if (!mark) return;
+    if (state.thumbnail?.clipId === clipId && clip) {
+      mark.style.left = (state.thumbnail.at / clip.duration * 100) + '%';
+      mark.style.display = 'block';
+    } else {
+      mark.style.display = 'none';
     }
-    syncTagSections(clipId);
-    updateCardInPlace(clipId);
-    updateTopbar();
-    refreshSeps();
-    return;
-  }
-  state.reconnectSource = { clipId, from: +fromSec.toFixed(2), to: +toSec.toFixed(2) };
-  saveState();
-  if (oldSrc && oldSrc.clipId !== clipId) {
-    renderReconnectZone(oldSrc.clipId, getClip(oldSrc.clipId));
-    syncTagSections(oldSrc.clipId);
-    updateCardInPlace(oldSrc.clipId);
-  }
-  renderReconnectZone(clipId, clip);
-  const card = document.querySelector(`[data-clip-id="${clipId}"]`);
-  if (card) {
-    const body = card.querySelector('.card-body');
-    const icon = card.querySelector('.expand-icon');
-    if (!body.classList.contains('open')) {
-      body.classList.add('open');
-      if (icon) icon.textContent = '▲';
-      initCardMedia(card);
-    }
-  }
-  syncTagSections(clipId);
-  const reconBtn = document.getElementById('recon-mode-btn-' + clipId);
-  if (reconBtn) setPlayMode(clipId, 'reconnect', reconBtn);
-  updateCardInPlace(clipId);
-  updateTopbar();
-  refreshSeps();
+  });
 }
-
-function applyThumbAt(clipId) {
-  if (!state.thumbnail || state.thumbnail.clipId !== clipId) return;
-  state.thumbnail.at = parseMmSs(document.getElementById('thumb-at-' + clipId).value);
-  saveState();
-  updateCardInPlace(clipId);
-}
-
-function setThumbFromPlayhead(clipId) {
-  const video = document.getElementById('vid-' + clipId);
-  if (!video || !state.thumbnail || state.thumbnail.clipId !== clipId) return;
-  state.thumbnail.at = +video.currentTime.toFixed(2);
-  const inp = document.getElementById('thumb-at-' + clipId);
-  if (inp) inp.value = fmtTime(state.thumbnail.at);
-  saveState();
-  updateCardInPlace(clipId);
-}
-
-// ── SPLIT EDITOR ──────────────────────────────────────────────────────────────
-function startBoxDrag(e, clipId, boxType) {
-  if (e.target.classList.contains('resize-handle')) return;
-  e.preventDefault();
-  const canvas = document.getElementById('canvas-' + clipId);
-  const box = document.getElementById((boxType === 'cam' ? 'cam-' : 'game-') + clipId);
-  const rect = canvas.getBoundingClientRect();
-  const bRect = box.getBoundingClientRect();
-  const offX = e.clientX - bRect.left;
-  const offY = e.clientY - bRect.top;
-  const onMove = e => {
-    const x = Math.max(0, Math.min(rect.width - bRect.width, e.clientX - rect.left - offX));
-    const y = Math.max(0, Math.min(rect.height - bRect.height, e.clientY - rect.top - offY));
-    box.style.left = (x / rect.width * 100) + '%';
-    box.style.top = (y / rect.height * 100) + '%';
-    box.style.right = 'auto'; box.style.bottom = 'auto';
-    updateCoordHint(clipId);
-  };
-  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); saveState(); };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
-function startBoxResize(e, clipId) {
-  e.preventDefault(); e.stopPropagation();
-  const canvas = document.getElementById('canvas-' + clipId);
-  const box = document.getElementById('cam-' + clipId);
-  const rect = canvas.getBoundingClientRect();
-  const startW = box.offsetWidth, startH = box.offsetHeight;
-  const startX = e.clientX, startY = e.clientY;
-  const onMove = e => {
-    const w = Math.max(30, Math.min(rect.width * 0.5, startW + (e.clientX - startX)));
-    const h = Math.max(20, Math.min(rect.height * 0.5, startH + (e.clientY - startY)));
-    box.style.width = (w / rect.width * 100) + '%';
-    box.style.height = (h / rect.height * 100) + '%';
-    updateCoordHint(clipId);
-  };
-  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); saveState(); };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
-function getCamCoords(clipId) {
-  const canvas = document.getElementById('canvas-' + clipId);
-  const box = document.getElementById('cam-' + clipId);
-  if (!canvas || !box) return null;
-  const r = canvas.getBoundingClientRect();
-  const b = box.getBoundingClientRect();
-  return [
-    +((b.left - r.left) / r.width).toFixed(3),
-    +((b.top - r.top) / r.height).toFixed(3),
-    +(b.width / r.width).toFixed(3),
-    +(b.height / r.height).toFixed(3)
-  ];
-}
-
-function updateCoordHint(clipId) {
-  const coords = getCamCoords(clipId);
-  if (!coords) return;
-  const hint = document.getElementById('coord-hint-' + clipId);
-  if (hint) hint.textContent =
-    `cam: ${(coords[0]*100).toFixed(0)}% ${(coords[1]*100).toFixed(0)}% ${(coords[2]*100).toFixed(0)}% ${(coords[3]*100).toFixed(0)}% · gameplay: повний кадр`;
-  const cs = getClipState(clipId);
-  if (cs.short) cs.short.webcam = coords;
-  drawSplitPreview(clipId);
-}
-
-function saveCamForStreamer(clipId, streamer) {
-  const coords = getCamCoords(clipId);
-  if (!coords) return;
-  const stored = JSON.parse(localStorage.getItem(CAM_KEY) || '{}');
-  stored[streamer] = coords;
-  localStorage.setItem(CAM_KEY, JSON.stringify(stored));
-}
-
-function getSavedCam(streamer) {
-  return JSON.parse(localStorage.getItem(CAM_KEY) || '{}')[streamer] || null;
-}
-
-function restoreCamBox(clipId, coords) {
-  const box = document.getElementById('cam-' + clipId);
-  if (!box) return;
-  box.style.left = (coords[0]*100)+'%'; box.style.top = (coords[1]*100)+'%';
-  box.style.width = (coords[2]*100)+'%'; box.style.height = (coords[3]*100)+'%';
-  box.style.right = 'auto'; box.style.bottom = 'auto';
-  const cs = getClipState(clipId);
-  if (cs.short) cs.short.webcam = coords;
-  updateCoordHint(clipId);
-  // Preview redrawn via updateCoordHint → drawSplitPreview
-}
-
-function onSplitVideoReady(clipId) {
-  const vid = document.getElementById('canvas-vid-' + clipId);
-  const mainVid = document.getElementById('vid-' + clipId);
-  if (!vid) return;
-  const t = (mainVid?.currentTime) || (vid.duration ? vid.duration * 0.3 : 5);
-  vid.currentTime = t;
-  vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
-}
-
-function initCanvasVideo(clipId) {
-  const vid = document.getElementById('canvas-vid-' + clipId);
-  const mainVid = document.getElementById('vid-' + clipId);
-  if (!vid) return;
-  const t = (mainVid?.currentTime) || 5;
-  if (vid.readyState >= 2) {
-    vid.currentTime = t;
-    vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
-  } else {
-    vid.addEventListener('loadeddata', () => {
-      vid.currentTime = t;
-      vid.addEventListener('seeked', () => drawSplitPreview(clipId), { once: true });
-    }, { once: true });
-  }
-}
-
-function toggleCamPos(clipId) {
-  const cs = getClipState(clipId);
-  if (!cs.short) return;
-  cs.short.camPos = (cs.short.camPos === 'bottom') ? 'top' : 'bottom';
-  saveState();
-  drawSplitPreview(clipId);
-  updateTopbar();
-}
-
-function drawSplitPreview(clipId) {
-  const vid     = document.getElementById('canvas-vid-' + clipId);
-  const preview = document.getElementById('split-preview-' + clipId);
-  const cs      = getClipState(clipId);
-  if (!preview || !cs.short) return;
-
-  const ctx = preview.getContext('2d');
-  const PW = 108, PH = 192;
-
-  // Section heights (must match render-shorts.js: 726 + 1194 = 1920)
-  const CAM_H_PX  = Math.round(PH * 726  / 1920); // ≈41px
-  const GAME_H_PX = PH - CAM_H_PX;                // ≈151px
-
-  const camPos = cs.short.camPos || 'top';
-  const camDestY  = camPos === 'top' ? 0        : GAME_H_PX;
-  const gameDestY = camPos === 'top' ? CAM_H_PX : 0;
-  const divY      = camPos === 'top' ? CAM_H_PX : GAME_H_PX;
-
-  // Background
-  ctx.fillStyle = '#080810';
-  ctx.fillRect(0, 0, PW, PH);
-
-  const coords = getCamCoords(clipId);
-  const hasVideo = vid && vid.readyState >= 2 && vid.videoWidth > 0;
-
-  if (hasVideo && coords) {
-    const [rx, ry, rw, rh] = coords;
-    const vw = vid.videoWidth, vh = vid.videoHeight;
-
-    // ── Webcam crop → cam section ──────────────────────────────
-    const sx = Math.round(rx * vw);
-    const sy = Math.round(ry * vh);
-    const sw = Math.round(rw * vw);
-    const sh = Math.round(rh * vh);
-    if (sw > 0 && sh > 0) {
-      try { ctx.drawImage(vid, sx, sy, sw, sh, 0, camDestY, PW, CAM_H_PX); } catch {}
-    }
-
-    // ── Full frame → game section (scale to PW wide, center-crop vertically) ──
-    const scaledH = (vh / vw) * PW;   // video height when scaled to PW wide
-    let srcY = 0, srcH = vh;
-    if (scaledH > GAME_H_PX) {
-      // video is taller than game section → center-crop
-      const cropH = (GAME_H_PX / PW) * vw;
-      srcY = Math.round((vh - cropH) / 2);
-      srcH = Math.round(cropH);
-    }
-    try { ctx.drawImage(vid, 0, srcY, vw, srcH, 0, gameDestY, PW, GAME_H_PX); } catch {}
-  } else {
-    // Placeholder
-    ctx.fillStyle = '#1a1a0a';
-    ctx.fillRect(0, camDestY, PW, CAM_H_PX);
-    ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, gameDestY, PW, GAME_H_PX);
-    ctx.fillStyle = '#555';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('📷', PW / 2, camDestY + CAM_H_PX / 2);
-    ctx.fillText('🎮', PW / 2, gameDestY + GAME_H_PX / 2);
-  }
-
-  // Divider line
-  ctx.fillStyle = '#f5ff3d';
-  ctx.fillRect(0, divY, PW, 2);
-
-  // camPos label
-  ctx.fillStyle = '#f5ff3daa';
-  ctx.font = '7px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(camPos === 'top' ? '📷 top' : '📷 bot', 3, camDestY + 2);
-}
-
-// (drag-drop for cam position replaced by canvas click → toggleCamPos)
 
 // ── BENCH ─────────────────────────────────────────────────────────────────────
 function renderBench() {

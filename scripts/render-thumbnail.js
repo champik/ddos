@@ -4,13 +4,14 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-async function render(framePath, headline, outPath, fontSize) {
+async function render(framePath, headline, outPath, fontSize, crop) {
   let html = fs.readFileSync('assets/thumbnail-template/thumbnail.html', 'utf8');
 
   const frameB64 = fs.readFileSync(framePath).toString('base64');
   const frameDataUrl = 'data:image/png;base64,' + frameB64;
 
-  const config = `var THUMB_CONFIG = { headline: '${headline.replace(/'/g, "\\'")}', img: '${frameDataUrl}'${fontSize ? ', fontSize: ' + fontSize : ''} }`;
+  const cropStr = crop ? ', crop: ' + JSON.stringify(crop) : '';
+  const config = `var THUMB_CONFIG = { headline: '${headline.replace(/'/g, "\\'")}', img: '${frameDataUrl}'${fontSize ? ', fontSize: ' + fontSize : ''}${cropStr} }`;
   html = html.replace(/var THUMB_CONFIG = \{[^}]+\}/, config);
 
   const tmpHtml = outPath.replace('.png', '_tmp.html');
@@ -31,18 +32,27 @@ async function render(framePath, headline, outPath, fontSize) {
   console.log('Thumbnail:', outPath);
 }
 
-const args = process.argv.slice(2);
-const sizeIdx = args.indexOf('--size');
-const fontSize = sizeIdx !== -1 ? parseInt(args[sizeIdx + 1]) : null;
-const [framePath, headline, outPath] = sizeIdx !== -1
-  ? args.filter((_, i) => i !== sizeIdx && i !== sizeIdx + 1)
-  : args;
+const rawArgs = process.argv.slice(2);
+
+function popFlag(arr, flag) {
+  const idx = arr.indexOf(flag);
+  if (idx === -1) return null;
+  const val = arr[idx + 1];
+  arr.splice(idx, 2);
+  return val;
+}
+
+const sizeRaw = popFlag(rawArgs, '--size');
+const fontSize = sizeRaw ? parseInt(sizeRaw) : null;
+const cropRaw = popFlag(rawArgs, '--crop');
+const crop = cropRaw ? JSON.parse(cropRaw) : null;
+const [framePath, headline, outPath] = rawArgs;
 
 if (!framePath || !headline || !outPath) {
-  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>]');
+  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>] [--crop <json>]');
   process.exit(1);
 }
-render(framePath, headline, outPath, fontSize).catch(e => {
+render(framePath, headline, outPath, fontSize, crop).catch(e => {
   console.error('ERROR:', e.message);
   process.exit(1);
 });

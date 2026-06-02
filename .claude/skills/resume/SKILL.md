@@ -52,17 +52,21 @@
 
 ## Крок 3 — Продовжити pipeline Stage 2
 
-Запустити в порядку:
-1. APPLY_EDITORIAL → `scripts/apply-editorial.js <runId>` (clean.mp4 для кожного кліпу)
-2. HOOKS — згенерувати хуки в розмові для кліпів з clipOrder (hook.txt)
-3. OVERLAYS (ddos-render skill)
-4. RECONNECT (ddos-render skill)
-5. CHILL FINALE (ddos-render skill, якщо є chill кліпи)
-6. RENDER LONG (ddos-render skill)
-7. CAPTIONS (ddos-shorts skill)
-8. RENDER SHORTS (ddos-shorts skill)
-9. THUMBNAIL (ddos-thumbnail skill)
-10. METADATA (ddos-youtube-creatives skill)
-11. REVIEW (ddos-review skill)
-
 Оновити `state.stages.editorial = "done"` перед початком Stage 2.
+
+Запустити в порядку. Перед кожним етапом виводити в чат рядок прогресу:
+
+```
+[1/9] APPLY_EDITORIAL — обробка кліпів...
+```
+
+Порядок і меседжі:
+1. Вивести `[1/9] APPLY_EDITORIAL — обробка кліпів...` → запустити `scripts/apply-editorial.js <runId>` (clean.mp4 для кожного кліпу)
+2. Вивести `[2/9] HOOKS — генерую хуки...` → згенерувати хуки в розмові для кліпів з clipOrder (hook.txt)
+3. Вивести `[3/9] OVERLAYS — накладаю стрімер-оверлеї...` → OVERLAYS (ddos-render skill)
+4. Вивести `[4/9] RECONNECT — будую reconnecting clip...` → RECONNECT (ddos-render skill)
+5. Вивести `[5/9] RENDER LONG — рендерю епізод...` → RENDER LONG (ddos-render skill)
+6. Вивести `[6/9] CAPTIONS — генерую субтитри для шортсів...` → CAPTIONS (ddos-shorts skill)
+7. Вивести `[7/9] RENDER SHORTS — рендерю шортси...` → RENDER SHORTS (ddos-shorts skill)
+8. Вивести `[8/9] THUMBNAIL + METADATA — генерую обкладинку і метадані...` → THUMBNAIL (ddos-thumbnail skill) + METADATA (ddos-youtube-creatives skill)
+9. Вивести `[9/9] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill)

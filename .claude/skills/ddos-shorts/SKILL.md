@@ -40,69 +40,87 @@ node scripts/render-shorts.js "projects/<runId>"
 ```javascript
 const shortClips = editorial.clipOrder
   .filter(id => editorial.clips?.[id]?.short)
-  .map(id => ({ id, ...editorial.clips[id].short }));
+  .map(id => ({ id, short: editorial.clips[id].short }));
 ```
 
-Також читає `edit/shorts-selection.json` як fallback якщо editorial.json відсутній.
-
-Input: `processed/<clipId>/clean.mp4` (без стрімер-оверлею)
+Input: `processed/<clipId>/clean.mp4`  
 Output: `exports/shorts/<clipId>.mp4`
 
-Брендинг через оверлей відсутній — тільки субтитри внизу.
+**Новий формат `short` об'єкта** (з editorial.json):
+```javascript
+{
+  mode: 'desktop' | 'mobile' | 'split',
+  desktop: { x, y, w, h },   // % від кадру, 16:9 locked
+  mobile:  { x, y, w, h },   // % від кадру, 9:16 locked
+  split: {
+    gameplay: { x, y, w, h },  // % від кадру
+    webcam:   { x, y, w, h },  // % від кадру
+    ratio: 0.7                 // частка висоти 1920px для gameplay (0.1–0.9)
+  }
+}
+```
 
-### Режим: desktop (blur зверху/знизу)
+**Конвертація % → FFmpeg пікселі** (source 1920×1080):
+```javascript
+function toPx(crop, vw=1920, vh=1080) {
+  return {
+    x: Math.round(crop.x / 100 * vw),
+    y: Math.round(crop.y / 100 * vh),
+    w: Math.round(crop.w / 100 * vw),
+    h: Math.round(crop.h / 100 * vh)
+  };
+}
+```
+
+### Режим: desktop — crop вибраної 16:9 зони + blur фон
+```javascript
+const c = toPx(short.desktop || { x:0, y:0, w:100, h:100 });
+const ASS = fs.existsSync(`processed/${id}/captions-vertical.ass`)
+  ? `,ass=processed/${id}/captions-vertical.ass` : '';
+```
 ```bash
 ffmpeg -i "processed/<id>/clean.mp4" \
   -filter_complex \
-  "[0:v]split[main][bg];
+  "[0:v]crop=${c.w}:${c.h}:${c.x}:${c.y},split[main][bg];
    [bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5,eq=brightness=-0.3[blurred];
    [main]scale=1080:-2[fg];
-   [blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=processed/<id>/captions-vertical.ass[out_sar];
+   [blurred][fg]overlay=(W-w)/2:(H-h)/2${ASS}[out_sar];
    [out_sar]setsar=1[out]" \
   -map "[out]" -map "0:a" \
   -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \
   -movflags +faststart -y "exports/shorts/<id>.mp4"
 ```
-Якщо `captions-vertical.ass` відсутній — прибрати `,ass=...` з останнього фільтру.
 
-### Режим: mobile (center crop 9:16)
+### Режим: mobile — crop вибраної 9:16 зони
+```javascript
+const c = toPx(short.mobile || { x:34.18, y:0, w:31.64, h:100 });
+```
 ```bash
 ffmpeg -i "processed/<id>/clean.mp4" \
   -filter_complex \
-  "[0:v]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,ass=processed/<id>/captions-vertical.ass[out_sar];
+  "[0:v]crop=${c.w}:${c.h}:${c.x}:${c.y},scale=1080:1920${ASS}[out_sar];
    [out_sar]setsar=1[out]" \
   -map "[out]" -map "0:a" \
   -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \
   -movflags +faststart -y "exports/shorts/<id>.mp4"
 ```
 
-### Режим: split (webcam + gameplay)
-Параметри з `editorial.clips[id].short`:
-- `webcam: [x, y, w, h]` — координати в частках (0–1) відносно 1920×1080
-- `camPos: "top" | "bottom"` — вебка зверху чи знизу (default: top)
-
+### Режим: split — gameplay зверху, webcam знизу
 ```javascript
-// Абсолютні пікселі з відносних координат
-const [rx, ry, rw, rh] = short.webcam;
-const CAM_X = Math.round(rx * 1920);
-const CAM_Y = Math.round(ry * 1080);
-const CAM_W = Math.round(rw * 1920);
-const CAM_H = Math.round(rh * 1080);
-
-const CAM_OUT_H  = camNaturalH; // визначається з AR + camCrop
-const GAME_OUT_H = 1920 - CAM_OUT_H;
-
-// camPos=top: webcam зверху, gameplay знизу
-const order = (short.camPos === 'bottom') ? '[game][cam]' : '[cam][game]';
+const sp = short.split;
+const g = toPx(sp.gameplay);
+const w = toPx(sp.webcam);
+const ratio = sp.ratio ?? 0.7;
+const GAME_H = Math.round(1920 * ratio);
+const CAM_H  = 1920 - GAME_H;
 ```
-
 ```bash
 ffmpeg -i "processed/<id>/clean.mp4" \
   -filter_complex \
   "[0:v]split=2[vsrc1][vsrc2];
-   [vsrc1]crop=${CAM_W}:${CAM_H}:${CAM_X}:${CAM_Y},scale=1080:${CAM_OUT_H}[cam];
-   [vsrc2]crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920,crop=1080:${GAME_OUT_H}:0:${gameOffset}[game];
-   ${order}vstack=inputs=2,ass=processed/<id>/captions-vertical.ass[out_sar];
+   [vsrc1]crop=${g.w}:${g.h}:${g.x}:${g.y},scale=1080:${GAME_H}[game];
+   [vsrc2]crop=${w.w}:${w.h}:${w.x}:${w.y},scale=1080:${CAM_H}[cam];
+   [cam][game]vstack=inputs=2${ASS}[out_sar];
    [out_sar]setsar=1[out]" \
   -map "[out]" -map "0:a" \
   -c:v libx264 -preset fast -crf 22 -c:a aac -b:a 192k -ac 2 -ar 48000 \

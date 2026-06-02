@@ -167,71 +167,21 @@ PEAK=$(python3 scripts/find_peak.py "processed/<clipId>/clean.mp4")
 node scripts/progress.js "projects/<runId>" 7 "Генерую editorial UI"
 ```
 
-**Крок 1 — Відібрати кліпи для епізоду:**
+**Крок 1 — Згенерувати edit.html:**
 
-З `clips/scored-clips.json` відібрати кліпи. Орієнтир: сумарно 12–15 хв сирого контенту (720–900с), якість пріоритет над кількістю.
-
-Логіка відбору:
-- Топ кліпи за ddosScore, мінімум 50% JC/IRL
-- Не більше 3 кліпів від одного стрімера
-- Жодних RU кліпів
-- Chill кліпи (singingScore > 70 або dancingScore > 70) включати в кінці
-- `selected` = кліпи для основного списку editorial UI
-- `bench` = всі інші scored кліпи (без фільтрації за score — редактор сам вирішить)
-
-**Крок 2 — Згенерувати edit.html:**
-
-Прочитати шаблон з `assets/editorial/edit-template.html`.
-Замінити `__CLIPS_JSON__` на JSON об'єкт:
-```json
-{
-  "runId": "<runId>",
-  "episodeNumber": <N>,
-  "selected": [ <відібрані кліпи> ],
-  "bench": [ <решта кліпів> ]
-}
+```bash
+node scripts/gen-editorial.js <runId>
 ```
 
-Кожен кліп:
-```json
-{
-  "id": "<clipId>",
-  "streamer": "<broadcaster_name>",
-  "category": "<game_name>",
-  "gameId": "<game_id>",
-  "duration": <seconds>,
-  "ddosScore": <0-100>,
-  "videoPath": "../downloads/<filename>.mp4",
-  "title": "<title>",
-  "viewCount": <N>
-}
-```
-
-`videoPath` — відносний від `edit/` до файлу в `downloads/`:
-```javascript
-const videoPath = '../downloads/' + path.basename(clip.localPath);
-```
-
-Зберегти результат як `projects/<runId>/edit/edit.html`.
-
-**Крок 3 — Оновити index.html:**
-
-У `projects/index.html` знайти картку поточного епізоду і додати/оновити кнопку Edit:
-```html
-<a class="btn btn-edit" href="<runId>/edit/edit.html">✏️ Edit</a>
-```
-
-**Крок 4 — Оновити state:**
-```json
-{ "stages": { "generate_editorial": "done", "editorial": "pending" } }
-```
+Скрипт кладе ВСІ scored кліпи в `selected` (відсортовано JC/IRL → Gaming → Music/Specialty, за ddosScore), оновлює `state.json` та `projects/index.html` автоматично.
 
 **Показати користувачу:**
+
+Вивести з реальним runId і повним file:// шляхом (робоча директорія `d:\Projects\ddos`):
 ```
 ✅ Editorial UI готовий!
 
-Відкрий у браузері:
-  projects/<runId>/edit/edit.html
+file:///d:/Projects/ddos/projects/<runId>/edit/edit.html
 
 Переглянь кліпи, внеси правки і натисни "Copy Prompt".
 Потім встав JSON сюди для продовження.
