@@ -7,6 +7,8 @@ const projectDir = process.argv[2];
 if (!projectDir) { console.error('Usage: node gen-review.js <projectDir>'); process.exit(1); }
 
 const plan = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
+const editorial = (() => { try { return JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/editorial.json'), 'utf8')); } catch { return {}; } })();
+const thumbCount = (editorial.thumbnails || []).length;
 const meta = JSON.parse(fs.readFileSync(path.join(projectDir, 'exports/metadata.json'), 'utf8'));
 const scored = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/scored-clips.json'), 'utf8'));
 const state = JSON.parse(fs.readFileSync(path.join(projectDir, 'state.json'), 'utf8'));
@@ -246,8 +248,19 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 
 <div class="section">
 <h2>Thumbnail</h2>
-<div class="thumb-wrap">
-  <img src="../exports/thumbnail.png" alt="Thumbnail">
+<div style="display:grid;grid-template-columns:repeat(${thumbCount >= 2 ? 3 : 2},1fr);gap:12px">
+  <div>
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V1 — Original (Puppeteer)</div>
+    <img src="../exports/thumbnail.png" alt="V1" style="width:100%;border-radius:6px">
+  </div>
+  <div>
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V2 — Emotion Enhanced (Higgsfield)</div>
+    <img src="../exports/thumbnail-v2.png" alt="V2" style="width:100%;border-radius:6px" onerror="this.style.opacity='.2';this.alt='not generated'">
+  </div>
+  ${thumbCount >= 2 ? `<div>
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V3 — Composite Scene (Higgsfield)</div>
+    <img src="../exports/thumbnail-v3.png" alt="V3" style="width:100%;border-radius:6px" onerror="this.style.opacity='.2';this.alt='not generated'">
+  </div>` : ''}
 </div>
 </div>
 

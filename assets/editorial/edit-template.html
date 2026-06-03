@@ -250,9 +250,10 @@ const CLIPS_DATA = (() => { try { return __CLIPS_JSON__; } catch(e) { return MOC
 const STATE_KEY = 'ddos_editorial_' + CLIPS_DATA.runId;
 const CAM_KEY = 'ddos_cam_coords';
 
-let state = { order: [], reconnects: {}, reconnectSource: null, thumbnail: null, clips: {}, benched: [] };
+let state = { order: [], reconnects: {}, reconnectSource: null, thumbnails: [], clips: {}, benched: [] };
 // state.reconnects[clipId] = true  — separator position after that clip
 // state.reconnectSource = { clipId, from, to } | null  — ONE global source clip+timing
+// state.thumbnails = [{ clipId, at, crop, main }]  — ordered list, one has main:true
 
 function saveState() { localStorage.setItem(STATE_KEY, JSON.stringify(state)); updatePrompt(); updateTopbar(); updateDuration(); }
 
@@ -275,6 +276,12 @@ function loadState() {
       }
       if (!state.reconnects) state.reconnects = {};
       if (state.reconnectSource === undefined) state.reconnectSource = null;
+      // Migrate old single thumbnail → new thumbnails array
+      if (state.thumbnail !== undefined) {
+        state.thumbnails = state.thumbnail ? [{ ...state.thumbnail, main: true }] : [];
+        delete state.thumbnail;
+      }
+      if (!state.thumbnails) state.thumbnails = [];
       return true;
     } catch(e) {}
   }
@@ -284,6 +291,15 @@ function loadState() {
 function allClips() { return [...CLIPS_DATA.selected, ...CLIPS_DATA.bench]; }
 function getClip(id) { return allClips().find(c => c.id === id); }
 function getClipState(id) { if (!state.clips[id]) state.clips[id] = {}; return state.clips[id]; }
+
+function getThumbEntry(clipId) { return (state.thumbnails || []).find(t => t.clipId === clipId) || null; }
+function isThumbClip(clipId) { return !!(state.thumbnails || []).find(t => t.clipId === clipId); }
+function isMainThumb(clipId) { const e = getThumbEntry(clipId); return !!e?.main; }
+function setMainThumb(clipId) {
+  (state.thumbnails || []).forEach(t => { t.main = (t.clipId === clipId); });
+  saveState();
+  (state.thumbnails || []).forEach(t => updateCardInPlace(t.clipId));
+}
 
 function fmtTime(sec) {
   const m = Math.floor(sec / 60);
@@ -371,7 +387,8 @@ function renderClipList() {
 function buildClipCard(clip, num) {
   const cs = getClipState(clip.id);
   const isShort = !!(cs.short);
-  const isThumb = state.thumbnail && state.thumbnail.clipId === clip.id;
+  const isThumb = isThumbClip(clip.id);
+  const isMain  = isMainThumb(clip.id);
   const isRecon = !!state.reconnects[clip.id];
   const isReconSrc = state.reconnectSource?.clipId === clip.id;
   const cutCount = (cs.keeps || []).length;
@@ -389,7 +406,7 @@ function buildClipCard(clip, num) {
       <span style="color:#555;font-family:monospace;font-size:10px">${clip.viewCount >= 1000 ? (clip.viewCount >= 10000 ? Math.round(clip.viewCount/1000)+'k' : (clip.viewCount/1000).toFixed(1)+'k') : clip.viewCount}</span>
       <div class="card-tags">
         ${isShort ? `<span class="tag tag-short on" style="cursor:default">SHORT</span>` : ''}
-        ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB</span>` : ''}
+        ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB${isMain ? ' ★' : ''}</span>` : ''}
         ${isRecon ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
         ${isReconSrc ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
         ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
@@ -457,16 +474,15 @@ function toggleTag(e, clipId, tag) {
   } else if (tag === 'thumb') {
     const video = document.getElementById('vid-' + clipId);
     const currentTime = video ? +video.currentTime.toFixed(2) : 0;
-    if (state.thumbnail && state.thumbnail.clipId === clipId) {
-      if (Math.abs(state.thumbnail.at - currentTime) < 0.1) {
-        state.thumbnail = null;
-      } else {
-        state.thumbnail.at = currentTime;
-      }
+    const existing = getThumbEntry(clipId);
+    if (existing) {
+      const wasMain = existing.main;
+      state.thumbnails = state.thumbnails.filter(t => t.clipId !== clipId);
+      if (wasMain && state.thumbnails.length > 0) state.thumbnails[0].main = true;
+      state.thumbnails.forEach(t => extraUpdates.push(t.clipId));
     } else {
-      const oldId = state.thumbnail?.clipId;
-      if (oldId && oldId !== clipId) extraUpdates.push(oldId);
-      state.thumbnail = { clipId, at: currentTime };
+      const isFirst = state.thumbnails.length === 0;
+      state.thumbnails.push({ clipId, at: currentTime, main: isFirst });
     }
   } else if (tag === 'reconnect') {
     if (state.reconnects[clipId]) {
@@ -531,7 +547,8 @@ function updateCardInPlace(clipId) {
   if (!card) return;
   const cs = getClipState(clipId);
   const isShort = !!cs.short;
-  const isThumb = state.thumbnail?.clipId === clipId;
+  const isThumb = isThumbClip(clipId);
+  const isMain  = isMainThumb(clipId);
   const isRecon = !!state.reconnects[clipId];
   const isReconSrc = state.reconnectSource?.clipId === clipId;
   const cutCount = (cs.keeps || []).length;
@@ -549,7 +566,7 @@ function updateCardInPlace(clipId) {
   const mkTag = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.style.cursor = 'default'; s.textContent = text; cardTags.appendChild(s); };
   const mkBadge = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; cardTags.appendChild(s); };
   if (isShort) mkTag('tag tag-short on', 'SHORT');
-  if (isThumb) mkTag('tag tag-thumb on', 'THUMB');
+  if (isThumb) mkTag('tag tag-thumb on', isMain ? 'THUMB ★' : 'THUMB');
   if (isRecon) mkTag('tag tag-reconnect on', 'RECONNECT');
   if (isReconSrc) mkTag('tag tag-reconnect on', 'RECONNECT');
   if (cutCount > 0) mkBadge('mini-badge mb-cut', `✂ ${cutCount}`);
@@ -577,9 +594,13 @@ function updateTimingExtras(clipId) {
   if (src && src.clipId === clipId) {
     html += `<div class="ctrl-row" style="margin-top:5px"><span style="color:#ff6b6b;font-size:11px;font-family:monospace">⟳ ${fmtTime(src.from)} → ${fmtTime(src.to)}</span></div>`;
   }
-  const thumb = state.thumbnail;
-  if (thumb && thumb.clipId === clipId) {
-    html += `<div class="ctrl-row" style="margin-top:5px"><span style="color:#4ade80;font-size:11px;font-family:monospace">🖼 ${fmtTime(thumb.at)}</span></div>`;
+  const thumbEntry = getThumbEntry(clipId);
+  if (thumbEntry) {
+    const multiThumb = state.thumbnails.length > 1;
+    html += `<div class="ctrl-row" style="margin-top:5px">
+      <span style="color:#4ade80;font-size:11px;font-family:monospace">🖼 ${fmtTime(thumbEntry.at)}</span>
+      ${multiThumb ? `<button class="ctrl-btn" style="border-color:${thumbEntry.main ? '#4ade80' : '#333'};color:${thumbEntry.main ? '#4ade80' : '#555'};font-size:10px;padding:2px 8px;margin-left:6px" onclick="setMainThumb('${clipId}')">★ Main</button>` : ''}
+    </div>`;
   }
   el.innerHTML = html;
 }
@@ -588,7 +609,7 @@ function updateTimingExtras(clipId) {
 function buildCardBody(clip) {
   const cs = getClipState(clip.id);
   const isShort = !!cs.short;
-  const isThumb = state.thumbnail?.clipId === clip.id;
+  const isThumb = isThumbClip(clip.id);
   const isReconSrc = state.reconnectSource?.clipId === clip.id;
   return `
     <div style="font-size:11px;color:#666;font-style:italic;margin-bottom:6px;line-height:1.3">${clip.title || ''}</div>
@@ -887,7 +908,7 @@ function setPlayMode(clipId, mode, btn) {
   const cs = getClipState(clipId);
   const video = document.getElementById('vid-' + clipId);
   const cropBox = document.getElementById('thumb-crop-' + clipId);
-  if (cropBox) cropBox.style.display = (mode === 'thumbnail' && state.thumbnail?.clipId === clipId) ? 'block' : 'none';
+  if (cropBox) cropBox.style.display = (mode === 'thumbnail' && isThumbClip(clipId)) ? 'block' : 'none';
   // Hide all shorts overlays; show only when in 'shorts' mode
   ['shorts-crop-desktop-','shorts-crop-mobile-','shorts-gameplay-','shorts-webcam-'].forEach(p => {
     const el = document.getElementById(p + clipId); if (el) el.style.display = 'none';
@@ -916,11 +937,12 @@ function setPlayMode(clipId, mode, btn) {
     const cardEl = document.querySelector(`[data-clip-id="${clipId}"]`);
     if (cardEl?._updateFill) cardEl._updateFill();
   }
-  if (mode === 'thumbnail' && video && state.thumbnail?.clipId === clipId) {
-    video.currentTime = state.thumbnail.at;
+  if (mode === 'thumbnail' && video && isThumbClip(clipId)) {
+    const tEntry = getThumbEntry(clipId);
+    video.currentTime = tEntry.at;
     video.pause();
     if (cropBox) {
-      const crop = state.thumbnail.crop || { x: 0, y: 0, w: 100, h: 100 };
+      const crop = tEntry.crop || { x: 0, y: 0, w: 100, h: 100 };
       cropBox.style.left = crop.x + '%';
       cropBox.style.top = crop.y + '%';
       cropBox.style.width = crop.w + '%';
@@ -952,8 +974,9 @@ function initThumbCrop(clipId) {
              w: parseFloat(box.style.width)||100, h: parseFloat(box.style.height)||100 };
   }
   function save() {
-    if (!state.thumbnail || state.thumbnail.clipId !== clipId) return;
-    state.thumbnail.crop = getCrop(); saveState();
+    const entry = getThumbEntry(clipId);
+    if (!entry) return;
+    entry.crop = getCrop(); saveState();
   }
 
   box.addEventListener('mousedown', e => {
@@ -1482,7 +1505,7 @@ function buildTagSections(clip) {
 
 function syncTagSections(clipId) {
   const cs = getClipState(clipId);
-  const isThumb = state.thumbnail?.clipId === clipId;
+  const isThumb = isThumbClip(clipId);
   const isShort = !!cs.short;
   const reconModeBtn = document.getElementById('recon-mode-btn-' + clipId);
   if (reconModeBtn) reconModeBtn.style.display = (state.reconnectSource?.clipId === clipId) ? '' : 'none';
@@ -1495,11 +1518,12 @@ function syncTagSections(clipId) {
 
 function updateThumbMark(clipId) {
   const clip = getClip(clipId);
+  const entry = getThumbEntry(clipId);
   ['tl-thumb-mark-', 'tl-recon-thumb-mark-'].forEach(prefix => {
     const mark = document.getElementById(prefix + clipId);
     if (!mark) return;
-    if (state.thumbnail?.clipId === clipId && clip) {
-      mark.style.left = (state.thumbnail.at / clip.duration * 100) + '%';
+    if (entry && clip) {
+      mark.style.left = (entry.at / clip.duration * 100) + '%';
       mark.style.display = 'block';
     } else {
       mark.style.display = 'none';
@@ -1559,7 +1583,9 @@ function sendToBench(e, clipId) {
   state.order = state.order.filter(id => id !== clipId);
   delete state.reconnects[clipId];
   if (state.reconnectSource?.clipId === clipId) state.reconnectSource = null;
-  if (state.thumbnail?.clipId === clipId) state.thumbnail = null;
+  const removedThumb = getThumbEntry(clipId);
+  state.thumbnails = (state.thumbnails || []).filter(t => t.clipId !== clipId);
+  if (removedThumb?.main && state.thumbnails.length > 0) state.thumbnails[0].main = true;
   const idx = CLIPS_DATA.selected.findIndex(c => c.id === clipId);
   if (idx !== -1) CLIPS_DATA.bench.push(CLIPS_DATA.selected.splice(idx, 1)[0]);
   if (!state.benched) state.benched = [];
@@ -1604,10 +1630,13 @@ function updateTopbar() {
       `${getClip(src.clipId)?.streamer || '?'} ${fmtTime(src.from)}–${fmtTime(src.to)}`;
   } else { reconBadge.style.display = 'none'; }
   const thumbBadge = document.getElementById('thumb-badge');
-  if (state.thumbnail) {
+  if (state.thumbnails && state.thumbnails.length > 0) {
     thumbBadge.style.display = '';
+    const mainT = state.thumbnails.find(t => t.main) || state.thumbnails[0];
+    const secCount = state.thumbnails.length - 1;
     document.getElementById('thumb-display').textContent =
-      `${getClip(state.thumbnail.clipId)?.streamer || '?'} ${fmtTime(state.thumbnail.at)}`;
+      `${getClip(mainT.clipId)?.streamer || '?'} ${fmtTime(mainT.at)} ★` +
+      (secCount > 0 ? ` +${secCount}` : '');
   } else { thumbBadge.style.display = 'none'; }
 }
 
@@ -1641,7 +1670,7 @@ function buildJSON() {
     clipOrder: state.order.map(id => id.startsWith('__recon_') ? '__recon' : id),
     reconnectSource: src ? { clipId: src.clipId, from: +src.from.toFixed(2), to: +src.to.toFixed(2) } : null,
     reconnectPositions,
-    thumbnail: state.thumbnail || null,
+    thumbnails: state.thumbnails || [],
     clips: {}
   };
   state.order.forEach(id => {
