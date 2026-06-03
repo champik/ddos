@@ -100,7 +100,6 @@ DURATION_S=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "project
     <a href="<projectFolder>/review/review.html">
       <img src="<projectFolder>/exports/thumbnail.png" alt="Episode N thumbnail">
     </a>
-    <div class="ep-badge">EP #N</div>
   </div>
   <div class="info">
     <div>
