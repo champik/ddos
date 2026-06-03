@@ -177,14 +177,16 @@ node scripts/gen-editorial.js <runId>
 
 **Показати користувачу:**
 
-Вивести з реальним runId і повним file:// шляхом (робоча директорія `d:\Projects\ddos`):
+Відкрити браузер автоматично:
+```bash
+start "" "d:\Projects\ddos\projects\<runId>\edit\edit.html"
 ```
-✅ Editorial UI готовий!
 
-file:///d:/Projects/ddos/projects/<runId>/edit/edit.html
+Потім вивести користувачу:
+
+✅ Editorial UI відкрито у браузері (`projects/<runId>/edit/edit.html`)
 
 Переглянь кліпи, внеси правки і натисни "Copy Prompt".
 Потім встав JSON сюди для продовження.
-```
 
 Зупинитись і чекати на JSON від користувача.

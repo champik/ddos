@@ -54,11 +54,14 @@ node scripts/gen-review.js "projects/<runId>"
 
 **Стиль:** #0e0e10 фон, #f4f0e6 текст, #f5ff3d акцент, Anton/Space Grotesk/JetBrains Mono.
 
-Після генерації вивести в чат з реальним runId і повним file:// шляхом (робоча директорія `d:\Projects\ddos`):
+Після генерації — відкрити браузер автоматично:
+```bash
+start "" "d:\Projects\ddos\projects\<runId>\review\review.html"
 ```
-✅ Ревю готово!
 
-file:///d:/Projects/ddos/projects/<runId>/review/review.html
+Потім вивести в чат:
+
+✅ Ревю відкрито у браузері (`projects/<runId>/review/review.html`)
 
 Перевір відео, thumbnail, title options і metadata.
 Коли готово — виконай: /ddos approve <runId>

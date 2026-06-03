@@ -21,16 +21,17 @@
 7. CHILL CLIP ACCUMULATION (ddos-score skill)
 8. GENERATE_EDITORIAL (ddos-score skill) ← зупинка тут
 
-Після GENERATE_EDITORIAL — зупинитись і показати:
+Після GENERATE_EDITORIAL — відкрити браузер і зупинитись:
+```bash
+start "" "d:\Projects\ddos\projects\<runId>\edit\edit.html"
 ```
-✅ Editorial UI готовий!
 
-Відкрий у браузері:
-  projects/<runId>/edit/edit.html
+Потім вивести:
+
+✅ Editorial UI відкрито у браузері (`projects/<runId>/edit/edit.html`)
 
 Переглянь кліпи, внеси правки і натисни "Copy Prompt".
 Потім встав JSON сюди для продовження.
-```
 
 ## Параметри
 - `--hours N` — кліпи за останні N годин (default: 24)
