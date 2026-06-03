@@ -22,7 +22,7 @@ function buildEditorialClip(c) {
   return {
     id: c.id,
     streamer: c.broadcaster_name,
-    category: c.game_name,
+    category: c._categoryName,
     gameId: c.game_id,
     duration: c.duration,
     ddosScore: c.ddosScore,
@@ -34,29 +34,31 @@ function buildEditorialClip(c) {
     shortsPotential: c.shortsPotential,
     emotionalCategory: c.emotionalCategory,
     flags: c.flags || [],
-    reasoning: c.reasoning
+    reasoning: c.reasoning,
   };
 }
 
 // Order: JC/IRL → Gaming → Music/Specialty, sorted by ddosScore within each group
 // Clips marked bench:true go to bench; rest go to selected
 const JC_IRL_IDS = new Set(['509658', '509672']);
-const MUSIC_IDS  = new Set(['26936', '116747788']);
+const MUSIC_IDS = new Set(['26936', '116747788']);
 
 function clipGroup(c) {
   if (JC_IRL_IDS.has(c.game_id)) return 0;
   if (!MUSIC_IDS.has(c.game_id)) return 1; // Gaming
-  return 2;                                 // Music/Specialty
+  return 2; // Music/Specialty
 }
 
-const selected = [...scored].sort((a, b) => {
-  const gd = clipGroup(a) - clipGroup(b);
-  return gd !== 0 ? gd : b.ddosScore - a.ddosScore;
-}).map(buildEditorialClip);
+const selected = [...scored]
+  .sort((a, b) => {
+    const gd = clipGroup(a) - clipGroup(b);
+    return gd !== 0 ? gd : b.ddosScore - a.ddosScore;
+  })
+  .map(buildEditorialClip);
 
 // bench = swapped-out clips that were scored but excluded from main selection
 // Merge bench-extra scores from processed/<id>/score.json
-const benchExtraScored = benchExtraRaw.map(c => {
+const benchExtraScored = benchExtraRaw.map((c) => {
   const scorePath = path.join(RUN_DIR, 'processed', c.id, 'score.json');
   const score = fs.existsSync(scorePath) ? JSON.parse(fs.readFileSync(scorePath, 'utf8')) : {};
   return { ...c, ...score };
@@ -67,14 +69,16 @@ const bench = benchExtraScored
   .map(buildEditorialClip);
 
 const totalDuration = selected.reduce((s, c) => s + c.duration, 0);
-console.log(`[EDITORIAL] All clips: ${selected.length}, total duration: ${totalDuration.toFixed(0)}s (${(totalDuration/60).toFixed(1)} min)`);
+console.log(
+  `[EDITORIAL] All clips: ${selected.length}, total duration: ${totalDuration.toFixed(0)}s (${(totalDuration / 60).toFixed(1)} min)`,
+);
 
 // Build editorial data
 const editorialData = {
   runId,
   episodeNumber,
   selected,
-  bench
+  bench,
 };
 
 // Read template
@@ -89,9 +93,18 @@ const episodePlan = {
   generatedAt: new Date().toISOString(),
   selectedCount: selected.length,
   totalDurationEstimate: totalDuration,
-  clips: selected.map(c => ({ id: c.id, streamer: c.streamer, title: c.title, duration: c.duration, ddosScore: c.ddosScore }))
+  clips: selected.map((c) => ({
+    id: c.id,
+    streamer: c.streamer,
+    title: c.title,
+    duration: c.duration,
+    ddosScore: c.ddosScore,
+  })),
 };
-fs.writeFileSync(path.join(RUN_DIR, 'edit/episode-plan.json'), JSON.stringify(episodePlan, null, 2));
+fs.writeFileSync(
+  path.join(RUN_DIR, 'edit/episode-plan.json'),
+  JSON.stringify(episodePlan, null, 2),
+);
 
 // Update state
 state.stages.generate_editorial = 'done';
@@ -110,10 +123,7 @@ if (indexHtml.includes(runId)) {
   // Find the card for this runId and add/replace edit button
   if (!indexHtml.includes(`${runId}/edit/edit.html`)) {
     // Add edit button near the runId reference
-    indexHtml = indexHtml.replace(
-      new RegExp(`(${runId}[^"]*"[^>]*>)`),
-      `$1 ${editBtnHtml}`
-    );
+    indexHtml = indexHtml.replace(new RegExp(`(${runId}[^"]*"[^>]*>)`), `$1 ${editBtnHtml}`);
   }
 } else {
   console.log('[EDITORIAL] Note: runId not found in index.html, manual update needed');
