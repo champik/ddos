@@ -91,9 +91,16 @@ function buildVideoTags() {
 
 function buildShortsTags(clipId) {
   const c = byId[clipId];
-  // specific tags first (most valuable for discoverability)
-  const specific = ['#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
-  if (c?.broadcaster_name) specific.push('#' + c.broadcaster_name.replace(/\s/g, ''));
+
+  const streamerTag = c?.broadcaster_name ? '#' + c.broadcaster_name.replace(/[^a-zA-Z0-9]/g, '') : null;
+  const categoryTag = c?.game_name ? '#' + c.game_name.replace(/[^a-zA-Z0-9]/g, '') : null;
+  const descriptionHashtags = [
+    ...(streamerTag ? [streamerTag] : []),
+    ...(categoryTag ? [categoryTag] : []),
+    '#twitch', '#stream', '#live',
+  ];
+
+  const specific = [...descriptionHashtags, '#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
   if (c) {
     const gid = String(c.game_id || '');
     if (SPECIALTY[gid]) {
@@ -104,24 +111,23 @@ function buildShortsTags(clipId) {
   }
   const general = [
     '#TwitchShorts', '#StreamerMoments', '#FunnyMoments', '#TwitchMoments',
-    '#Twitch', '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
+    '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
     '#StreamClips', '#TwitchFunny', '#JustChatting', '#LiveStreaming',
     '#TwitchHighlight', '#TwitchClip', '#ClipOfTheDay', '#TwitchCommunity',
     '#StreamMoment', '#TwitchStream', '#ContentCreator', '#ShortsVideo',
     '#TwitchFails', '#DailyClips', '#TopClips', '#TwitchTV', '#Streaming',
   ];
-  // fit within YouTube 500-char tag limit (measured without #, joined by commas)
-  const candidates = [...specific, ...general];
-  const result = [];
+  const candidates = [...new Set([...specific, ...general])];
+  const tags = [];
   let len = 0;
   for (const t of candidates) {
     const bare = t.replace(/^#/, '');
-    const add = (result.length > 0 ? 1 : 0) + bare.length;
+    const add = (tags.length > 0 ? 1 : 0) + bare.length;
     if (len + add > 500) break;
-    result.push(t);
+    tags.push(t);
     len += add;
   }
-  return result;
+  return { descriptionHashtags, tags };
 }
 
 function buildHashtags() {
@@ -175,7 +181,7 @@ if (meta.description && !meta.description.includes('\n\n00:00')) {
 
 // Enrich each Short's hashtags based on its actual clip
 if (Array.isArray(meta.shortsMetadata)) {
-  meta.shortsMetadata = meta.shortsMetadata.map(s => ({ ...s, hashtags: buildShortsTags(s.clipId) }));
+  meta.shortsMetadata = meta.shortsMetadata.map(s => ({ ...s, ...buildShortsTags(s.clipId) }));
 }
 
 fs.mkdirSync(path.join(projectDir, 'exports'), { recursive: true });

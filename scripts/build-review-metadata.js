@@ -85,8 +85,16 @@ function buildVideoTags() {
 
 function buildShortsTags(clipId) {
   const c = byId[clipId];
-  const specific = ['#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
-  if (c?.broadcaster_name) specific.push('#' + c.broadcaster_name.replace(/\s/g, ''));
+
+  const streamerTag = c?.broadcaster_name ? '#' + c.broadcaster_name.replace(/[^a-zA-Z0-9]/g, '') : null;
+  const categoryTag = c?.game_name ? '#' + c.game_name.replace(/[^a-zA-Z0-9]/g, '') : null;
+  const descriptionHashtags = [
+    ...(streamerTag ? [streamerTag] : []),
+    ...(categoryTag ? [categoryTag] : []),
+    '#twitch', '#stream', '#live',
+  ];
+
+  const specific = [...descriptionHashtags, '#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
   if (c) {
     const gid = String(c.game_id || '');
     if (SPECIALTY[gid]) {
@@ -97,23 +105,23 @@ function buildShortsTags(clipId) {
   }
   const general = [
     '#TwitchShorts', '#StreamerMoments', '#FunnyMoments', '#TwitchMoments',
-    '#Twitch', '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
+    '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
     '#StreamClips', '#TwitchFunny', '#JustChatting', '#LiveStreaming',
     '#TwitchHighlight', '#TwitchClip', '#ClipOfTheDay', '#TwitchCommunity',
     '#StreamMoment', '#TwitchStream', '#ContentCreator', '#ShortsVideo',
     '#TwitchFails', '#DailyClips', '#TopClips', '#TwitchTV', '#Streaming',
   ];
-  const candidates = [...specific, ...general];
-  const result = [];
+  const candidates = [...new Set([...specific, ...general])];
+  const tags = [];
   let len = 0;
   for (const t of candidates) {
     const bare = t.replace(/^#/, '');
-    const add = (result.length > 0 ? 1 : 0) + bare.length;
+    const add = (tags.length > 0 ? 1 : 0) + bare.length;
     if (len + add > 500) break;
-    result.push(t);
+    tags.push(t);
     len += add;
   }
-  return result;
+  return { descriptionHashtags, tags };
 }
 
 // ── chapters ──────────────────────────────────────────────────────────────────
@@ -163,7 +171,7 @@ const shortsMetadata = (plan.shortClipIds || []).map(clipId => {
     clipId,
     title: `${name} Had A Moment | Daily Dose Of Stream`,
     description: '',
-    hashtags: buildShortsTags(clipId),
+    ...buildShortsTags(clipId),
   };
 });
 

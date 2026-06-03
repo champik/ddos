@@ -107,11 +107,11 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
 }
 
 function buildShortDescription(clipMeta) {
-  const hashtags = (clipMeta && clipMeta.hashtags)
-    ? clipMeta.hashtags.join(' ')
-    : '#DailyDoseOfStream #TwitchClips #Shorts';
+  const descHashtags = (clipMeta && clipMeta.descriptionHashtags)
+    ? clipMeta.descriptionHashtags.join(' ')
+    : '#twitch #stream #live';
   const body = clipMeta && clipMeta.description;
-  return body ? `${body}\n\n${hashtags}` : hashtags;
+  return body ? `${body}\n\n${descHashtags}` : descHashtags;
 }
 
 // publishAt — optional ISO string. If provided, video is scheduled (private until that time).
@@ -138,7 +138,7 @@ async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publ
     : { privacyStatus: 'public', selfDeclaredMadeForKids: false };
 
   const tags = clipMeta
-    ? (clipMeta.hashtags || []).map(h => h.replace(/^#/, ''))
+    ? (clipMeta.tags || []).map(h => h.replace(/^#/, ''))
     : ['DailyDoseOfStream', 'TwitchClips', 'Shorts'];
 
   const size = fs.statSync(shortPath).size;
