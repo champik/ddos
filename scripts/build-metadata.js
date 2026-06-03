@@ -198,3 +198,7 @@ if (meta.titleOptions) {
     Object.entries(meta.titleOptions).forEach(([k, v]) => console.log(`  [${k}] ${v}`));
   }
 }
+if (Array.isArray(meta.thumbnailCaptions) && meta.thumbnailCaptions.length > 0) {
+  console.log('\nThumbnail captions (pipe-style):');
+  meta.thumbnailCaptions.forEach((t, i) => console.log(`  [${i+1}] ${t}`));
+}

@@ -26,6 +26,12 @@ description: Use when generating YouTube titles, thumbnail hooks, descriptions, 
 node scripts/progress.js "projects/<runId>" 13 "YouTube metadata (Claude)"
 ```
 
+Перед генерацією промпту зчитати дані автоматично:
+1. `edit/episode-plan.json` → список кліпів в порядку відео
+2. `clips/scored-clips.json` → `broadcaster_name`, `title`, `reasoning` по кожному clipId
+3. `edit/editorial.json` → `thumbnails` array (main перший: `thumbnails.find(t => t.main)`, потім решта)
+4. Для кожного `thumbnails[*].clipId` знайти в scored-clips: `broadcaster_name`, `title`, `reasoning`
+
 Передай Claude список кліпів:
 
 ```
@@ -40,6 +46,7 @@ Episode data:
   Episode #: <N>
   Clips (in order): <streamer | category | clip title | ddosScore>
   Main hook moment: <strongest clip — streamer + brief description of what happened>
+  Thumbnail clips (for pipe-titles, main first): <streamer | clip title | one-line reasoning — one entry per line>
 
 Respond ONLY with valid JSON, no markdown:
 {
@@ -50,6 +57,11 @@ Respond ONLY with valid JSON, no markdown:
     "chatReaction":      "<title>",
     "unexpectedOutcome": "<title>"
   },
+  "thumbnailCaptions": [
+    "<pipe-title variant 1>",
+    "<pipe-title variant 2>",
+    "<pipe-title variant 3>"
+  ],
   "thumbnailHook": "<2-4 WORDS ALL CAPS — must NOT reveal the ending>",
   "thumbnailStrategy": "<One sentence: which frame moment to use, what emotion/action is visible, why it works at mobile size.>",
   "description": "<150-200 words English. Opening 2 sentences: name the streamer, describe the specific action, why it landed — no 'In this episode' or 'Today's episode covers'. Then one flowing paragraph (NOT a list) describing 4-6 other moments with specific details, quotes, or outcomes; weave in game names and category keywords naturally. No 'zero filler', no 'all in one sitting', no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
@@ -100,6 +112,17 @@ thumbnailStrategy rules:
 - Background frame: strong emotion or visible action, not a neutral talking-head
 - High contrast — bright text on dark or vice versa, no busy background behind text
 - Confirm the hook fits at 200px mobile width
+
+thumbnailCaptions rules — HARD CONSTRAINTS:
+- Array of exactly 3 variants, each is a different angle on the same set of thumbnail clips
+- Format per variant: "Streamer [3-5 words] | Streamer [3-5 words] | ..."
+- Clips appear in order: main thumbnail first, then additional thumbnails
+- Each segment: streamer name (exact, case-preserved) + 3-5 word action/reaction — clickbait, punchy, no spoiler of ending
+- NO emojis, NO punctuation within segments, NO channel suffix
+- Total length per variant: max 100 characters
+- Each variant must feel tonally distinct — e.g. one action-focused, one reaction-focused, one absurd/ironic
+- Good segments: "xQc lost it instantly", "CaseOH reacts to himself", "HAchubby vs the door", "Jinxzy fails at Minecraft"
+- Bad segments: "xQc's reaction was unexpected" (too vague/long), "something happened to CaseOH" (no action)
 
 description rules — HARD CONSTRAINTS:
 - First 2 sentences: drop into the main hook moment immediately — streamer name, what happened, why it landed. No "In this episode...", no "Today's episode covers..."
