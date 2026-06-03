@@ -147,6 +147,14 @@ const titleCards = selectedTitle
     ).join('\n');
 const selectedTitleHtml = '';
 
+const pipeCaptions = (meta.thumbnailCaptions || []);
+const pipeTitleCards = pipeCaptions.map((t, i) =>
+  `  <div class="title-card"><span class="title-num" style="color:#aaa">${String.fromCharCode(65 + i)}</span><span style="color:#ccc">${esc(t)}</span></div>`
+).join('\n');
+const pipeTitleSection = pipeCaptions.length > 0
+  ? `\n<div style="margin-top:16px;margin-bottom:6px;font-size:11px;color:#555;font-family:'JetBrains Mono',monospace;letter-spacing:1px;text-transform:uppercase">Pipe Style</div>\n<div class="title-cards">\n${pipeTitleCards}\n</div>`
+  : '';
+
 const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   `  <div class="short-card">
     <video src="../exports/shorts/${sm.clipId}.mp4" controls></video>
@@ -269,7 +277,7 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 ${selectedTitleHtml}
 <div class="title-cards">
 ${titleCards}
-</div>
+</div>${pipeTitleSection}
 </div>
 
 <div class="section">

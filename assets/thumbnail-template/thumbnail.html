@@ -122,12 +122,13 @@
           }
         }
 
-        var el = document.getElementById('va');
-        el.style.display = 'block';
-
-        var hlEl = document.getElementById('va-hl');
-        hlEl.textContent = hl;
-        hlEl.style.fontSize = (c.fontSize || hlSize(hl.length)) + 'px';
+        if (hl) {
+          var el = document.getElementById('va');
+          el.style.display = 'block';
+          var hlEl = document.getElementById('va-hl');
+          hlEl.textContent = hl;
+          hlEl.style.fontSize = (c.fontSize || hlSize(hl.length)) + 'px';
+        }
       }
 
       renderThumb();

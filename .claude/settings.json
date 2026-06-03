@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(*)",
-      "PowerShell(*)"
+      "PowerShell(*)",
+      "mcp__claude_ai_higgsfield__*"
     ]
   }
 }

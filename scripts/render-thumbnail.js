@@ -12,7 +12,7 @@ async function render(framePath, headline, outPath, fontSize, crop) {
 
   const cropStr = crop ? ', crop: ' + JSON.stringify(crop) : '';
   const config = `var THUMB_CONFIG = { headline: '${headline.replace(/'/g, "\\'")}', img: '${frameDataUrl}'${fontSize ? ', fontSize: ' + fontSize : ''}${cropStr} }`;
-  html = html.replace(/var THUMB_CONFIG = \{[^}]+\}/, config);
+  html = html.replace(/var THUMB_CONFIG = \{[\s\S]*?\};/, config + ';');
 
   const tmpHtml = outPath.replace('.png', '_tmp.html');
   fs.writeFileSync(tmpHtml, html);
@@ -46,10 +46,15 @@ const sizeRaw = popFlag(rawArgs, '--size');
 const fontSize = sizeRaw ? parseInt(sizeRaw) : null;
 const cropRaw = popFlag(rawArgs, '--crop');
 const crop = cropRaw ? JSON.parse(cropRaw) : null;
-const [framePath, headline, outPath] = rawArgs;
+const noTextIdx = rawArgs.indexOf('--no-text');
+const noText = noTextIdx !== -1;
+if (noText) rawArgs.splice(noTextIdx, 1);
+const [framePath, headlineOrOut, outPathOrUndef] = rawArgs;
+const headline = noText ? '' : headlineOrOut;
+const outPath = noText ? headlineOrOut : outPathOrUndef;
 
-if (!framePath || !headline || !outPath) {
-  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>] [--crop <json>]');
+if (!framePath || !outPath) {
+  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>] [--crop <json>] [--no-text]');
   process.exit(1);
 }
 render(framePath, headline, outPath, fontSize, crop).catch(e => {
