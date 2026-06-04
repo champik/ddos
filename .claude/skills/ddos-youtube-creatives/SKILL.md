@@ -41,6 +41,7 @@ Framework:
 - Retention-first: the first 30 seconds determine watch-through. Titles and thumbnails must hook without deception.
 - Thumbnails tell micro-stories. Mobile-first: readable at 200px width.
 - Five title options, each targeting a DIFFERENT psychological trigger.
+- Google & AI Overviews: YouTube is core Google search infrastructure. Long-form clips compilations (12-15 min) dominate AI citation (94% of cited videos). First 160 chars of description = Google SERP meta description — optimize for it.
 
 Episode data:
   Episode #: <N>
@@ -76,7 +77,7 @@ Respond ONLY with valid JSON, no markdown:
 }
 
 Title rules — HARD CONSTRAINTS (violating any = wrong answer):
-- Max 65 characters per title
+- Aim ≤60 characters (mobile optimal — YouTube truncates at ~60 on small screens); never exceed 65
 - DO NOT add "| Daily Dose Of Stream" or any channel suffix — titles are standalone
 - NO emojis anywhere in any title
 - Every title must start with the streamer name from the main hook
@@ -125,6 +126,7 @@ thumbnailCaptions rules — HARD CONSTRAINTS:
 - Bad segments: "xQc's reaction was unexpected" (too vague/long), "something happened to CaseOH" (no action)
 
 description rules — HARD CONSTRAINTS:
+- First 160 characters = Google SERP meta description and AI Overviews snippet. Must be a complete, standalone thought that includes streamer name + action + keyword (e.g. "Twitch", "stream", game name). Google and AI assistants pull this directly.
 - First 2 sentences: drop into the main hook moment immediately — streamer name, what happened, why it landed. No "In this episode...", no "Today's episode covers..."
 - Body (one flowing paragraph, NOT a list): describe 4-6 other moments with specific details — a quote, an action, an outcome. Weave in streamer names, game names (CS2, Marvel Rivals, etc.), and category keywords (Just Chatting, IRL stream) naturally for search.
 - BANNED closing phrases: "zero filler", "all in one sitting", "at its finest", "maximum reaction", "every clip selected", episode number (never write "Episode N")
