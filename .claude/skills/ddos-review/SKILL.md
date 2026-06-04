@@ -30,7 +30,7 @@ node scripts/gen-review.js "projects/<runId>"
 9. Metadata block (description + tags)
 10. Approve box: команда `/ddos approve <runId>` якщо ще не опубліковано; порожньо якщо опубліковано
 
-**Таблиця кліпів — колонки (11 шт, colspan=11 для reconnect row):**
+**Таблиця кліпів — колонки (8 шт, colspan=8 для reconnect row):**
 
 | Колонка | Вміст |
 |---|---|
@@ -38,15 +38,12 @@ node scripts/gen-review.js "projects/<runId>"
 | Streamer | посилання на оригінальний кліп на Twitch (`s.url`) |
 | Cat | скорочена категорія (JC, CS2, GTA V...) |
 | Title | назва кліпу з Twitch (обрізана) |
-| Dur | `trimmedDuration/originalDuration` у секундах (напр. `15s/32s`); оригінал сірим; якщо trimmedDuration відсутній — тільки оригінал |
-| DDOS | ddosScore, колір: зелений ≥60, жовтий ≥45, білий <45 |
-| Viral | viralityScore, сірим |
-| Funny | funnyScore |
-| Shorts | shortsPotential + ★ якщо в shortClipIds |
-| Views | view_count (форматовано: 1.4k, 2.1M) |
-| Hook / Reasoning / Flags | об'єднана клітинка: **HOOK** капсом жирним зверху; *reasoning* курсивом сірим; Flags червоним (тільки якщо є) |
+| Dur | `trimmedDuration/originalDuration` у секундах; оригінал сірим |
+| Views | view_count (1.4k, 2.1M) |
+| Vel/hr | views/hour — velocity кліпу (наскільки вірусний відносно часу створення) |
+| Tags | `SHORT:DESKTOP/MOBILE/SPLIT` якщо short; `THUMB` якщо thumbnail; `✂N` якщо є cuts |
 
-**Reconnect рядки:** між групами (якщо `!group.noTrailingReconnect`) — `<tr class="reconnect-row"><td colspan="11">⟳ reconnect</td></tr>`
+**Reconnect рядки:** між групами — `<tr class="reconnect-row"><td colspan="8">⟳ reconnect</td></tr>`
 
 **Статус subtitle:**
 - До публікації: `✓ Ready for review`

@@ -54,28 +54,25 @@
 ```
 1.  INGEST              Twitch API → raw-clips.json
 2.  FILTER              відсіяти RU / gambling / занадто короткі / занадто довгі
-3.  DOWNLOAD            yt-dlp → downloads/<filename>.mp4 (100 кліпів)
-4.  TRANSCRIBE          faster-whisper → transcript.json
-5.  SCORE               Claude batch оцінка → score.json + scored-clips.json
-6.  GENERATE_EDITORIAL  Claude відбирає кліпи → edit/edit.html  ← ЗУПИНКА
+3.  SELECT              bucket відбір по velocity+popularity → prescore-candidates.json
+4.  DOWNLOAD            yt-dlp → downloads/<filename>.mp4 (100 кліпів)
+5.  GENERATE_EDITORIAL  gen-editorial.js → edit/edit.html  ← ЗУПИНКА
 ```
 
 Після GENERATE_EDITORIAL: відкрити `edit/edit.html` у браузері, зробити editorial рішення, "Copy Prompt" → вставити в чат.
 
 ### Stage 2 (після editorial JSON)
 ```
-7.  APPLY_EDITORIAL  apply-editorial.js → clean.mp4 (trim + cuts з editorial.json)
-8.  HOOKS            Claude генерує хуки в розмові
-9.  OVERLAYS         Puppeteer → streamer overlay + reconnecting panel
-10. RENDER LONG      FFmpeg concat → episode-NNN.mp4
-11. CAPTIONS         ASS субтитри для shorts
-12. RENDER SHORTS    FFmpeg → 1080×1920 (desktop/mobile/split)
-13. METADATA         Claude → title/description/tags
-14. THUMBNAIL        Puppeteer → thumbnail.png (кадр з editorial.thumbnail.at)
-15. REVIEW           review.html + index.html
+6.  APPLY_EDITORIAL  apply-editorial.js → clean.mp4 (trim + cuts з editorial.json)
+7.  TRANSCRIBE       WhisperX large-v2 → transcript.json (тільки вибрані кліпи, з clean.mp4)
+8.  OVERLAYS         Puppeteer → streamer overlay + reconnecting panel
+9.  RENDER LONG      FFmpeg concat → episode-NNN.mp4
+10. CAPTIONS         WhisperX ASS субтитри для shorts
+11. RENDER SHORTS    FFmpeg → 1080×1920 (desktop/mobile/split)
+12. METADATA         Claude → title/description/tags (на основі транскриптів)
+13. THUMBNAIL        Puppeteer → thumbnail.png
+14. REVIEW           review.html + index.html
 ```
-
-> **TRIM і PLAN видалені з pipeline.** Порядок кліпів і cuts задаються вручну через editorial UI.
 
 ---
 
@@ -83,7 +80,7 @@
 
 ### Twitch категорії
 
-**Core (завжди фетчаться, categoryScore=88 у pre-score):**
+**Core (завжди фетчаться):**
 
 | Бакет | Категорія | gameId |
 |-------|-----------|--------|
@@ -111,7 +108,7 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 ### Ліміти
 - maxClipCandidates: 500
 - maxDownloads: 100
-- maxClipsPerStreamer: 3 (у episode plan)
+- maxClipsPerStreamer: 5 (у download selection)
 - minDuration: 6s / maxDuration: 90s
 - targetEpisodeMin: 720с (12 хв)
 - targetEpisodeMax: 900с (15 хв)
@@ -153,7 +150,6 @@ projects/<runId>/
 ├── processed/<clipId>/
 │   ├── transcript.json
 │   ├── score.json
-│   ├── hook.txt
 │   ├── clean.mp4                      # trimmed + re-encoded + loudnorm
 │   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
 │   ├── captions-longform.ass
@@ -172,7 +168,6 @@ projects/<runId>/
 │   ├── episode-NNN.mp4
 │   ├── thumbnail.png
 │   ├── metadata.json
-│   ├── analytics.json
 │   └── shorts/<clipId>.mp4
 └── review/review.html
 ```
@@ -194,9 +189,8 @@ assets/thumbnail-template/logo.svg         DDOS лого
 
 ## Skills
 
-- `ddos-analytics` — YouTube Analytics → Notion tracking
 - `ddos-ingest`    — Twitch API + filter + yt-dlp download
-- `ddos-score`     — WhisperX transcribe + Claude scoring + hooks
+- `ddos-score`     — GENERATE_EDITORIAL (transcribe + scoring видалені)
 - `ddos-render`    — FFmpeg trim + overlays + long-form render
 - `ddos-shorts`    — vertical crop + captions + shorts render
 - `ddos-thumbnail` — Puppeteer thumbnail + metadata generation

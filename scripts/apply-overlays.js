@@ -138,12 +138,7 @@ function renderReconnecting() {
     }
   } catch {}
 
-  const scoreFile = path.resolve(projectDir, 'processed', rcId, 'score.json');
   let peakStart = editorialFrom ?? 0;
-  if (editorialFrom == null && fs.existsSync(scoreFile)) {
-    const sc = readJson(scoreFile);
-    peakStart = sc.peakMoment?.start || 0;
-  }
 
   // Always use clean.mp4 — no streamer name banner on reconnect transition
   let src = path.resolve(projectDir, 'processed', rcId, 'clean.mp4');

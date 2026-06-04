@@ -150,22 +150,22 @@ const chapters = [];
 let offset      = INTRO_DUR;
 let lastStreamer = null;
 
+const chapterDescriptions = meta.chapterDescriptions || {};
+
 for (let gi = 0; gi < plan.groups.length; gi++) {
   const g = plan.groups[gi];
   for (const clipId of g.clipIds) {
     const streamer = byId[clipId]?.broadcaster_name || g.label;
     if (streamer !== lastStreamer) {
-      // first chapter always at 00:00 (absorbs intro)
-      chapters.push({ t: chapters.length === 0 ? 0 : Math.round(offset), label: streamer });
+      const t = chapters.length === 0 ? 0 : Math.round(offset);
+      const desc = chapterDescriptions[clipId];
+      const label = desc || streamer;
+      chapters.push({ t, label });
       lastStreamer = streamer;
     }
     offset += getDur(clipId);
   }
   if (gi < plan.groups.length - 1) offset += RECONNECT_DUR;
-}
-
-if (plan.chillPlan && plan.chillPlan.type !== 'skip') {
-  chapters.push({ t: Math.round(offset), label: 'Chill Outro' });
 }
 
 const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');

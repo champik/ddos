@@ -27,10 +27,13 @@ node scripts/progress.js "projects/<runId>" 13 "YouTube metadata (Claude)"
 ```
 
 Перед генерацією промпту зчитати дані автоматично:
-1. `edit/episode-plan.json` → список кліпів в порядку відео
-2. `clips/scored-clips.json` → `broadcaster_name`, `title`, `reasoning` по кожному clipId
-3. `edit/editorial.json` → `thumbnails` array (main перший: `thumbnails.find(t => t.main)`, потім решта)
-4. Для кожного `thumbnails[*].clipId` знайти в scored-clips: `broadcaster_name`, `title`, `reasoning`
+1. `edit/episode-plan.json` → список кліпів в порядку відео + `shortClipIds`
+2. `clips/scored-clips.json` → `broadcaster_name`, `title`, `view_count`, `game_name` по кожному clipId
+3. `edit/editorial.json` → `thumbnails` array
+4. Для кожного кліпу з `clipOrder`:
+   - `processed/<clipId>/transcript.json` → `text` (повний, без обрізки)
+   - Якщо transcript відсутній → `""` (порожній рядок)
+5. Для кліпів з `shortClipIds` — передати повний transcript окремо у `shortsTranscripts`
 
 Передай Claude список кліпів:
 
@@ -42,12 +45,23 @@ Framework:
 - Thumbnails tell micro-stories. Mobile-first: readable at 200px width.
 - Five title options, each targeting a DIFFERENT psychological trigger.
 - Google & AI Overviews: YouTube is core Google search infrastructure. Long-form clips compilations (12-15 min) dominate AI citation (94% of cited videos). First 160 chars of description = Google SERP meta description — optimize for it.
+- ALL output must be based ONLY on what actually happened in the transcripts — never invent quotes, actions, or outcomes not present in the transcript.
 
 Episode data:
   Episode #: <N>
-  Clips (in order): <streamer | category | clip title | ddosScore>
-  Main hook moment: <strongest clip — streamer + brief description of what happened>
-  Thumbnail clips (for pipe-titles, main first): <streamer | clip title | one-line reasoning — one entry per line>
+  Clips (in order):
+  [clipId] streamer | category | clip title
+  Transcript: "<full transcript text or 'no transcript'>"
+  ---
+  (repeat for each clip)
+
+  Shorts:
+  [clipId] streamer | clip title
+  Transcript: "<full transcript>"
+  ---
+  (repeat for each short)
+
+  Main hook: <clip with longest/most interesting transcript — streamer + key quote or action from transcript>
 
 Respond ONLY with valid JSON, no markdown:
 {
@@ -55,7 +69,7 @@ Respond ONLY with valid JSON, no markdown:
     "curiosityGap":      "<title>",
     "specificityStakes": "<title>",
     "emotionCharacter":  "<title>",
-    "chatReaction":      "<title>",
+    "directMoment":      "<title>",
     "unexpectedOutcome": "<title>"
   },
   "thumbnailCaptions": [
@@ -66,6 +80,9 @@ Respond ONLY with valid JSON, no markdown:
   "thumbnailHook": "<2-4 WORDS ALL CAPS — must NOT reveal the ending>",
   "thumbnailStrategy": "<One sentence: which frame moment to use, what emotion/action is visible, why it works at mobile size.>",
   "description": "<150-200 words English. Opening 2 sentences: name the streamer, describe the specific action, why it landed — no 'In this episode' or 'Today's episode covers'. Then one flowing paragraph (NOT a list) describing 4-6 other moments with specific details, quotes, or outcomes; weave in game names and category keywords naturally. No 'zero filler', no 'all in one sitting', no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
+  "chapterDescriptions": {
+    "<clipId>": "<streamer name + action + consequence from transcript — max 6 words after streamer name, no invented details>"
+  },
   "shortsMetadata": [
     {
       "clipId": "<id>",
@@ -81,6 +98,7 @@ Title rules — HARD CONSTRAINTS (violating any = wrong answer):
 - DO NOT add "| Daily Dose Of Stream" or any channel suffix — titles are standalone
 - NO emojis anywhere in any title
 - Every title must start with the streamer name from the main hook
+- NEVER mention: "Stream", "Twitch", "Live", "IRL", "on stream", "on Twitch", "live stream" — describe the EVENT itself, not the platform
 - BANNED phrases — never use any of these or close variants:
   "Nobody Expected", "Nobody Was Ready", "He Had No Response", "No One Saw This Coming",
   "This Happened", "Things Escalated", "Way Faster Than Expected", "He Had No Idea",
@@ -90,12 +108,12 @@ Trigger definitions:
 - curiosityGap: open a loop viewer must click to close. Reveal the outcome exists, not what it was.
   Good: "Something in HAchubby's Apartment Fought Back on Stream"
   Bad: any banned phrase above
-- specificityStakes: who + exact situation + consequence. Must include "Twitch" or "Stream".
-  Good: "HAchubby vs The Mattress — The Mattress Won on Twitch"
+- specificityStakes: searchable keyword or action FIRST, streamer second. Format: "[What happened] — [Streamer]". Optimized for search, not just recognition.
+  Good: "Truck Runs a Red Light Into HAchubby's IRL Walk", "Yoga Session Turns Into Chaos for Alinity"
 - emotionCharacter: lead with streamer feeling or personality — relatable, funny, or wholesome.
   Good: "xQc Completely Lost It When This Happened on His IRL Stream"
-- chatReaction: chat as a character — what chat did or couldn't do.
-  Good: "Chat Had Nothing to Say After What HAchubby Did on Stream"
+- directMoment: plain description of what happened — no tricks, no loops. Someone who reads it knows exactly what the clip is about.
+  Good: "HAchubby Almost Gets Hit by a Truck Mid-Walk"
 - unexpectedOutcome: the expected thing didn't happen — describe the gap without spoiling the ending.
   Good: "HAchubby's Delivery Plan Worked Perfectly Except for One Thing"
 
@@ -114,24 +132,33 @@ thumbnailStrategy rules:
 - High contrast — bright text on dark or vice versa, no busy background behind text
 - Confirm the hook fits at 200px mobile width
 
-thumbnailCaptions rules — HARD CONSTRAINTS:
-- Array of exactly 3 variants, each is a different angle on the same set of thumbnail clips
-- Format per variant: "Streamer [3-5 words] | Streamer [3-5 words] | ..."
-- Clips appear in order: main thumbnail first, then additional thumbnails
-- Each segment: streamer name (exact, case-preserved) + 3-5 word action/reaction — clickbait, punchy, no spoiler of ending
+thumbnailCaptions rules — these are Style 2 video title alternatives (pipe-separated):
+- Array of exactly 3 variants covering the 3-4 most memorable moments from the episode
+- Format: "Streamer [verb + result/surprise] | Streamer [verb + result/surprise] | ..."
+- Each segment MUST have: active verb + unexpected result OR surprising consequence — never just what they did
 - NO emojis, NO punctuation within segments, NO channel suffix
+- NEVER mention: "Stream", "Twitch", "Live", "IRL" — same rule as titleOptions
 - Total length per variant: max 100 characters
-- Each variant must feel tonally distinct — e.g. one action-focused, one reaction-focused, one absurd/ironic
-- Good segments: "xQc lost it instantly", "CaseOH reacts to himself", "HAchubby vs the door", "Jinxzy fails at Minecraft"
-- Bad segments: "xQc's reaction was unexpected" (too vague/long), "something happened to CaseOH" (no action)
+- 3 variants must feel tonally distinct — e.g. one dramatic, one absurd, one funny
+- ONLY use details from the provided transcripts — never invent actions, reactions, or outcomes
+
+chapterDescriptions rules:
+- Only for clips that START a new chapter (first clip from each broadcaster in episode order)
+- Format: "[StreamerName] [action] [consequence]" — reads as one natural sentence
+- Max 8 words total including streamer name
+- Must come from transcript — no invented details
+- Good: "HAchubby almost walks into oncoming traffic", "xQc loses fifty thousand on one bet"
+- Bad: "HAchubby has a funny moment" (vague), invented outcome not in transcript
+- Good segments: "xQc breaks keyboard mid-game", "HAchubby almost hit by truck", "Kai loses it completely", "CaseOH falls off chair"
+- Bad segments: "xQc reacts to something" (vague), "HAchubby does yoga" (just an action, no twist), invented details not in transcript
 
 description rules — HARD CONSTRAINTS:
-- First 160 characters = Google SERP meta description and AI Overviews snippet. Must be a complete, standalone thought that includes streamer name + action + keyword (e.g. "Twitch", "stream", game name). Google and AI assistants pull this directly.
-- First 2 sentences: drop into the main hook moment immediately — streamer name, what happened, why it landed. No "In this episode...", no "Today's episode covers..."
-- Body (one flowing paragraph, NOT a list): describe 4-6 other moments with specific details — a quote, an action, an outcome. Weave in streamer names, game names (CS2, Marvel Rivals, etc.), and category keywords (Just Chatting, IRL stream) naturally for search.
-- BANNED closing phrases: "zero filler", "all in one sitting", "at its finest", "maximum reaction", "every clip selected", episode number (never write "Episode N")
-- Include a specific quote or concrete detail from at least 3 moments — not generic summaries
-- End EXACTLY with this line (nothing after it, nothing changed): "Subscribe for daily Twitch highlights and the best stream moments every day!"
+- First 160 characters = Google SERP meta description. Must include streamer name + specific action from transcript + keyword.
+- First 2 sentences: drop into the main hook moment immediately — use real quotes or specific actions from the transcript. No "In this episode...", no "Today's episode covers..."
+- Body (one flowing paragraph, NOT a list): describe 4-6 other moments using REAL details from their transcripts — actual quotes, specific words said, concrete actions. Weave in streamer names, game names naturally.
+- EVERY detail must come from the provided transcripts — no invented quotes, no fabricated outcomes
+- BANNED closing phrases: "zero filler", "all in one sitting", "at its finest", "maximum reaction", episode number
+- End EXACTLY: "Subscribe for daily Twitch highlights and the best stream moments every day!"
 - NO social links, NO URLs, NO episode number anywhere
 
 Good example (Ep 12 style):
@@ -142,28 +169,49 @@ Bad example (avoid):
   Today's episode covers IRL chaos, gaming moments, and wholesome content. Featuring xQc, HAchubby, and more — every clip selected for maximum reaction, zero filler. Funny, chaotic, and wholesome all in one sitting.
   Subscribe for daily Twitch highlights and the best stream moments every day!
 
-Shorts title rules:
-- Max 60 characters, no channel suffix, no emojis
-- Lead with the streamer name or the action — not a generic phrase
-
-Shorts description rules — HARD CONSTRAINTS (YouTube SEO, 50-80 words):
-- First sentence: streamer name + specific action + why it landed. NO openers: "In this clip", "Check out", "Watch as", "Here is"
-- Second sentence: context — weave in game name (CS2, Marvel Rivals, etc.) or category keyword (Just Chatting, IRL stream) + reaction or outcome detail
-- NO generic phrases: "funny moment", "epic reaction", "amazing clip", "you won't believe"
-- NO list format, NO episode number, NO URLs
-- End EXACTLY: "Subscribe for daily Twitch highlights and the best stream moments every day!"
-- Hashtags are appended by the script — do NOT include them in this field
-
-Good example:
-  HAchubby's delivery driver refused to leave without getting on camera, and what happened next had her IRL stream in absolute shambles for two minutes straight.
-  Subscribe for daily Twitch highlights and the best stream moments every day!
-
-Bad example:
-  Check out this funny clip from HAchubby's stream! Amazing Just Chatting moment you won't believe.
-  Subscribe for daily Twitch highlights and the best stream moments every day!
 ```
 
-Зберегти raw JSON у `exports/metadata.json`.
+Зберегти `titleOptions`, `thumbnailCaptions`, `thumbnailHook`, `thumbnailStrategy`, `description`, `chapterDescriptions` у `exports/metadata.json`.
+
+---
+
+## Shorts — окремий промпт
+
+Shorts алгоритм відрізняється від лонгформ: пріоритет — watch-through rate в vertical feed, не CTR з пошуку. Після збереження основного metadata — окремий запит до Claude:
+
+```
+You are optimizing YouTube Shorts for "Daily Dose Of Stream" — a Twitch clip channel.
+
+Shorts algorithm priorities (different from long-form):
+- Watch-through rate matters more than CTR — the title/description must make viewer STAY, not just click
+- Shorts titles appear in search and suggested — optimize for the action/moment, not the streamer name
+- Hook in first 2 seconds = retention. Describe that hook in the title.
+
+For each short:
+[clipId] streamer | game/category
+Transcript: "<full transcript>"
+---
+
+Respond ONLY with valid JSON:
+[
+  {
+    "clipId": "<id>",
+    "title": "<max 60 chars — lead with the action or surprise from transcript, not streamer name>",
+    "description": "<50-80 words. First sentence: what happens in the first 2 seconds (the hook). Second sentence: game/category keyword + how it ends. No openers: 'In this clip', 'Check out'. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>"
+  }
+]
+
+Title rules for Shorts:
+- Lead with the ACTION or SURPRISE from transcript — not the streamer name
+- Good: "She Walked Right Into Traffic Mid-Broadcast", "He Said It Live and Couldn't Take It Back"
+- Bad: "HAchubby's Funny Moment", "xQc Reacts"
+- Max 60 chars, no emojis, no channel suffix
+- NEVER mention: "Stream", "Twitch", "Live"
+```
+
+Merge Shorts результат у `exports/metadata.json` → `shortsMetadata[]` (додати `hashtags: ["#DailyDoseOfStream","#TwitchClips","#Shorts","#<streamer>"]` програмно).
+
+Зберегти повний `exports/metadata.json`.
 
 ---
 

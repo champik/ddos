@@ -1,44 +1,21 @@
 'use strict';
-// gen-captions.js — phrase-based ASS captions from transcripts
-// Shorts: all phrases, word-by-word reveal within each phrase
-// Usage:
-//   node scripts/gen-captions.js <projectDir>               — all clips in clipOrder
-//   node scripts/gen-captions.js <projectDir> --shorts-only — only shortClipIds, no episode.ass
+// gen-captions.js — phrase-based ASS captions from transcripts for Shorts
+// Usage: node scripts/gen-captions.js <projectDir>
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const projectDir = process.argv[2];
-const shortsOnly = process.argv.includes('--shorts-only');
-if (!projectDir) { console.error('Usage: node gen-captions.js <projectDir> [--shorts-only]'); process.exit(1); }
+if (!projectDir) { console.error('Usage: node gen-captions.js <projectDir>'); process.exit(1); }
 
-require('./progress').step(projectDir, 9, shortsOnly ? 'Субтитри для шортсів' : 'Субтитри ASS');
+require('./progress').step(projectDir, 9, 'Субтитри для шортсів');
 
 function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, '')); }
-const plan   = readJson(path.join(projectDir, 'edit/episode-plan.json'));
-const scored = readJson(path.join(projectDir, 'clips/scored-clips.json'));
+const plan = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 
 // Read editorial for per-clip overrides (captionsOff etc.)
 let editorialClips = {};
 try { editorialClips = readJson(path.join(projectDir, 'edit/editorial.json')).clips || {}; } catch {}
-
-// Game IDs where subtitles add little value unless the clip is very funny
-const GAMING_IDS = new Set(['32399','516575','32982','18122','21779','27471','33214','493057']);
-const CHAT_IDS   = new Set(['509658','509672']); // Just Chatting, IRL
-
-const scoreMap = {};
-for (const c of scored) scoreMap[c.id] = c;
-
-function longformCaptionsEnabled(clipId) {
-  const c = scoreMap[clipId];
-  if (!c) return true; // unknown → include
-  const gameId = String(c.game_id || '');
-  if ((c.musicRisk || 0) > 60) return false;         // music-heavy → skip
-  if (CHAT_IDS.has(gameId))    return true;           // Just Chatting / IRL → always on
-  if (GAMING_IDS.has(gameId))  return (c.funnyScore || 0) > 65; // gaming → only if very funny
-  return (c.funnyScore || 0) > 60;                   // other → threshold
-}
 
 // Hot words trigger emotional highlight
 const HOT = new Set(['no','bro','what','wait','oh','stop','go','yes','wtf','literally',
@@ -102,21 +79,6 @@ function isEmotional(phraseWords) {
 const YELLOW = '&H003DFFF5';
 const WHITE  = '&H00E6F0F4';
 
-// Longform header — 1920×1080, Impact 72px, yellow, heavy outline
-const LONGFORM_HEADER = `[Script Info]
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-WrapStyle: 1
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Impact,72,${YELLOW},${YELLOW},&H00000000,&HCC000000,-1,0,0,0,100,100,0,0,1,4,0,2,10,10,100,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-`;
-
 // Vertical/shorts header — 1080×1920, larger, same yellow
 const VERTICAL_HEADER = `[Script Info]
 ScriptType: v4.00+
@@ -133,29 +95,9 @@ Style: Hot,Impact,82,${WHITE},${WHITE},&H00000000,&HCC000000,-1,0,0,0,100,100,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-// Generate longform ASS — emotional phrases only, shown as whole phrase
-function genLongformAss(words, header, offset = 0) {
-  if (!words || words.length === 0) return header;
-  const phrases = groupIntoPhrases(words);
-  const lines = [header];
-
-  for (const phraseWords of phrases) {
-    if (!isEmotional(phraseWords)) continue;
-
-    const startT = phraseWords[0].start + offset;
-    const endT   = phraseWords[phraseWords.length - 1].end + offset + 0.1;
-    const text   = phraseWords.map(w => w.word.trim().toUpperCase()).join(' ');
-
-    if (endT > startT + 0.1) {
-      lines.push(`Dialogue: 0,${toAssTime(startT)},${toAssTime(endT)},Default,,0,0,0,,{\\an2}${text}`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
 // Generate vertical/shorts ASS — all phrases, word-by-word progressive reveal
-function genVerticalAss(words, header, offset = 0) {
+// anchorY: if set, positions text with \an5\pos(540, anchorY) — middle at that Y (for split mode junction)
+function genVerticalAss(words, header, offset = 0, anchorY = null) {
   if (!words || words.length === 0) return header;
   const phrases = groupIntoPhrases(words);
   const lines = [header];
@@ -174,7 +116,8 @@ function genVerticalAss(words, header, offset = 0) {
         const text  = accumulated.map(w => w.word.trim().toUpperCase()).join(' ');
         const hot   = isHot(phraseWords[i].word.trim());
         const style = hot ? 'Hot' : 'Default';
-        lines.push(`Dialogue: 0,${toAssTime(startT)},${toAssTime(endT)},${style},,0,0,0,,{\\an2}${text}`);
+        const pos   = anchorY != null ? `{\\an5\\pos(540,${anchorY})}` : `{\\an2}`;
+        lines.push(`Dialogue: 0,${toAssTime(startT)},${toAssTime(endT)},${style},,0,0,0,,${pos}${text}`);
       }
     }
   }
@@ -182,23 +125,12 @@ function genVerticalAss(words, header, offset = 0) {
   return lines.join('\n');
 }
 
-function getDuration(filePath) {
-  try {
-    return parseFloat(
-      execSync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`).toString().trim()
-    ) || 0;
-  } catch { return 0; }
-}
-
 // --- Per-clip ASS ---
-console.log('\n=== gen-captions.js' + (shortsOnly ? ' (shorts-only)' : '') + ' ===\n');
+console.log(`\n=== gen-captions.js ===\n`);
 
-// In shorts-only mode process only shortClipIds; otherwise all clips in clipOrder
-const clipIds = shortsOnly
-  ? (plan.shortClipIds || [])
-  : plan.clipOrder;
-
+const clipIds = plan.shortClipIds || [];
 let generated = 0;
+
 for (const clipId of clipIds) {
   const transcriptPath = path.join(projectDir, 'processed', clipId, 'transcript.json');
   if (!fs.existsSync(transcriptPath)) { console.log(`[SKIP] No transcript: ${clipId}`); continue; }
@@ -206,66 +138,31 @@ for (const clipId of clipIds) {
   const tr = readJson(transcriptPath);
   if (!tr.words || tr.words.length === 0) { console.log(`[SKIP] No words: ${clipId}`); continue; }
 
-  const enableLongform = longformCaptionsEnabled(clipId);
-  const lfAss = enableLongform
-    ? genLongformAss(tr.words, LONGFORM_HEADER)
-    : LONGFORM_HEADER; // empty — no dialogue lines
-  fs.writeFileSync(path.join(projectDir, 'processed', clipId, 'captions-longform.ass'), lfAss, 'utf8');
-
-  // captionsOff in editorial.short suppresses vertical (shorts) captions
+  // captionsOff in editorial.short suppresses captions
   const captionsOff = editorialClips[clipId]?.short?.captionsOff === true;
   if (captionsOff) {
     const assPath = path.join(projectDir, 'processed', clipId, 'captions-vertical.ass');
     if (fs.existsSync(assPath)) fs.unlinkSync(assPath);
-    console.log(`[SKIP] captions OFF (editorial): ${clipId}`);
+    console.log(`[SKIP] captions OFF: ${clipId}`);
     continue;
   }
 
-  // For clips with a single keep starting at t>0: clean.mp4 starts at 0, so shift
-  // transcript timestamps by -keepStart so captions align with the trimmed video
-  const keeps = editorialClips[clipId]?.keeps;
-  const keepStart = (keeps && keeps.length === 1 && keeps[0][0] > 0) ? keeps[0][0] : 0;
-  const keepEnd   = (keeps && keeps.length === 1) ? keeps[0][1] : Infinity;
-  const shortWords = keepStart > 0
-    ? tr.words.filter(w => w.start >= keepStart - 0.15 && w.start < keepEnd + 0.15)
-    : tr.words;
-  const vAss = genVerticalAss(shortWords, VERTICAL_HEADER, -keepStart);
+  // For split mode: position captions at webcam/gameplay junction
+  let anchorY = null;
+  const shortData = editorialClips[clipId]?.short;
+  if (shortData?.mode === 'split') {
+    const ratio = shortData?.split?.ratio ?? 0.7;
+    const gameH = Math.round(1920 * ratio);
+    const camH  = 1920 - gameH;
+    anchorY = camH;
+  }
+
+  const vAss = genVerticalAss(tr.words, VERTICAL_HEADER, 0, anchorY);
   fs.writeFileSync(path.join(projectDir, 'processed', clipId, 'captions-vertical.ass'), vAss, 'utf8');
 
   const phrases = groupIntoPhrases(tr.words);
-  const emotional = phrases.filter(isEmotional).length;
-  const lfTag = enableLongform ? `${emotional} emotional` : 'captions OFF';
   generated++;
-  console.log(`[OK] ${clipId} — ${tr.words.length} words, ${phrases.length} phrases (${lfTag})`);
+  console.log(`[OK] ${clipId} — ${tr.words.length} words, ${phrases.length} phrases`);
 }
 
-if (shortsOnly) {
-  console.log(`\n[DONE] Generated ${generated} shorts captions (vertical only, no episode.ass)\n`);
-} else {
-  // --- Merge episode.ass (full mode only — will be deleted before longform render) ---
-  const INTRO_DUR = 1.25;
-  const RECONNECT_DUR = 1.0;
-
-  let offset = INTRO_DUR;
-  const episodeLines = [LONGFORM_HEADER];
-
-  for (let gi = 0; gi < plan.groups.length; gi++) {
-    const group = plan.groups[gi];
-    for (const clipId of group.clipIds) {
-      const transcriptPath = path.join(projectDir, 'processed', clipId, 'transcript.json');
-      if (fs.existsSync(transcriptPath)) {
-        const tr = readJson(transcriptPath);
-        if (tr.words && tr.words.length > 0) {
-          const ass = genLongformAss(tr.words, '', offset);
-          episodeLines.push(...ass.split('\n').filter(l => l.startsWith('Dialogue:')));
-        }
-      }
-      const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
-      offset += getDuration(cleanPath);
-    }
-    if (gi < plan.groups.length - 1) offset += RECONNECT_DUR;
-  }
-
-  fs.writeFileSync(path.join(projectDir, 'edit/episode.ass'), episodeLines.join('\n'), 'utf8');
-  console.log(`\n[DONE] Generated ${generated} clip captions + episode.ass\n`);
-}
+console.log(`\n[DONE] Generated ${generated} shorts captions\n`);

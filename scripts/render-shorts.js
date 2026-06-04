@@ -20,26 +20,6 @@ function ffmpegPath(p) {
   return m[1] + '\\\\:' + m[2].replace(/\\/g, '/');
 }
 
-function shiftAssTime(t, offsetSecs) {
-  const [h, m, s] = t.trim().split(':');
-  let total = parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(s) - offsetSecs;
-  if (total < 0) total = 0;
-  const oh = Math.floor(total / 3600);
-  const om = Math.floor((total % 3600) / 60);
-  const os = (total % 60).toFixed(2).padStart(5, '0');
-  return `${oh}:${String(om).padStart(2, '0')}:${os}`;
-}
-
-function shiftAss(content, offsetSecs) {
-  return content.split('\n').map(line => {
-    if (!line.startsWith('Dialogue:')) return line;
-    const parts = line.split(',');
-    if (parts.length < 3) return line;
-    parts[1] = shiftAssTime(parts[1], offsetSecs);
-    parts[2] = shiftAssTime(parts[2], offsetSecs);
-    return parts.join(',');
-  }).join('\n');
-}
 
 const base      = path.resolve(projectDir);
 const plan      = readJson(path.join(base, 'edit/episode-plan.json'));
@@ -80,35 +60,7 @@ for (const clipId of clipIds) {
 
   const hasAss = fs.existsSync(assFile);
 
-  // Payoff-based start offset: if payoffStrength > 70, start 3s before peak
-  let startOffset = 0;
-  const scoreFile = path.join(base, 'processed', clipId, 'score.json');
-  if (fs.existsSync(scoreFile)) {
-    try {
-      const score = readJson(scoreFile);
-      const peak = score.peakMoment;
-      if ((score.payoffStrength || 0) > 70 && peak && peak.start > 3) {
-        const candidate = Math.max(0, peak.start - 3);
-        // Guard: don't seek past clip duration
-        const durR = spawnSync('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration',
-          '-of', 'csv=p=0', input], { encoding: 'utf8' });
-        const clipDur = parseFloat(durR.stdout) || 999;
-        if (candidate < clipDur - 1) startOffset = candidate;
-      }
-    } catch {}
-  }
-  if (startOffset > 0) {
-    console.log(`  [PAYOFF START] offset=${startOffset.toFixed(1)}s (peak at ${(startOffset + 3).toFixed(1)}s)`);
-  }
-
-  // Write shifted ASS if needed
-  let activeAssFile = assFile;
-  let tmpAssPath = null;
-  if (startOffset > 0 && hasAss) {
-    tmpAssPath = assFile.replace('.ass', '_shifted.ass');
-    fs.writeFileSync(tmpAssPath, shiftAss(fs.readFileSync(assFile, 'utf8'), startOffset), 'utf8');
-    activeAssFile = tmpAssPath;
-  }
+  const activeAssFile = assFile;
 
   const short  = getShort(clipId);
   const mode   = short?.mode || 'desktop';
@@ -116,8 +68,7 @@ for (const clipId of clipIds) {
   const useAss = hasAss && !noSubs;
   console.log(`[SHORT:${mode.toUpperCase()}] ${clipId.slice(0, 28)}${useAss ? ' +captions' : ''}`);
 
-  const seekArgs = startOffset > 0 ? ['-ss', startOffset.toFixed(3)] : [];
-  let filterParts, ffInputs = [...seekArgs, '-i', input];
+  let filterParts, ffInputs = ['-i', input];
 
   if (mode === 'mobile') {
     // ── MOBILE: crop selected 9:16 region ────────────────────────────────────
@@ -180,8 +131,6 @@ for (const clipId of clipIds) {
     '-movflags', '+faststart',
     '-y', output
   ], { stdio: 'pipe', encoding: 'utf8' });
-
-  if (tmpAssPath) { try { fs.unlinkSync(tmpAssPath); } catch {} }
 
   if (r.status === 0) {
     console.log(`[OK] ${clipId.slice(0, 32)}`);

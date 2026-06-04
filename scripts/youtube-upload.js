@@ -199,8 +199,9 @@ async function publishVideo(videoId) {
 
 // publish-all: publish main video now + schedule shorts at +Xhr, +2Xhr, ...
 // publishNowISO — optional, when to make main video public (default: now)
+// selectedTitle — optional, overrides metadata.json title
 // shortIntervalMinutes — optional, minutes between shorts (default: 60)
-async function publishAll(runId, publishNowISO, shortIntervalMinutes) {
+async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinutes) {
   const intervalMs = (parseFloat(shortIntervalMinutes) || 60) * 60 * 1000;
   const statePath = path.join('projects', runId, 'state.json');
   if (!fs.existsSync(statePath)) throw new Error(`state.json not found for runId: ${runId}`);
@@ -208,6 +209,27 @@ async function publishAll(runId, publishNowISO, shortIntervalMinutes) {
 
   const mainVideoId = state.outputs && state.outputs.youtubeVideoId;
   if (!mainVideoId) throw new Error('Main video not uploaded yet. Run upload-video first.');
+
+  // 0. Update title if provided
+  if (selectedTitle) {
+    const auth = await getAuth();
+    const yt = google.youtube({ version: 'v3', auth });
+    const metaPath = path.join('projects', runId, 'exports', 'metadata.json');
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    const currentSnippet = (await yt.videos.list({ part: ['snippet'], id: [mainVideoId] })).data.items[0]?.snippet;
+    if (currentSnippet) {
+      await yt.videos.update({
+        part: ['snippet'],
+        requestBody: {
+          id: mainVideoId,
+          snippet: { ...currentSnippet, title: selectedTitle.slice(0, 100), categoryId: currentSnippet.categoryId || '22' }
+        }
+      });
+      meta.selectedTitle = selectedTitle;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+      console.log(`Title updated: "${selectedTitle}"`);
+    }
+  }
 
   // 1. Publish main video
   const mainPublishTime = publishNowISO ? new Date(publishNowISO) : new Date();
@@ -278,7 +300,7 @@ const cmds = {
   'upload-video':  () => uploadVideo(...args),
   'upload-short':  () => uploadShort(...args),
   'publish-video': () => publishVideo(args[0]),
-  'publish-all':   () => publishAll(args[0], args[1], args[2])
+  'publish-all':   () => publishAll(args[0], args[1], args[2], args[3])
 };
 if (!cmds[cmd]) { console.error('Unknown command:', cmd, '\nValid: upload-video, upload-short, publish-video, publish-all'); process.exit(1); }
 cmds[cmd]().catch(e => { console.error('Error:', e.message); process.exit(1); });

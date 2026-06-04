@@ -28,6 +28,12 @@ if (!fs.existsSync(editorialPath)) {
 const editorial = JSON.parse(fs.readFileSync(editorialPath, 'utf8'));
 const thumbnails = editorial.thumbnails || [];
 
+const downloadedPath = path.join(projectDir, 'clips', 'downloaded-clips.json');
+const downloaded = fs.existsSync(downloadedPath)
+  ? JSON.parse(fs.readFileSync(downloadedPath, 'utf8'))
+  : [];
+const localPaths = Object.fromEntries(downloaded.map(c => [c.id, c.localPath]));
+
 if (thumbnails.length === 0) {
   console.error('No thumbnails defined in editorial.json');
   process.exit(1);
@@ -39,9 +45,10 @@ const secondaryThumbs = thumbnails.filter((t) => !t.main);
 // ── frame extraction ──────────────────────────────────────────────────────────
 
 function extractFrame(clipId, atSec, outPath, crop) {
-  const cleanMp4 = path.join(projectDir, 'processed', clipId, 'clean.mp4');
+  const srcMp4 = localPaths[clipId] || path.join(projectDir, 'processed', clipId, 'clean.mp4');
+  const cleanMp4 = srcMp4;
   if (!fs.existsSync(cleanMp4)) {
-    throw new Error(`clean.mp4 not found for clip ${clipId}: ${cleanMp4}`);
+    throw new Error(`source video not found for clip ${clipId}: ${cleanMp4}`);
   }
   let vf = '';
   if (crop && crop.w < 99) {

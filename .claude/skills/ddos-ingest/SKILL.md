@@ -1,6 +1,6 @@
 # Skill: ddos-ingest
 
-Отримай кліпи з Twitch, відфільтруй, розрахуй pre-score, завантаж найкращі.
+Отримай кліпи з Twitch, відфільтруй, відбери кандидатів для завантаження.
 
 ---
 
@@ -54,7 +54,10 @@ curl -s "https://api.twitch.tv/helix/games/top?first=20" \
 
 ### Запит кліпів
 
-Для кожної категорії:
+Для кожної категорії — послідовні сторінки без пропусків:
+
+- **JC/IRL** (509658, 509672): **15 сторінок** → до 300 кліпів кожна
+- **Решта категорій**: **5 сторінок** → до 100 кліпів кожна
 
 ```
 GET https://api.twitch.tv/helix/clips
@@ -64,14 +67,6 @@ GET https://api.twitch.tv/helix/clips
   &after=<cursor>
 ```
 
-**Hybrid sampling:**
-
-- Top range: 1 сторінка (20 кліпів)
-- Mid range: пропустити 1 сторінку cursor, взяти 2 сторінки (40 кліпів)
-- Hidden gems (для 4 random категорій): пропустити 3 сторінки, взяти 1 сторінку (20 кліпів)
-
-Мета: **300–500 metadata кандидатів** загалом.
-
 Зберегти у `clips/raw-clips.json`. Оновити `state.counts.raw`.
 
 ---
@@ -79,7 +74,7 @@ GET https://api.twitch.tv/helix/clips
 ## FILTER — Metadata фільтрація (до download)
 
 ```bash
-node scripts/progress.js "projects/<runId>" 2 "Фільтрація та pre-score"
+node scripts/progress.js "projects/<runId>" 2 "Фільтрація та відбір кандидатів"
 ```
 
 **Офіційні org-акаунти (відхиляти):**
@@ -89,109 +84,58 @@ esl_csgo, eslcs, blasttv, pgl, riotgames, valorant, esl_dota2,
 weplay_esports, faceit, dreamhack, esltv, iem
 ```
 
+**Перед фільтром — fetch VTuber tags (batch):**
+
+```
+GET /helix/channels?broadcaster_id=id1&broadcaster_id=id2...
+```
+До 100 broadcaster_id за запит. Якщо канал має тег `"vtuber"` — додати broadcaster_id до `vtuberBroadcasterIds`.
+
 **Відхиляти кліп якщо будь-яка умова:**
 
-| Умова                                                                                       | Причина           |
-| ------------------------------------------------------------------------------------------- | ----------------- |
-| `language != "en"`                                                                          | non_english       |
-| title (lowercase) містить: русский/россия/russian/путін/рф                                  | ru_keyword        |
-| `broadcaster_name` (lowercase) в org-списку                                                 | tournament_official |
-| title (lowercase) містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event  |
-| game_name (lowercase) містить: slots/casino/gambling/betting/poker                          | gambling          |
-| `duration < 6` або `duration > 90`                                                          | duration          |
+| Умова | Причина |
+| --- | --- |
+| `language != "en"` | non_english |
+| title містить: русский/россия/russian/путін/рф | ru_keyword |
+| `broadcaster_name` в org-списку | official_broadcaster |
+| `broadcaster_name` в blacklist: lyasyaa, qoqsik | streamer_blacklist |
+| `broadcaster_id` в vtuberBroadcasterIds | vtuber |
+| title містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event |
+| game_name містить: slots/casino/gambling/betting/poker/tarkov/overwatch/marvel rivals/sports betting | banned_game |
+| `duration < 6` або `duration > 90` | duration |
+
+**ORG_BLACKLIST** (official broadcasters, не стрімери):
+- Esports: esl_csgo, eslcs, blasttv, pgl, riotgames, valorant, esl_dota2, weplay_esports, faceit, dreamhack, esltv, iem
+- Sports/Media: espn, espn2, nba, nfl, mlb, nhl, ufc, cnn, bbcnews, skynews, twitch, twitchgaming, twitchrivals
+- Gaming media: gamespot, ign, kotaku
+- Esports leagues: lolesports, lcs, lec, lck, lpl, dota2ti, pgl_dota2, overwatchleague, callofduty, fifa
 
 Зберегти у `filtered-clips.json` і `rejected-clips.json`.
 Оновити `state.counts.filtered`.
 
 ---
 
-## PRE-SCORE — Відбір кліпів для download
+## SELECT — Відбір кандидатів для download
 
-Для кожного filtered кліпу розрахувати `preScore` (0–100):
+Без formulas — простий bucket відбір по velocity і popularity.
 
-```javascript
-const coreIds = ['509658','509672','26936','116747788','32399','516575','21779','29595','493057'];
-
-// Pass 1: build broadcasterMaxViews for ratio signal
-const broadcasterMaxViews = new Map();
-for (const clip of filteredClips) {
-  const cur = broadcasterMaxViews.get(clip.broadcaster_name) || 0;
-  if (clip.view_count > cur) broadcasterMaxViews.set(clip.broadcaster_name, clip.view_count);
-}
-
-function calcPreScore(clip, seenStreamers, seenCategories) {
-  // velocityScore: views/hour, log scale — 5k views/hr = 100
-  // Replaces raw viewsScore + noveltyScore (age is already penalized via velocity)
-  const hoursAlive = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5);
-  const velocity = clip.view_count / hoursAlive;
-  const velocityScore = Math.min(100, (Math.log10(velocity + 1) / Math.log10(5000)) * 100);
-
-  // broadcasterRatioScore: how dominant is this clip among all clips from this broadcaster in dataset
-  // clip that is the top clip from its broadcaster = 100; 10% of top = 10
-  const maxViews = broadcasterMaxViews.get(clip.broadcaster_name) || clip.view_count;
-  const ratioScore = Math.min(100, (clip.view_count / Math.max(maxViews, 1)) * 100);
-
-  // categoryScore: core = 88, dynamic = 60
-  const categoryScore = coreIds.includes(clip.game_id) ? 88 : 60;
-
-  // durationScore: 15–60s = 100, 6–15s = 60, 60–90s = 70
-  const d = clip.duration;
-  const durationScore = d >= 15 && d <= 60 ? 100 : d < 15 ? 60 : 70;
-
-  // riskPenalty
-  const title = (clip.title || '').toLowerCase();
-  const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
-
-  const baseScore = (
-    velocityScore * 0.40 +
-    ratioScore    * 0.15 +
-    categoryScore * 0.25 +
-    durationScore * 0.20
-  ) - riskPenalty;
-
-  // Diversity: soft cap multipliers, applied per streamer AND per category independently
-  const streamerCount  = seenStreamers.get(clip.broadcaster_name) || 0;
-  const categoryCount  = seenCategories.get(clip.game_id) || 0;
-  const streamerMult   = streamerCount === 0 ? 1.0 : streamerCount === 1 ? 0.85 : 0.70;
-  const categoryMult   = categoryCount < 5  ? 1.0 : categoryCount < 10  ? 0.90 : 0.80;
-
-  // Exceptional viral clips bypass diversity penalty
-  const isViral = velocityScore > 80 || (ratioScore >= 100 && velocityScore > 60);
-  const diversityMult  = isViral ? 1.0 : streamerMult * categoryMult;
-
-  return Math.max(0, Math.min(100, baseScore * diversityMult));
-}
-
-// Pass 2: score — process sorted by velocity so top clip from each streamer wins full score
-const seenStreamers  = new Map();
-const seenCategories = new Map();
-const scored = filteredClips
-  .sort((a, b) => (b.view_count / Math.max((Date.now() - new Date(b.created_at)) / 3600000, 0.5))
-                - (a.view_count / Math.max((Date.now() - new Date(a.created_at)) / 3600000, 0.5)))
-  .map(clip => {
-    const score = calcPreScore(clip, seenStreamers, seenCategories);
-    seenStreamers.set(clip.broadcaster_name, (seenStreamers.get(clip.broadcaster_name) || 0) + 1);
-    seenCategories.set(clip.game_id, (seenCategories.get(clip.game_id) || 0) + 1);
-    return { ...clip, preScore: score };
-  })
-  .sort((a, b) => b.preScore - a.preScore);
-```
-
-**Download buckets (100 кліпів):**
-
-Для кожного бакету: viral = sort by views/hour, popularity = sort by view_count.
+**Bucket структура (100 кліпів):**
 
 ```
-JC/IRL     → до 50  (30 viral + 20 popularity)
-Specialty  → до 10  (7 viral + 3 popularity, max 6 з однієї категорії)
-Gaming     → до 40  (30 viral + 10 popularity, max 5 з однієї гри)
+JC/IRL     → до 50  (30 по velocity + 20 по popularity, max 3/streamer)
+Specialty  → до 10  (7 по velocity + 3 по popularity, max 6/cat, max 3/streamer)
+Gaming     → до 40  (30 по velocity + 10 по popularity, max 5/game, max 3/streamer)
 ```
 
+- `velocity` = `view_count / hoursAlive`
+- `popularity` = raw `view_count`
 - JC/IRL: game_id in [509658, 509672]
 - Specialty: game_id in [26936, 116747788]
 - Gaming: все інше (core gaming + dynamic)
 
-Зберегти у `clips/prescore-candidates.json`. Оновити `state.stages.prescore = "done"`.
+JC/IRL мінімум 50: якщо після bucket selection JC/IRL < 50 — swap найменш вірусні non-JC/IRL кліпи на додаткові JC/IRL по velocity.
+
+Зберегти у `clips/prescore-candidates.json`. Оновити `state.stages.select = "done"`.
 
 ---
 

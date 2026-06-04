@@ -85,12 +85,12 @@ node scripts/youtube-upload.js upload-short \
 
 ---
 
-## Команда `/ddos approve <runId>`
+## Команда `/approve`
 
-Обробляється в `.claude/commands/approve.md`. Після approve:
+Обробляється в `.claude/commands/approve.md`. Приймає JSON з `title` і `thumbnail`. Після approve:
 
 ```bash
-node scripts/youtube-upload.js publish-all "<runId>"
+node scripts/youtube-upload.js publish-all "<runId>" "" "<selectedTitle>"
 ```
 
 Оновити `state.status = "published"`.

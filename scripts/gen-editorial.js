@@ -7,39 +7,25 @@ const runId = process.argv[2];
 const RUN_DIR = path.join('projects', runId);
 const CLIPS_DIR = path.join(RUN_DIR, 'clips');
 
-const scored = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'scored-clips.json'), 'utf8'));
+const downloaded = JSON.parse(fs.readFileSync(path.join(CLIPS_DIR, 'downloaded-clips.json'), 'utf8'));
 const state = JSON.parse(fs.readFileSync(path.join(RUN_DIR, 'state.json'), 'utf8'));
-const episodeNumber = state.episodeNumber || 13;
+const episodeNumber = state.episodeNumber || 1;
 
-// bench-extra.json = clips that were downloaded and scored but swapped out of main 100
-const benchExtraPath = path.join(CLIPS_DIR, 'bench-extra.json');
-const benchExtraRaw = fs.existsSync(benchExtraPath)
-  ? JSON.parse(fs.readFileSync(benchExtraPath, 'utf8'))
-  : [];
-
-// Build clip objects for editorial
 function buildEditorialClip(c) {
   return {
     id: c.id,
     streamer: c.broadcaster_name,
-    category: c._categoryName,
+    category: c._categoryName || c.game_name,
     gameId: c.game_id,
     duration: c.duration,
-    ddosScore: c.ddosScore,
     videoPath: '../downloads/' + path.basename(c.localPath),
     title: c.title,
     viewCount: c.view_count,
     language: c.language,
-    thumbnailPotential: c.thumbnailPotential,
-    shortsPotential: c.shortsPotential,
-    emotionalCategory: c.emotionalCategory,
-    flags: c.flags || [],
-    reasoning: c.reasoning,
   };
 }
 
-// Order: JC/IRL → Gaming → Music/Specialty, sorted by ddosScore within each group
-// Clips marked bench:true go to bench; rest go to selected
+// Order: JC/IRL → Gaming → Music/Specialty, sorted by view_count within each group
 const JC_IRL_IDS = new Set(['509658', '509672']);
 const MUSIC_IDS = new Set(['26936', '116747788']);
 
@@ -49,23 +35,11 @@ function clipGroup(c) {
   return 2; // Music/Specialty
 }
 
-const selected = [...scored]
+const selected = [...downloaded]
   .sort((a, b) => {
     const gd = clipGroup(a) - clipGroup(b);
-    return gd !== 0 ? gd : b.ddosScore - a.ddosScore;
+    return gd !== 0 ? gd : b.view_count - a.view_count;
   })
-  .map(buildEditorialClip);
-
-// bench = swapped-out clips that were scored but excluded from main selection
-// Merge bench-extra scores from processed/<id>/score.json
-const benchExtraScored = benchExtraRaw.map((c) => {
-  const scorePath = path.join(RUN_DIR, 'processed', c.id, 'score.json');
-  const score = fs.existsSync(scorePath) ? JSON.parse(fs.readFileSync(scorePath, 'utf8')) : {};
-  return { ...c, ...score };
-});
-
-const bench = benchExtraScored
-  .sort((a, b) => (b.ddosScore || 0) - (a.ddosScore || 0))
   .map(buildEditorialClip);
 
 const totalDuration = selected.reduce((s, c) => s + c.duration, 0);
@@ -78,7 +52,7 @@ const editorialData = {
   runId,
   episodeNumber,
   selected,
-  bench,
+  bench: [],
 };
 
 // Read template
@@ -98,7 +72,6 @@ const episodePlan = {
     streamer: c.streamer,
     title: c.title,
     duration: c.duration,
-    ddosScore: c.ddosScore,
   })),
 };
 fs.writeFileSync(
@@ -111,6 +84,13 @@ state.stages.generate_editorial = 'done';
 state.stages.editorial = 'pending';
 state.counts.selected = selected.length;
 fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2));
+
+// Write scored-clips.json for downstream compat (no scoring fields, just clip metadata)
+const scoredClips = downloaded.map(c => ({
+  ...c,
+  _categoryName: c._categoryName || c.game_name,
+}));
+fs.writeFileSync(path.join(CLIPS_DIR, 'scored-clips.json'), JSON.stringify(scoredClips, null, 2));
 
 console.log(`[EDITORIAL] edit.html saved to ${path.join(RUN_DIR, 'edit/edit.html')}`);
 

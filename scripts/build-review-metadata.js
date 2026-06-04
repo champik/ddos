@@ -144,9 +144,6 @@ for (let i = 0; i < plan.groups.length; i++) {
   if (i < plan.groups.length - 1) offset += rcDur;
 }
 
-if (plan.chillPlan && plan.chillPlan.type !== 'skip') {
-  chapters.push({ t: Math.round(offset), label: 'Chill Outro' });
-}
 
 const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
 

@@ -24,24 +24,23 @@
   "stages": {
     "ingest": "pending",
     "filter": "pending",
+    "select": "pending",
     "download": "pending",
-    "transcribe": "pending",
-    "score": "pending",
     "generate_editorial": "pending",
     "editorial": "pending",
     "trim": "pending",
-    "hooks": "pending",
+    "transcribe": "pending",
     "overlays": "pending",
-    "captions": "pending",
     "reconnecting": "pending",
     "renderLong": "pending",
+    "captions": "pending",
     "renderShorts": "pending",
     "thumbnail": "pending",
     "metadata": "pending",
     "review": "pending",
     "publish": "pending"
   },
-  "counts": { "raw": 0, "filtered": 0, "downloaded": 0, "scored": 0 },
+  "counts": { "raw": 0, "filtered": 0, "downloaded": 0 },
   "outputs": { "longformPath": null, "thumbnailPath": null, "shortsPaths": [] }
 }
 ```
@@ -53,9 +52,8 @@
 Якщо stage "failed" — записати помилку і продовжувати далі якщо можливо.
 
 **Порядок:**
-1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай INGEST + FILTER + DOWNLOAD
-2. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай TRANSCRIBE + SCORE + PEAK MOMENT + CHILL CLIP ACCUMULATION
-3. Прочитай `.claude/skills/ddos-score/SKILL.md` → виконай GENERATE_EDITORIAL ← **зупинка тут**
+1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай INGEST + FILTER + SELECT + DOWNLOAD
+2. Запусти `node scripts/gen-editorial.js <runId>` → GENERATE_EDITORIAL ← **зупинка тут**
 
 ### Крок 3 — Показати користувачу і зупинитись
 

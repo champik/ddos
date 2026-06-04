@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Usage: node scripts/cleanup-episode.js <runId>
 // Deletes large intermediate files after episode is published.
-// Keeps: clips/*.json, processed/score.json+transcript.json+hook.txt+*.ass, edit/plan+shorts+concat, exports/*, state.json, review/
+// Keeps: clips/*.json, processed/transcript.json+*.ass, edit/plan+shorts+concat, exports/*, state.json, review/
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -64,7 +64,6 @@ console.log('\n[edit intermediates]');
 const editDir = path.join(projectDir, 'edit');
 totalFreed += deleteFile(path.join(editDir, 'raw-episode.mp4'));
 totalFreed += deleteFile(path.join(editDir, 'reconnecting.mp4'));
-totalFreed += deleteGlob(editDir, /^chill-.+\.mp4$/i);
 totalFreed += deleteGlob(editDir, /^reconnecting-panel\.webm$/i);
 
 console.log(`\nFreed: ${fmtMB(totalFreed)} total`);

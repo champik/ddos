@@ -24,7 +24,6 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .clip-streamer{font-weight:600;font-size:14px}
 .clip-cat{color:#555;font-size:11px}
 .clip-dur-display{color:#888;font-family:monospace;font-size:11px}
-.clip-score{background:#f5ff3d18;color:#f5ff3d;border-radius:4px;padding:2px 6px;font-size:11px;font-family:monospace}
 .card-tags{display:flex;gap:5px;margin-left:auto;align-items:center}
 .tag{border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700;opacity:0.28;border:1px solid currentColor;cursor:pointer;letter-spacing:.3px;transition:opacity .12s}
 .tag:hover{opacity:.65}.tag.on{opacity:1}
@@ -106,7 +105,6 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .bench-card:hover{border-color:#2a2a3a}
 .bench-card.sortable-ghost{opacity:0.3}
 .bench-streamer{font-weight:600;font-size:13px;flex:1}
-.bench-score{color:#f5ff3d;font-size:11px;font-family:monospace}
 .bench-dur{color:#555;font-size:11px;font-family:monospace}
 .bench-add{background:#1a1a24;border:1px solid #2a2a2f;border-radius:5px;padding:3px 9px;color:#888;font-size:11px;cursor:pointer;flex-shrink:0}
 .bench-add:hover{border-color:#f5ff3d55;color:#f4f0e6}
@@ -182,62 +180,35 @@ const MOCK_CLIPS_DATA = {
     {
       id: "ImpartialHungryPorpoiseGingerPower-dfbu4rdLoyX5-UR4",
       streamer: "wendolynortizz", category: "IRL", gameId: "509672",
-      duration: 59.9, ddosScore: 77, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_wendolynortizz_9555_2026_05_28.mp4",
-      title: "fight for jonny", viewCount: 9555, language: "en",
-      thumbnailPotential: 70, shortsPotential: 68, emotionalCategory: "fail",
-      flags: [], reasoning: "IRL street fight with Spanish reactions — visually engaging chaos."
+      duration: 59.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_wendolynortizz_9555_2026_05_28.mp4",
+      title: "fight for jonny", viewCount: 9555, language: "en"
     },
     {
       id: "InexpensiveWimpyStarTF2John-QXpJEtFq2K7S2DG_",
       streamer: "TenzinNiznet", category: "Just Chatting", gameId: "509658",
-      duration: 45.7, ddosScore: 65.2, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_tenzinniznet_5599_2026_05_27.mp4",
-      title: "LMFAO", viewCount: 5599, language: "en",
-      thumbnailPotential: 72, shortsPotential: 80, emotionalCategory: "fail",
-      flags: [], reasoning: "IRL parking panic with sensors beeping — universally funny."
+      duration: 45.7, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_tenzinniznet_5599_2026_05_27.mp4",
+      title: "LMFAO", viewCount: 5599, language: "en"
     },
     {
       id: "ResilientStylishPlumberShazBotstix-35tpi0puI8SCgC9F",
       streamer: "Jinnytty", category: "Just Chatting", gameId: "509658",
-      duration: 35.9, ddosScore: 64.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_jinnytty_4353_2026_05_27.mp4",
-      title: "Romanian Medieval Cat attack!!", viewCount: 4353, language: "en",
-      thumbnailPotential: 80, shortsPotential: 85, emotionalCategory: "surprise",
-      flags: [], reasoning: "Jinnytty gets bitten by wild cat at Romanian castle — instantly funny."
+      duration: 35.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_jinnytty_4353_2026_05_27.mp4",
+      title: "Romanian Medieval Cat attack!!", viewCount: 4353, language: "en"
     },
     {
       id: "TangentialAuspiciousGorillaSMOrc-J3kqeLsHcIwmtHmU",
       streamer: "dano_mall", category: "IRL", gameId: "509672",
-      duration: 29.9, ddosScore: 55.8, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_dano_mall_777_2026_05_28.mp4",
-      title: "dano moment", viewCount: 777, language: "en",
-      thumbnailPotential: 60, shortsPotential: 65, emotionalCategory: "other",
-      flags: [], reasoning: "Short IRL moment."
+      duration: 29.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_dano_mall_777_2026_05_28.mp4",
+      title: "dano moment", viewCount: 777, language: "en"
     },
     {
       id: "SquareWildFriseeFreakinStinkin-gAHsGOUrPWAF0EOl",
       streamer: "BLASTDota", category: "Dota 2", gameId: "29595",
-      duration: 59.9, ddosScore: 58.4, videoPath: "../../projects/Episode_13_2026_05_28/downloads/dota_2_blastdota_7956_2026_05_27.mp4",
-      title: "BLAST Dota highlight", viewCount: 7956, language: "en",
-      thumbnailPotential: 62, shortsPotential: 60, emotionalCategory: "hype",
-      flags: [], reasoning: "Esports highlight."
+      duration: 59.9, videoPath: "../../projects/Episode_13_2026_05_28/downloads/dota_2_blastdota_7956_2026_05_27.mp4",
+      title: "BLAST Dota highlight", viewCount: 7956, language: "en"
     }
   ],
-  bench: [
-    {
-      id: "OutstandingPopularSharkFutureMan-PKV9tS4_6lvqPllu",
-      streamer: "TinaKitten", category: "Just Chatting", gameId: "509658",
-      duration: 58.6, ddosScore: 62.4, videoPath: "../../projects/Episode_13_2026_05_28/downloads/just_chatting_tinakitten_1897_2026_05_28.mp4",
-      title: "Tina on Bra Double Standards", viewCount: 1897, language: "en",
-      thumbnailPotential: 68, shortsPotential: 72, emotionalCategory: "other",
-      flags: [], reasoning: "TinaKitten rant — relatable topic but lacks sharp payoff."
-    },
-    {
-      id: "SolidBelovedWitchMrDestructoid-K2RWUjdRp5gQvhqW",
-      streamer: "erobb221", category: "IRL", gameId: "509672",
-      duration: 59.9, ddosScore: 55.7, videoPath: "../../projects/Episode_13_2026_05_28/downloads/irl_erobb221_2108_2026_05_28.mp4",
-      title: "erobb moment", viewCount: 2108, language: "en",
-      thumbnailPotential: 65, shortsPotential: 70, emotionalCategory: "fail",
-      flags: [], reasoning: "erobb IRL fail."
-    }
-  ]
+  bench: []
 };
 const CLIPS_DATA = (() => { try { return __CLIPS_JSON__; } catch(e) { return MOCK_CLIPS_DATA; } })();
 </script>
@@ -400,10 +371,9 @@ function buildClipCard(clip, num) {
       <span class="drag-handle" data-handle="true">⠿</span>
       <span class="clip-num">#${num}</span>
       <span class="clip-streamer">${clip.streamer}</span>
+      <span style="color:#f5ff3d;font-size:11px;display:flex;align-items:center;gap:3px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${clip.viewCount >= 1000 ? (clip.viewCount >= 10000 ? Math.round(clip.viewCount/1000)+'k' : (clip.viewCount/1000).toFixed(1)+'k') : clip.viewCount}</span>
       <span class="clip-cat">· ${clip.category}</span>
       <span class="clip-dur-used" id="dur-used-${clip.id}" style="font-family:monospace;font-size:11px;color:#555"><span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clip.id))}</span>/${fmtTimeSec(clip.duration)}</span>
-      <span class="clip-score">${clip.ddosScore}</span>
-      <span style="color:#555;font-family:monospace;font-size:10px">${clip.viewCount >= 1000 ? (clip.viewCount >= 10000 ? Math.round(clip.viewCount/1000)+'k' : (clip.viewCount/1000).toFixed(1)+'k') : clip.viewCount}</span>
       <div class="card-tags">
         ${isShort ? `<span class="tag tag-short on" style="cursor:default">SHORT</span>` : ''}
         ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB${isMain ? ' ★' : ''}</span>` : ''}
@@ -1550,7 +1520,7 @@ function renderBench() {
       <div class="bench-cards" id="bench-cat-${safeId}"></div>`;
     body.appendChild(catEl);
     const cardsEl = catEl.querySelector('.bench-cards');
-    clips.sort((a,b) => b.ddosScore - a.ddosScore).forEach(clip => cardsEl.appendChild(buildBenchCard(clip)));
+    clips.sort((a,b) => b.viewCount - a.viewCount).forEach(clip => cardsEl.appendChild(buildBenchCard(clip)));
   });
 }
 
@@ -1560,7 +1530,6 @@ function buildBenchCard(clip) {
   card.dataset.clipId = clip.id;
   card.innerHTML = `
     <span class="bench-streamer">${clip.streamer}</span>
-    <span class="bench-score">${clip.ddosScore}</span>
     <span class="bench-dur">${fmtTimeSec(clip.duration)}</span>
     <button class="bench-add" onclick="addFromBench('${clip.id}')">+</button>`;
   return card;
@@ -1690,7 +1659,7 @@ function updatePrompt() {
 
 function copyPrompt() {
   const json = buildJSON();
-  const text = `/resume\n\n${JSON.stringify(json, null, 2)}`;
+  const text = `/resume\n\n${JSON.stringify(json)}`;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.btn-copy');
     const origText = btn.textContent;

@@ -26,7 +26,8 @@ const mainThumb = thumbnails.find(t => t.main) || thumbnails[0];
 ### Крок 2 — V1: Puppeteer рендер (головний thumbnail)
 
 ```bash
-CLIP_SRC="processed/<mainThumb.clipId>/clean.mp4"
+# Використовуємо оригінальний кліп — at задано відносно нього в editorial UI
+CLIP_SRC=$(node -p "require('./clips/downloaded-clips.json').find(c=>c.id==='<mainThumb.clipId>')?.localPath")
 THUMB_AT=<mainThumb.at>  # або 60% тривалості якщо не задано
 
 ffmpeg -ss $THUMB_AT -i "$CLIP_SRC" -frames:v 1 -q:v 2 -y "exports/best-frame.png"
@@ -52,7 +53,7 @@ fi
 
 `exports/thumbnail.png` — йде в YouTube API при публікації.
 
-### Крок 3 — V2 і V3: Higgsfield генерація
+### Крок 3 — V2 і V3: Higgsfield генерація з оцінкою
 
 Запустити скрипт щоб отримати кадри і промпти:
 
@@ -63,22 +64,40 @@ node scripts/gen-thumbnails-higgsfield.js <runId>
 Скрипт виводить JSON з полями:
 - `mainFrame` — шлях до витягнутого кадру main thumbnail
 - `secondaryFrames` — масив кадрів secondary thumbnails
-- `v2.prompt` — промпт для Higgsfield (emotion enhancement)
-- `v2.outPath` — куди зберегти результат
-- `v3.prompt` — промпт для композитної сцени (null якщо менше 2 thumbnails)
-- `v3.outPath` — куди зберегти результат
+- `v2.prompt` / `v2.outPath`
+- `v3.prompt` / `v3.outPath` (null якщо менше 2 thumbnails)
 
-**V2 — emotion enhancement:**
-1. `media_upload` + `media_confirm` для `mainFrame`
-2. `generate_image` з `v2.prompt`, reference = uploaded media, модель `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
-3. Зберегти результат як `exports/thumbnail-v2.png`
+---
 
-**V3 — composite scene** (тільки якщо `v3 !== null`):
-1. `media_upload` + `media_confirm` для кожного кадру (`mainFrame` + `secondaryFrames`)
-2. `generate_image` з `v3.prompt`, всі кадри як references, модель `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
-3. Зберегти результат як `exports/thumbnail-v3.png`
+**Flow для кожного варіанту (V2 і V3 окремо):**
 
-Якщо Higgsfield недоступний або помилка — пропустити V2/V3, залогувати і продовжити.
+**Раунд 1 — паралельно дві моделі:**
+1. `media_upload` + `media_confirm` для потрібних кадрів
+2. Запустити `generate_image` двічі паралельно:
+   - модель `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
+   - модель `seedream4.5`, resolution `4k`, aspect_ratio `16:9`
+3. Отримати обидва результати, переглянути їх (Read image)
+4. Оцінити за критеріями (нижче) → вибрати кращий
+
+**Якщо переможець прийнятний** → зберегти і перейти далі.
+
+**Якщо обидва незадовільні** → Раунди 2 і 3: ще по одній спробі переможної моделі (або тієї що була ближче). Максимум 2 додаткові ретраї.
+
+**Якщо всі спроби незадовільні** → пропустити V2/V3, залогувати. V1 Puppeteer залишається основним.
+
+---
+
+**Критерії оцінки (пріоритет по порядку):**
+
+1. **Обличчя** — найважливіше. Людина на зображенні має бути впізнавано схожою на reference frame. Якщо обличчя змінилось, виглядає як інша людина або змішане — FAIL.
+
+2. **Відповідність промпту** — чи відображено головний момент/емоцію яка описана в промпті.
+
+3. **Якість як YouTube обкладинка** — висока контрастність, чітке головне фото, вільне місце для тексту (thumbnailHook), читабельно на 200px мобільному розмірі.
+
+---
+
+Зберегти результат: `exports/thumbnail-v2.png` і `exports/thumbnail-v3.png`.
 
 ### Крок 4 — Завершення
 

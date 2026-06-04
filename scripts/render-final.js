@@ -1,5 +1,5 @@
 'use strict';
-// render-final.js — burn captions and produce final episode
+// render-final.js — produce final episode from raw-episode.mp4
 // Usage: node scripts/render-final.js <projectDir> <episodeNumber>
 
 const { spawnSync } = require('child_process');
@@ -12,38 +12,17 @@ if (!projectDir) { console.error('Usage: node render-final.js <projectDir> [epis
 
 require('./progress').step(projectDir, 11, 'Рендер лонгформ');
 
-function ffmpegPath(p) {
-  const m = p.match(/^([A-Za-z]):(.*)/);
-  if (!m) return p.replace(/\\/g, '/');
-  return m[1] + '\\\\:' + m[2].replace(/\\/g, '/');
-}
 
 const base   = path.resolve(projectDir);
 const input  = path.join(base, 'edit/raw-episode.mp4');
-const assFile = path.join(base, 'edit/episode.ass');
 const output = path.join(base, `exports/episode-${epNum}.mp4`);
 
 if (!fs.existsSync(input)) { console.error('Missing:', input); process.exit(1); }
 
-const hasAss = fs.existsSync(assFile);
 console.log(`Input:  ${input}`);
-console.log(`ASS:    ${hasAss ? assFile : '(none)'}`);
 console.log(`Output: ${output}`);
 
-let args;
-if (hasAss) {
-  const assPath = ffmpegPath(assFile);
-  args = [
-    '-i', input,
-    '-vf', `ass=${assPath}`,
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '22',
-    '-c:a', 'copy',
-    '-movflags', '+faststart',
-    '-y', output
-  ];
-} else {
-  args = ['-i', input, '-c', 'copy', '-movflags', '+faststart', '-y', output];
-}
+const args = ['-i', input, '-c', 'copy', '-movflags', '+faststart', '-y', output];
 
 console.log('\nRendering...');
 const r = spawnSync('ffmpeg', args, { stdio: 'pipe', encoding: 'utf8' });

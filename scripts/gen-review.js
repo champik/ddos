@@ -47,15 +47,8 @@ function shortCat(name) {
     .replace('Subnautica 2', 'Sub2');
 }
 
-function scoreColor(v) {
-  if (v == null || v === '—') return '#f4f0e6';
-  if (v >= 60) return '#00ff88';
-  if (v >= 45) return '#f5ff3d';
-  return '#f4f0e6';
-}
 
 function getCleanDuration(clipId) {
-  // 1. Saved in score.json by trim-clips.js
   const scorePath = path.join(projectDir, 'processed', clipId, 'score.json');
   try {
     const sc = JSON.parse(fs.readFileSync(scorePath, 'utf8'));
@@ -71,40 +64,41 @@ function getCleanDuration(clipId) {
   return null;
 }
 
-function getHook(clipId) {
-  try {
-    return fs.readFileSync(path.join(projectDir, 'processed', clipId, 'hook.txt'), 'utf8').trim();
-  } catch { return ''; }
-}
-
-const COLS = 11;
+const COLS = 8;
 const RECONNECT_ROW = `  <tr class="reconnect-row"><td colspan="${COLS}">⟳ reconnect</td></tr>`;
+
+function fmtVelocity(clip) {
+  if (!clip.view_count || !clip.created_at) return '—';
+  const hours = Math.max((Date.now() - new Date(clip.created_at)) / 3600000, 0.5);
+  const avgViewers = clip.avg_viewers || 1000;
+  const normalized = clip.view_count / hours / avgViewers;
+  return normalized.toFixed(2) + 'x';
+}
 
 function makeClipRow(id, num) {
   const s = scored.find(x => x.id === id) || {};
-  let score = {};
-  try { score = JSON.parse(fs.readFileSync(path.join(projectDir, 'processed', id, 'score.json'), 'utf8')); } catch {}
-
-  const views = fmtViews(s.view_count);
   const twitchUrl = s.url || `https://clips.twitch.tv/${id}`;
-  const flags = (score.flags || []).join(', ') || '';
-  const ddos = score.ddosScore != null ? score.ddosScore : '—';
-  const viral = score.viralityScore != null ? score.viralityScore : '—';
-  const funny = score.funnyScore != null ? score.funnyScore : '—';
-  const shorts = score.shortsPotential != null ? score.shortsPotential : '—';
-  const inShorts = plan.shortClipIds.includes(id) ? ' <span style="color:#f5ff3d">★</span>' : '';
-  const reasoning = esc(score.reasoning || '');
+  const views = fmtViews(s.view_count);
+  const vel = fmtVelocity(s);
 
-  const origDur = s.duration || score.duration;
+  const origDur = s.duration;
   const cleanDur = getCleanDuration(id);
   const durStr = cleanDur != null
     ? `${fmtDur(cleanDur)}<span style="color:#555">/${fmtDur(origDur)}</span>`
     : fmtDur(origDur);
 
-  const hook = getHook(id);
-  const hookLine = hook ? `<div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#f4f0e6;text-transform:uppercase;margin-bottom:3px">${esc(hook)}</div>` : '';
-  const reasoningLine = reasoning ? `<div style="font-size:11px;color:#666;font-style:italic;margin-bottom:2px">${reasoning}</div>` : '';
-  const flagsLine = flags ? `<div style="font-size:11px;color:#ff6b6b;font-weight:600">${esc(flags)}</div>` : '';
+  // Tags cell
+  const edClip = (editorial.clips || {})[id] || {};
+  const tags = [];
+  if (plan.shortClipIds.includes(id)) {
+    const mode = edClip.short?.mode || 'desktop';
+    tags.push(`<span style="color:#a78bfa;font-size:10px;font-weight:700">SHORT:${mode.toUpperCase()}</span>`);
+  }
+  const isThumb = (editorial.thumbnails || []).some(t => t.clipId === id);
+  if (isThumb) tags.push(`<span style="color:#4ade80;font-size:10px;font-weight:700">THUMB</span>`);
+  const cuts = (edClip.keeps || []).length;
+  if (cuts > 0) tags.push(`<span style="color:#f5ff3d;font-size:10px;font-family:monospace">✂${cuts}</span>`);
+  const tagsStr = tags.join(' ') || '—';
 
   return `  <tr>
     <td>${num}</td>
@@ -112,12 +106,9 @@ function makeClipRow(id, num) {
     <td>${esc(shortCat(s.game_name))}</td>
     <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.title || '—')}</td>
     <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:11px">${durStr}</td>
-    <td style="font-weight:600;color:${scoreColor(ddos)}">${ddos}</td>
-    <td style="color:#888">${viral}</td>
-    <td>${funny}</td>
-    <td>${shorts}${inShorts}</td>
     <td>${views}</td>
-    <td style="min-width:200px;max-width:300px">${hookLine}${reasoningLine}${flagsLine}</td>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#888">${vel}</td>
+    <td style="white-space:nowrap">${tagsStr}</td>
   </tr>`;
 }
 
@@ -136,24 +127,19 @@ for (let gi = 0; gi < plan.groups.length; gi++) {
 }
 const rows = rowParts.join('\n');
 
-const selectedTitle = meta.selectedTitle || null;
 const titleOptionsArr = Array.isArray(meta.titleOptions)
   ? meta.titleOptions
   : Object.values(meta.titleOptions || {});
-const titleCards = selectedTitle
-  ? `  <div class="title-card title-card--selected"><span class="title-num">✓</span><span>${esc(selectedTitle)}</span></div>`
-  : titleOptionsArr.map((t, i) =>
-      `  <div class="title-card"><span class="title-num">${i + 1}</span><span>${esc(t)}</span></div>`
-    ).join('\n');
-const selectedTitleHtml = '';
-
-const pipeCaptions = (meta.thumbnailCaptions || []);
-const pipeTitleCards = pipeCaptions.map((t, i) =>
-  `  <div class="title-card"><span class="title-num" style="color:#aaa">${String.fromCharCode(65 + i)}</span><span style="color:#ccc">${esc(t)}</span></div>`
+const pipeCaptions = meta.thumbnailCaptions || [];
+const allTitles = [
+  ...titleOptionsArr.map((t, i) => ({ label: String(i + 1), text: t, style: '' })),
+  ...pipeCaptions.map((t, i) => ({ label: String.fromCharCode(65 + i), text: t, style: 'color:#aaa' }))
+];
+const titleCards = allTitles.map((item, i) =>
+  `  <div class="title-card${i === 0 ? ' title-selected' : ''}" onclick="selectTitle(this, ${JSON.stringify(item.text)})">`+
+  `<span class="title-num" style="${item.style}">${item.label}</span>`+
+  `<span>${esc(item.text)}</span></div>`
 ).join('\n');
-const pipeTitleSection = pipeCaptions.length > 0
-  ? `\n<div style="margin-top:16px;margin-bottom:6px;font-size:11px;color:#555;font-family:'JetBrains Mono',monospace;letter-spacing:1px;text-transform:uppercase">Pipe Style</div>\n<div class="title-cards">\n${pipeTitleCards}\n</div>`
-  : '';
 
 const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   `  <div class="short-card">
@@ -169,11 +155,15 @@ const shortsCount = (meta.shortsMetadata || []).length;
 
 const youtubeVideoId = state.outputs?.youtubeVideoId;
 const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof x === 'string' ? x : x.shortId).filter(Boolean);
+const firstTitle = allTitles[0]?.text || '';
 const approveBox = isPublished
   ? ''
   : `<div class="approve-box">
-  <p>Перевір все вище. Коли готово — виконай команду:</p>
-  <code>/ddos approve ${runId}</code>
+  <p>Вибери заголовок і thumbnail вище, потім скопіюй команду:</p>
+  <pre id="approve-cmd" style="background:#111;color:#f5ff3d;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">/approve
+
+${JSON.stringify({ runId, title: firstTitle, thumbnail: 'v1' }, null, 2)}</pre>
+  <button onclick="copyApprove()" style="background:#f5ff3d;color:#0e0e10;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:pointer">📋 Copy</button>
 </div>`;
 
 const html = `<!DOCTYPE html>
@@ -198,8 +188,8 @@ const html = `<!DOCTYPE html>
   .thumb-wrap img { max-width: 640px; width: 100%; border-radius: 10px; border: 2px solid #222; display: block; }
   .title-cards { display: flex; flex-direction: column; gap: 10px; max-width: 800px; }
   .title-card { background: #1a1a1e; padding: 14px 18px; border-radius: 8px; border: 2px solid #2a2a2e; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.15s; }
-  .title-card:hover { border-color: #f5ff3d; }
-  .title-card--selected { border-color: #f5ff3d; background: #1a2a0a; }
+  .title-card:hover { border-color: #f5ff3d55; }
+  .title-card.title-selected { border-color: #f5ff3d; background: #1a2a0a; }
   .title-num { font-family: 'Anton', sans-serif; color: #f5ff3d; font-size: 20px; min-width: 20px; }
   .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #222; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -256,28 +246,28 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 
 <div class="section">
 <h2>Thumbnail</h2>
-<div style="display:grid;grid-template-columns:repeat(${thumbCount >= 2 ? 3 : 2},1fr);gap:12px">
-  <div>
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V1 — Original (Puppeteer)</div>
-    <img src="../exports/thumbnail.png" alt="V1" style="width:100%;border-radius:6px">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+  <div class="thumb-option thumb-selected" onclick="selectThumb(this,'v1')" style="cursor:pointer;border-radius:8px;border:2px solid #f5ff3d;padding:8px">
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V1 — Puppeteer</div>
+    <img src="../exports/thumbnail.png" alt="V1" style="width:100%;border-radius:4px">
   </div>
-  <div>
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V2 — Emotion Enhanced (Higgsfield)</div>
-    <img src="../exports/thumbnail-v2.png" alt="V2" style="width:100%;border-radius:6px" onerror="this.style.opacity='.2';this.alt='not generated'">
+  <div class="thumb-option" onclick="selectThumb(this,'v2')" style="cursor:pointer;border-radius:8px;border:2px solid #2a2a2e;padding:8px">
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V2 — Higgsfield emotion</div>
+    <img src="../exports/thumbnail-v2.png" alt="V2" style="width:100%;border-radius:4px" onerror="this.parentElement.style.opacity='.4'">
   </div>
-  ${thumbCount >= 2 ? `<div>
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V3 — Composite Scene (Higgsfield)</div>
-    <img src="../exports/thumbnail-v3.png" alt="V3" style="width:100%;border-radius:6px" onerror="this.style.opacity='.2';this.alt='not generated'">
-  </div>` : ''}
+  <div class="thumb-option" onclick="selectThumb(this,'v3')" style="cursor:pointer;border-radius:8px;border:2px solid #2a2a2e;padding:8px">
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V3 — Higgsfield composite</div>
+    <img src="../exports/thumbnail-v3.png" alt="V3" style="width:100%;border-radius:4px" onerror="this.parentElement.style.opacity='.4'">
+  </div>
 </div>
 </div>
 
 <div class="section">
 <h2>Title Options</h2>
-${selectedTitleHtml}
+<div style="font-size:11px;color:#555;font-family:monospace;margin-bottom:12px">1-5 = curiosity/specific/emotion/direct/unexpected &nbsp;·&nbsp; A-C = pipe style</div>
 <div class="title-cards">
 ${titleCards}
-</div>${pipeTitleSection}
+</div>
 </div>
 
 <div class="section">
@@ -287,7 +277,7 @@ ${titleCards}
 <thead>
   <tr>
     <th>#</th><th>Streamer</th><th>Cat</th><th>Title</th><th>Dur</th>
-    <th>DDOS</th><th>Viral</th><th>Funny</th><th>Shorts</th><th>Views</th><th>Hook / Reasoning / Flags</th>
+    <th>Views</th><th>Vel/hr</th><th>Tags</th>
   </tr>
 </thead>
 <tbody>
@@ -315,6 +305,44 @@ ${shortsGrid}
 ${approveBox}
 
 </div>
+<script>
+const RUN_ID = ${JSON.stringify(runId)};
+let _title = ${JSON.stringify(firstTitle)};
+let _thumb = 'v1';
+
+function updateCmd() {
+  const el = document.getElementById('approve-cmd');
+  if (!el) return;
+  el.textContent = '/approve\\n\\n' + JSON.stringify({ runId: RUN_ID, title: _title, thumbnail: _thumb }, null, 2);
+}
+
+function selectTitle(el, text) {
+  _title = text;
+  document.querySelectorAll('.title-card').forEach(c => c.classList.remove('title-selected'));
+  el.classList.add('title-selected');
+  updateCmd();
+}
+
+function selectThumb(el, variant) {
+  _thumb = variant;
+  document.querySelectorAll('.thumb-option').forEach(c => {
+    c.style.borderColor = '#2a2a2e';
+    c.classList.remove('thumb-selected');
+  });
+  el.style.borderColor = '#f5ff3d';
+  el.classList.add('thumb-selected');
+  updateCmd();
+}
+
+function copyApprove() {
+  const text = document.getElementById('approve-cmd').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = event.target;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy', 2000);
+  });
+}
+</script>
 </body>
 </html>`;
 

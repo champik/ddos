@@ -144,29 +144,12 @@ async function main() {
 
   console.log(`After filter: ${filtered.length} (rejected ${rejected.length})`);
 
-  // Pre-score
+  // Sort by velocity (views/hour)
   const now = Date.now();
-  const broadcasterMaxViews = new Map();
-  for (const c of filtered) {
-    const cur = broadcasterMaxViews.get(c.broadcaster_name) || 0;
-    if (c.view_count > cur) broadcasterMaxViews.set(c.broadcaster_name, c.view_count);
+  function velocity(c) {
+    return c.view_count / Math.max((now - new Date(c.created_at)) / 3600000, 0.5);
   }
-
-  function calcPreScore(clip) {
-    const hoursAlive = Math.max((now - new Date(clip.created_at)) / 3600000, 0.5);
-    const velocity = clip.view_count / hoursAlive;
-    const velocityScore = Math.min(100, (Math.log10(velocity + 1) / Math.log10(5000)) * 100);
-    const maxViews = broadcasterMaxViews.get(clip.broadcaster_name) || clip.view_count;
-    const ratioScore = Math.min(100, (clip.view_count / Math.max(maxViews, 1)) * 100);
-    const durationScore = clip.duration >= 15 && clip.duration <= 60 ? 100 : clip.duration < 15 ? 60 : 70;
-    const title = (clip.title || '').toLowerCase();
-    const riskPenalty = title.includes('music') || title.includes('song') ? 15 : 0;
-    const baseScore = velocityScore*0.40 + ratioScore*0.15 + 88*0.25 + durationScore*0.20 - riskPenalty;
-    return Math.max(0, Math.min(100, baseScore));
-  }
-
-  const scored = filtered.map(c => ({ ...c, preScore: calcPreScore(c) }))
-    .sort((a, b) => b.preScore - a.preScore);
+  const scored = [...filtered].sort((a, b) => velocity(b) - velocity(a));
 
   // Prefer new streamers (not in existing), but allow repeats
   const newStreamers = scored.filter(c => !existingStreamers.has(c.broadcaster_name.toLowerCase()));
@@ -186,7 +169,7 @@ async function main() {
 
   console.log(`\nTo download: ${toDownload.length} clips`);
   toDownload.slice(0,20).forEach((c,i) =>
-    console.log(`  [${i+1}] ${c.broadcaster_name} — ${c.title.slice(0,50)} (preScore:${c.preScore.toFixed(0)}, views:${c.view_count}, lang:${c.language})`)
+    console.log(`  [${i+1}] ${c.broadcaster_name} — ${c.title.slice(0,50)} (views:${c.view_count}, vel:${velocity(c).toFixed(0)}/hr, lang:${c.language})`)
   );
 
   // Download
