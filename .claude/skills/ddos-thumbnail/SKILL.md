@@ -73,15 +73,17 @@ node scripts/gen-thumbnails-higgsfield.js <runId>
 
 **Раунд 1 — паралельно дві моделі:**
 1. `media_upload` + `media_confirm` для потрібних кадрів
-2. Запустити `generate_image` двічі паралельно:
-   - модель `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
-   - модель `seedream4.5`, resolution `4k`, aspect_ratio `16:9`
-3. Отримати обидва результати, переглянути їх (Read image)
-4. Оцінити за критеріями (нижче) → вибрати кращий
+2. Запустити `generate_image` **4 рази паралельно** (V2 і V3 одночасно):
+   - V2 × `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
+   - V2 × `seedream_v4_5`, quality `high`, aspect_ratio `16:9`
+   - V3 × `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
+   - V3 × `seedream_v4_5`, quality `high`, aspect_ratio `16:9`
+3. Дочекатись всіх 4, переглянути результати (Read image)
+4. Оцінити кожну пару (V2 і V3 окремо) → вибрати переможця
 
-**Якщо переможець прийнятний** → зберегти і перейти далі.
+**Якщо для версії є переможець** → зберегти і перейти далі.
 
-**Якщо обидва незадовільні** → Раунди 2 і 3: ще по одній спробі переможної моделі (або тієї що була ближче). Максимум 2 додаткові ретраї.
+**Якщо обидва для версії незадовільні** → Раунд 2: ще 2 генерації для тієї версії (nano + seedream). Максимум 3 раунди на версію.
 
 **Якщо всі спроби незадовільні** → пропустити V2/V3, залогувати. V1 Puppeteer залишається основним.
 
@@ -97,7 +99,17 @@ node scripts/gen-thumbnails-higgsfield.js <runId>
 
 ---
 
-Зберегти результат: `exports/thumbnail-v2.png` і `exports/thumbnail-v3.png`.
+Зберегти сирий результат як `exports/thumbnail-v2-raw.png` і `exports/thumbnail-v3-raw.png`.
+
+**Після вибору переможця** — накласти дефолтну плашку (hook text + yellow stripes) через Puppeteer:
+
+```bash
+# thumbnailHook береться з exports/metadata.json
+# V2: з текстом hook
+node scripts/render-thumbnail.js "exports/thumbnail-v2-raw.png" "<thumbnailHook>" "exports/thumbnail-v2.png"
+# V3: без тексту (--no-text), лише смуги
+node scripts/render-thumbnail.js "exports/thumbnail-v3-raw.png" "exports/thumbnail-v3.png" --no-text
+```
 
 ### Крок 4 — Завершення
 

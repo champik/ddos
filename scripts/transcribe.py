@@ -3,13 +3,9 @@ import os
 import json
 from pathlib import Path
 
-# Python 3.8+ on Windows requires explicit DLL directories for CUDA libs
-import site
-for _sp in site.getsitepackages():
-    for _sub in ['nvidia/cublas/bin', 'nvidia/cudnn/bin', 'nvidia/cuda_nvrtc/bin']:
-        _d = os.path.join(_sp, *_sub.split('/'))
-        if os.path.isdir(_d):
-            os.add_dll_directory(_d)
+# Windows: import torch first to let it initialize its own CUDA DLLs,
+# then ctranslate2 will find them already loaded
+import torch as _torch_init  # noqa: F401 — side effect: loads CUDA DLLs
 
 def transcribe(video_path, output_path, clip_id):
     out = Path(output_path)
@@ -24,13 +20,28 @@ def transcribe(video_path, output_path, clip_id):
 
     try:
         import whisperx
+        import torch
 
-        device = "cuda"
-        compute_type = "float16"
-
-        model = whisperx.load_model("large-v2", device=device, compute_type=compute_type)
-        audio = whisperx.load_audio(video_path)
-        result = model.transcribe(audio, batch_size=16)
+        if torch.cuda.is_available():
+            try:
+                device = "cuda"
+                compute_type = "float16"
+                model = whisperx.load_model("large-v2", device=device, compute_type=compute_type)
+                audio = whisperx.load_audio(video_path)
+                result = model.transcribe(audio, batch_size=16)
+            except Exception as cuda_err:
+                print(f"[CUDA FAIL] {cuda_err} — falling back to CPU")
+                device = "cpu"
+                compute_type = "int8"
+                model = whisperx.load_model("small", device=device, compute_type=compute_type)
+                audio = whisperx.load_audio(video_path)
+                result = model.transcribe(audio, batch_size=8)
+        else:
+            device = "cpu"
+            compute_type = "int8"
+            model = whisperx.load_model("small", device=device, compute_type=compute_type)
+            audio = whisperx.load_audio(video_path)
+            result = model.transcribe(audio, batch_size=8)
 
         language = result.get("language", "en")
 

@@ -100,10 +100,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 function genVerticalAss(words, header, offset = 0, anchorY = null) {
   if (!words || words.length === 0) return header;
   const phrases = groupIntoPhrases(words);
-  const lines = [header];
 
+  // Collect all events first, then clip overlaps
+  const events = [];
   for (const phraseWords of phrases) {
-    // Progressive reveal: show phrase with each additional word at its timestamp
     const accumulated = [];
     for (let i = 0; i < phraseWords.length; i++) {
       accumulated.push(phraseWords[i]);
@@ -115,10 +115,24 @@ function genVerticalAss(words, header, offset = 0, anchorY = null) {
       if (endT > startT + 0.04) {
         const text  = accumulated.map(w => w.word.trim().toUpperCase()).join(' ');
         const hot   = isHot(phraseWords[i].word.trim());
-        const style = hot ? 'Hot' : 'Default';
-        const pos   = anchorY != null ? `{\\an5\\pos(540,${anchorY})}` : `{\\an2}`;
-        lines.push(`Dialogue: 0,${toAssTime(startT)},${toAssTime(endT)},${style},,0,0,0,,${pos}${text}`);
+        events.push({ startT, endT, text, style: hot ? 'Hot' : 'Default' });
       }
+    }
+  }
+
+  // Sort by start and clip each event's end to the next event's start
+  events.sort((a, b) => a.startT - b.startT);
+  for (let i = 0; i < events.length - 1; i++) {
+    if (events[i].endT > events[i + 1].startT) {
+      events[i].endT = events[i + 1].startT;
+    }
+  }
+
+  const pos = anchorY != null ? `{\\an5\\pos(540,${anchorY})}` : `{\\an2}`;
+  const lines = [header];
+  for (const ev of events) {
+    if (ev.endT > ev.startT + 0.01) {
+      lines.push(`Dialogue: 0,${toAssTime(ev.startT)},${toAssTime(ev.endT)},${ev.style},,0,0,0,,${pos}${ev.text}`);
     }
   }
 

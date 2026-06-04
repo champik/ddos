@@ -115,10 +115,12 @@
           var bg = document.getElementById('bg');
           bg.style.backgroundImage = "url('" + c.img + "')";
           if (c.crop && c.crop.w < 99) {
-            bg.style.backgroundSize = (10000 / c.crop.w) + '% auto';
-            bg.style.backgroundPosition =
-              '-' + (c.crop.x / c.crop.w * 100).toFixed(4) + '% ' +
-              '-' + (c.crop.y / c.crop.h * 100).toFixed(4) + '%';
+            var imgW = 1920 / (c.crop.w / 100);
+            var imgH = 1080 / (c.crop.h / 100);
+            var offX = -(c.crop.x / 100) * imgW;
+            var offY = -(c.crop.y / 100) * imgH;
+            bg.style.backgroundSize = imgW + 'px ' + imgH + 'px';
+            bg.style.backgroundPosition = offX + 'px ' + offY + 'px';
           }
         }
 

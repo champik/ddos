@@ -232,7 +232,7 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
   }
 
   // 1. Publish main video
-  const mainPublishTime = publishNowISO ? new Date(publishNowISO) : new Date();
+  const mainPublishTime = (publishNowISO && publishNowISO.trim()) ? new Date(publishNowISO) : new Date();
   // If scheduled in the future, use publishAt; otherwise publish now
   if (mainPublishTime > new Date(Date.now() + 60000)) {
     const auth = await getAuth();

@@ -136,7 +136,7 @@ const allTitles = [
   ...pipeCaptions.map((t, i) => ({ label: String.fromCharCode(65 + i), text: t, style: 'color:#aaa' }))
 ];
 const titleCards = allTitles.map((item, i) =>
-  `  <div class="title-card${i === 0 ? ' title-selected' : ''}" onclick="selectTitle(this, ${JSON.stringify(item.text)})">`+
+  `  <div class="title-card" onclick="selectTitle(this, TITLES[${i}])">`+
   `<span class="title-num" style="${item.style}">${item.label}</span>`+
   `<span>${esc(item.text)}</span></div>`
 ).join('\n');
@@ -155,15 +155,16 @@ const shortsCount = (meta.shortsMetadata || []).length;
 
 const youtubeVideoId = state.outputs?.youtubeVideoId;
 const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof x === 'string' ? x : x.shortId).filter(Boolean);
-const firstTitle = allTitles[0]?.text || '';
 const approveBox = isPublished
   ? ''
   : `<div class="approve-box">
-  <p>Вибери заголовок і thumbnail вище, потім скопіюй команду:</p>
-  <pre id="approve-cmd" style="background:#111;color:#f5ff3d;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">/approve
-
-${JSON.stringify({ runId, title: firstTitle, thumbnail: 'v1' }, null, 2)}</pre>
-  <button onclick="copyApprove()" style="background:#f5ff3d;color:#0e0e10;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:pointer">📋 Copy</button>
+  <p>⚠️ <strong>Клікни на заголовок вище</strong>, потім скопіюй команду:</p>
+  <div id="selected-title-preview" style="display:none;background:#1a2a0a;border:2px solid #f5ff3d;border-radius:8px;padding:12px 16px;margin-bottom:12px">
+    <div style="font-size:10px;color:#888;font-family:'JetBrains Mono',monospace;letter-spacing:1px;margin-bottom:4px">ВИБРАНИЙ ЗАГОЛОВОК:</div>
+    <div id="selected-title-text" style="font-size:15px;font-weight:700;color:#f5ff3d;line-height:1.4"></div>
+  </div>
+  <pre id="approve-cmd" style="background:#111;color:#888;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">← спочатку вибери заголовок вище</pre>
+  <button onclick="copyApprove()" style="background:#555;color:#999;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:not-allowed" id="approve-btn" disabled>📋 Copy</button>
 </div>`;
 
 const html = `<!DOCTYPE html>
@@ -307,13 +308,28 @@ ${approveBox}
 </div>
 <script>
 const RUN_ID = ${JSON.stringify(runId)};
-let _title = ${JSON.stringify(firstTitle)};
+const TITLES = ${JSON.stringify(allTitles.map(t => t.text))};
+let _title = null;
 let _thumb = 'v1';
 
 function updateCmd() {
   const el = document.getElementById('approve-cmd');
+  const btn = document.getElementById('approve-btn');
+  const preview = document.getElementById('selected-title-preview');
+  const previewText = document.getElementById('selected-title-text');
   if (!el) return;
+  if (!_title) {
+    el.style.color = '#888';
+    el.textContent = '← спочатку вибери заголовок вище';
+    if (btn) { btn.disabled = true; btn.style.background = '#555'; btn.style.color = '#999'; btn.style.cursor = 'not-allowed'; }
+    if (preview) preview.style.display = 'none';
+    return;
+  }
+  el.style.color = '#f5ff3d';
   el.textContent = '/approve\\n\\n' + JSON.stringify({ runId: RUN_ID, title: _title, thumbnail: _thumb }, null, 2);
+  if (btn) { btn.disabled = false; btn.style.background = '#f5ff3d'; btn.style.color = '#0e0e10'; btn.style.cursor = 'pointer'; }
+  if (preview) preview.style.display = 'block';
+  if (previewText) previewText.textContent = _title;
 }
 
 function selectTitle(el, text) {
