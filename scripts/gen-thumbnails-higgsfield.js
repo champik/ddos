@@ -71,30 +71,17 @@ function extractFrame(clipId, atSec, outPath, crop) {
 
 // ── prompt builders ───────────────────────────────────────────────────────────
 
-function buildV2Prompt(clip) {
-  const emotions = {
-    funny:
-      'amplify the uncontrollable laughter on the person in @image_1 — face scrunched with joy, tears of amusement',
-    cringe:
-      'amplify the cringe on the person in @image_1 — exaggerated grimace, eyes squinting, visible discomfort',
-    fail: 'amplify the shock and disbelief on the person in @image_1 — jaw dropped, eyes impossibly wide, frozen in horror',
-    hype: 'amplify the triumph and intensity on the person in @image_1 — electric energy, fist clenched, eyes blazing',
-    surprise:
-      'amplify the pure shock on the person in @image_1 — frozen mid-gasp, eyes wide, hand raised to face',
-    emotional:
-      'amplify the raw vulnerability on the person in @image_1 — intense gaze, overwhelming genuine emotion',
-    other:
-      'dramatically exaggerate the facial expression of the person in @image_1 — wide open eyes, mouth open in shock or amusement, hyper-expressive face as if reacting to something unbelievable',
-  };
-  const emotionLine = emotions[clip.emotionalCategory] || emotions.other;
+function buildV2Prompt() {
   return (
-    `Ultra-high-quality YouTube thumbnail. ${emotionLine}. ` +
-    `Keep original scene lighting — do not add artificial rim lights, glows, or dramatic shadows on the face. ` +
-    `Hyperreal saturated colors, HDR high-contrast look. ` +
-    `Sharpen eyes and face details. ` +
-    `Remove all stream overlays, chat, UI elements, watermarks, alerts. ` +
-    `Keep the person in @image_1 fully recognizable — same face, same body position, amplified expression only. ` +
-    `Photorealistic, no artifacts. `
+    `Transform @image into a hyperbolized YouTube thumbnail reaction. ` +
+    `Take the exact expression the person already has and push it to the extreme. ` +
+    `If their mouth is open — make it more dramatically open. ` +
+    `If their mouth is closed — keep it closed, but make eyes wider, brows higher, expression more intense. ` +
+    `Never add an open mouth that does not exist in @image. ` +
+    `YouTube thumbnail aesthetic: extreme contrast, vivid saturated colors, ` +
+    `sharp face detail, cinematic lighting boost. ` +
+    `Remove all stream overlays, chat, UI, watermarks. ` +
+    `Photorealistic, no artifacts.`
   );
 }
 
@@ -162,7 +149,7 @@ const output = {
   secondaryFrames: secondaryFramePaths,
   v2: {
     outPath: path.join(exportsDir, 'thumbnail-v2.png'),
-    prompt: buildV2Prompt(mainMeta),
+    prompt: buildV2Prompt(),
   },
   v3:
     thumbnails.length >= 2
