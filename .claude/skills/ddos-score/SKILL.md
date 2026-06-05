@@ -1,7 +1,8 @@
 # Skill: ddos-score
 
-> **Цей skill більше не виконує scoring.** TRANSCRIBE, SCORE і PEAK MOMENT видалені.
-> GENERATE_EDITORIAL тепер викликається напряму з `run.md` через `node scripts/gen-editorial.js`.
+> **Цей skill виконує тільки GENERATE_EDITORIAL (Stage 1).**
+> TRANSCRIBE відбувається в Stage 2 — крок 2 resume skill (`node scripts/transcribe-batch.js`). Не пропускати.
+> GENERATE_EDITORIAL викликається напряму з `run.md` через `node scripts/gen-editorial.js`.
 
 ---
 

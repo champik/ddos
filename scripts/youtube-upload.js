@@ -201,7 +201,8 @@ async function publishVideo(videoId) {
 // publishNowISO — optional, when to make main video public (default: now)
 // selectedTitle — optional, overrides metadata.json title
 // shortIntervalMinutes — optional, minutes between shorts (default: 60)
-async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinutes) {
+// selectedThumbnail — optional, 'v1'/'v2'/'v3', saved to metadata for review display
+async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinutes, selectedThumbnail) {
   const intervalMs = (parseFloat(shortIntervalMinutes) || 60) * 60 * 1000;
   const statePath = path.join('projects', runId, 'state.json');
   if (!fs.existsSync(statePath)) throw new Error(`state.json not found for runId: ${runId}`);
@@ -226,6 +227,7 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
         }
       });
       meta.selectedTitle = selectedTitle;
+      if (selectedThumbnail) meta.selectedThumbnail = selectedThumbnail;
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
       console.log(`Title updated: "${selectedTitle}"`);
     }
@@ -300,7 +302,7 @@ const cmds = {
   'upload-video':  () => uploadVideo(...args),
   'upload-short':  () => uploadShort(...args),
   'publish-video': () => publishVideo(args[0]),
-  'publish-all':   () => publishAll(args[0], args[1], args[2], args[3])
+  'publish-all':   () => publishAll(args[0], args[1], args[2], args[3], args[4])
 };
 if (!cmds[cmd]) { console.error('Unknown command:', cmd, '\nValid: upload-video, upload-short, publish-video, publish-all'); process.exit(1); }
 cmds[cmd]().catch(e => { console.error('Error:', e.message); process.exit(1); });

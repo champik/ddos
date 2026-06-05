@@ -86,7 +86,7 @@ Respond ONLY with valid JSON, no markdown:
   "shortsMetadata": [
     {
       "clipId": "<id>",
-      "title": "<scroll-stopping hook — max 60 chars, no channel suffix, no emojis>",
+      "title": "<MUST start with streamer name, then action/hook — max 60 chars, no channel suffix, no emojis>",
       "description": "<50-80 words English. First sentence: streamer name + specific action + why it landed — no 'In this clip', no 'Check out', no 'Watch as'. Second sentence: context with game name or Just Chatting/IRL keyword + reaction or outcome detail. No generic phrases, no list, no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
       "hashtags": ["#DailyDoseOfStream","#TwitchClips","#Shorts","#<streamer>"]
     }
@@ -202,9 +202,10 @@ Respond ONLY with valid JSON:
 ]
 
 Title rules for Shorts:
-- Lead with the ACTION or SURPRISE from transcript — not the streamer name
-- Good: "She Walked Right Into Traffic Mid-Broadcast", "He Said It Live and Couldn't Take It Back"
-- Bad: "HAchubby's Funny Moment", "xQc Reacts"
+- MUST start with streamer name — no exceptions
+- After the name: action or surprise that hooks the viewer
+- Good: "HAchubby Walked Right Into Traffic Mid-Broadcast", "xQc Said It Live and Couldn't Take It Back"
+- Bad: "She Walked Right Into Traffic" (missing name), "HAchubby's Funny Moment" (vague action)
 - Max 60 chars, no emojis, no channel suffix
 - NEVER mention: "Stream", "Twitch", "Live"
 ```

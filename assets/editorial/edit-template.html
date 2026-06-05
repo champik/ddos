@@ -114,7 +114,8 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .prompt-title{color:#f5ff3d;font-size:11px;font-family:monospace;font-weight:700;margin-bottom:9px}
 .prompt-code{font-family:monospace;font-size:11px;color:#6aaa6a;line-height:1.75;white-space:pre;overflow-x:auto;max-height:300px}
 .prompt-actions{display:flex;gap:8px;margin-top:11px}
-.btn-copy-json{background:transparent;border:1px solid #f5ff3d;color:#f5ff3d;border-radius:6px;padding:7px 15px;font-size:12px;cursor:pointer}
+.btn-copy-json{background:transparent;border:1px solid #f5ff3d;color:#f5ff3d;border-radius:6px;padding:7px 15px;font-size:12px;cursor:pointer;transition:background .15s,color .15s}
+.btn-copy-json.copied{background:#f5ff3d;color:#0e0e10;border-color:#f5ff3d}
 .btn-add-recon{background:#160a0a;border:1px solid #ff4a4a44;border-radius:6px;padding:3px 10px;color:#ff6b6b;font-size:11px;cursor:pointer;font-weight:600;line-height:1}
 .btn-add-recon:hover{border-color:#ff6b6b88;background:#1a0808}
 .thumb-crop-box{position:absolute;border:2px solid #f5ff3d;background:rgba(245,255,61,.06);cursor:move;box-sizing:border-box;user-select:none}
@@ -137,6 +138,8 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .ctrl-btn.tag-short.on{color:#a78bfa;border-color:#a78bfa66;background:#a78bfa11}
 .ctrl-btn.tag-recon-src{color:#ff6b6b55;border-color:#ff4a4a22}
 .ctrl-btn.tag-recon-src.on{color:#ff6b6b;border-color:#ff4a4a66;background:#ff4a4a11}
+.twitch-link{display:inline-flex;align-items:center;flex-shrink:0;opacity:.4;transition:opacity .12s;text-decoration:none}
+.twitch-link:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -167,7 +170,7 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
     <div class="prompt-title">// GENERATED PROMPT</div>
     <div class="prompt-code" id="prompt-code">{}</div>
     <div class="prompt-actions">
-      <button class="btn-copy-json" onclick="copyPrompt()">📋 Copy JSON</button>
+      <button class="btn-copy-json" id="btn-copy-json" onclick="copyPrompt()">📋 Copy JSON</button>
     </div>
   </div>
 </div>
@@ -370,6 +373,7 @@ function buildClipCard(clip, num) {
     <div class="card-header" onclick="toggleCard(event,this)">
       <span class="drag-handle" data-handle="true">⠿</span>
       <span class="clip-num">#${num}</span>
+      ${clip.url ? `<a class="twitch-link" href="${clip.url}" target="_blank" onclick="event.stopPropagation()"><svg width="13" height="13" viewBox="0 0 24 24" fill="#9146ff" xmlns="http://www.w3.org/2000/svg"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg></a>` : ''}
       <span class="clip-streamer">${clip.streamer}</span>
       <span style="color:#f5ff3d;font-size:11px;display:flex;align-items:center;gap:3px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${clip.viewCount >= 1000 ? (clip.viewCount >= 10000 ? Math.round(clip.viewCount/1000)+'k' : (clip.viewCount/1000).toFixed(1)+'k') : clip.viewCount}</span>
       <span class="clip-cat">· ${clip.category}</span>
@@ -1661,10 +1665,10 @@ function copyPrompt() {
   const json = buildJSON();
   const text = `/resume\n\n${JSON.stringify(json)}`;
   navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('.btn-copy');
-    const origText = btn.textContent;
-    btn.textContent = '✓ Copied!';
-    setTimeout(() => { btn.textContent = origText; }, 2000);
+    const btn = document.getElementById('btn-copy-json');
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '📋 Copy JSON'; btn.classList.remove('copied'); }, 2000);
   });
 }
 </script>

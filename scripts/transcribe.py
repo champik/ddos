@@ -24,6 +24,9 @@ def transcribe(video_path, output_path, clip_id):
 
         if torch.cuda.is_available():
             try:
+                # Disable cuDNN RNN path — fixes CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH
+                # with pyannote VAD LSTM on PyTorch+cu128 / cuDNN 9.x
+                torch.backends.cudnn.enabled = False
                 device = "cuda"
                 compute_type = "float16"
                 model = whisperx.load_model("large-v2", device=device, compute_type=compute_type)

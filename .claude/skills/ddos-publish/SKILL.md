@@ -89,6 +89,13 @@ node scripts/youtube-upload.js upload-short \
 
 Обробляється в `.claude/commands/approve.md`. Приймає JSON з `title` і `thumbnail`. Після approve:
 
+**ВАЖЛИВО — перед заміною thumbnail.png зберегти оригінал:**
+```bash
+cp "projects/<runId>/exports/thumbnail.png" "projects/<runId>/exports/thumbnail-v1.png"
+```
+Це зберігає Puppeteer V1 як `thumbnail-v1.png` — він буде показуватись у review як V1.
+Після цього — копіювати обраний варіант (v2/v3) на `thumbnail.png` для upload.
+
 ```bash
 node scripts/youtube-upload.js publish-all "<runId>" "" "<selectedTitle>"
 ```

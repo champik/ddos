@@ -51,7 +51,12 @@ else
 fi
 ```
 
-`exports/thumbnail.png` — йде в YouTube API при публікації.
+Одразу після рендеру — зберегти копію як `thumbnail-v1.png`:
+```bash
+cp "exports/thumbnail.png" "exports/thumbnail-v1.png"
+```
+`thumbnail-v1.png` — завжди оригінальний Puppeteer рендер, не замінюється при approve.
+`thumbnail.png` — основний файл, може бути замінений на v2/v3 при approve.
 
 ### Крок 3 — V2 і V3: Higgsfield генерація з оцінкою
 

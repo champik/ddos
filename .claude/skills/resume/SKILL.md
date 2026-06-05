@@ -24,7 +24,32 @@
 }
 ```
 
-## Крок 1 — Зберегти editorial.json
+## Крок 1 — Перевірка стрімерів на причетність до Росії
+
+**ОБОВ'ЯЗКОВО перед будь-якою обробкою.**
+
+З отриманого JSON витягти всіх стрімерів з `clipOrder` (через `downloaded-clips.json` або `editorial.clips`).
+Перевірити кожного: чи є він громадянином РФ, чи публічно підтримував агресію проти України.
+
+Якщо знайдено підозрілого — **ЗУПИНИТИСЬ** і показати:
+```
+⚠️ СТОП — перевірка стрімерів
+
+streamer: <ім'я>
+проблема: <що відомо — громадянство, публічні заяви, дати>
+впевненість: висока / середня / немає інформації
+
+Додати в blacklist і прибрати з епізоду?
+```
+
+Чекати підтвердження користувача. Якщо підтверджено:
+1. Додати стрімера в blacklist у `CLAUDE.md` (поле `blacklist: Lyasyaa, Qoqsik, ...`)
+2. Оновити `memory/feedback-streamer-blacklist.md`
+3. Прибрати кліп з `clipOrder` і продовжити
+
+Якщо стрімер невідомий → написати "немає інформації, рекомендую перевірити вручну" і продовжити без блокування.
+
+## Крок 2 — Зберегти editorial.json
 
 Витягти JSON блок з повідомлення (перший `{...}` після рядка "Editorial decisions").
 Записати як `projects/<runId>/edit/editorial.json`.
@@ -65,12 +90,13 @@
 ```
 
 Порядок і меседжі:
-1. Вивести `[1/9] APPLY_EDITORIAL — обробка кліпів...` → запустити `scripts/apply-editorial.js <runId>` (clean.mp4 для кожного кліпу)
-2. Вивести `[2/9] HOOKS — генерую хуки...` → згенерувати хуки в розмові для кліпів з clipOrder (hook.txt)
-3. Вивести `[3/9] OVERLAYS — накладаю стрімер-оверлеї...` → OVERLAYS (ddos-render skill)
-4. Вивести `[4/9] RECONNECT — будую reconnecting clip...` → RECONNECT (ddos-render skill)
-5. Вивести `[5/9] RENDER LONG — рендерю епізод...` → RENDER LONG (ddos-render skill)
-6. Вивести `[6/9] CAPTIONS — генерую субтитри для шортсів...` → CAPTIONS (ddos-shorts skill)
-7. Вивести `[7/9] RENDER SHORTS — рендерю шортси...` → RENDER SHORTS (ddos-shorts skill)
-8. Вивести `[8/9] THUMBNAIL + METADATA — генерую обкладинку і метадані...` → THUMBNAIL (ddos-thumbnail skill) + METADATA (ddos-youtube-creatives skill)
-9. Вивести `[9/9] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill)
+1. Вивести `[1/10] APPLY_EDITORIAL — обробка кліпів...` → запустити `scripts/apply-editorial.js <runId>` (clean.mp4 для кожного кліпу)
+2. Вивести `[2/10] TRANSCRIBE — транскрипція кліпів...` → запустити `node scripts/transcribe-batch.js <runId>` (transcript.json для кожного кліпу з clipOrder)
+3. Вивести `[3/10] HOOKS — генерую хуки...` → згенерувати хуки в розмові для кліпів з clipOrder (hook.txt)
+4. Вивести `[4/10] OVERLAYS — накладаю стрімер-оверлеї...` → OVERLAYS (ddos-render skill)
+5. Вивести `[5/10] RECONNECT — будую reconnecting clip...` → RECONNECT (ddos-render skill)
+6. Вивести `[6/10] RENDER LONG — рендерю епізод...` → RENDER LONG (ddos-render skill)
+7. Вивести `[7/10] CAPTIONS — генерую субтитри для шортсів...` → CAPTIONS (ddos-shorts skill)
+8. Вивести `[8/10] RENDER SHORTS — рендерю шортси...` → RENDER SHORTS (ddos-shorts skill)
+9. Вивести `[9/10] THUMBNAIL + METADATA — генерую обкладинку і метадані...` → THUMBNAIL (ddos-thumbnail skill) + METADATA (ddos-youtube-creatives skill)
+10. Вивести `[10/10] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill)

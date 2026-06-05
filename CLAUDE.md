@@ -117,8 +117,8 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 ### Фільтри — ЗАВЖДИ відхиляти
 - language != "en" — будь-яка мова крім англійської (RU, UK, JA, KO, ZH, TH та всі інші)
 - title містить: русский, россия, russian, путін, рф (додатковий захист для хибно-класифікованих кліпів)
-- category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals
-- стрімер у blacklist: Lyasyaa, Qoqsik
+- category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals, Dark and Darker, Path of Exile 2
+- стрімер у blacklist: Lyasyaa, Qoqsik, vedal987 (VTuber)
 
 ### DDOS Score формула
 ```
@@ -190,7 +190,7 @@ assets/thumbnail-template/logo.svg         DDOS лого
 ## Skills
 
 - `ddos-ingest`    — Twitch API + filter + yt-dlp download
-- `ddos-score`     — GENERATE_EDITORIAL (transcribe + scoring видалені)
+- `ddos-score`     — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE — в Stage 2 через transcribe-batch.js
 - `ddos-render`    — FFmpeg trim + overlays + long-form render
 - `ddos-shorts`    — vertical crop + captions + shorts render
 - `ddos-thumbnail` — Puppeteer thumbnail + metadata generation

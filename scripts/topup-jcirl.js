@@ -63,7 +63,7 @@ function httpsPost(url, body) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const RU_KEYWORDS = ['русский','россия','russian','путін','рф','russki','rossia'];
-const ORG_ACCOUNTS = new Set(['esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem']);
+const ORG_ACCOUNTS = new Set(['esl_csgo','eslcs','eslcsb','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem','pubg_battlegrounds']);
 
 function isGambling(clip) {
   const name = (clip.game_name || '').toLowerCase();

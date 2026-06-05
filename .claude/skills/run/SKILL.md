@@ -15,11 +15,9 @@
 1. INGEST (ddos-ingest skill)
 2. FILTER (ddos-ingest skill)
 3. DOWNLOAD (ddos-ingest skill)
-4. TRANSCRIBE (ddos-score skill)
-5. SCORE (ddos-score skill)
-6. PEAK MOMENT (ddos-score skill)
-7. CHILL CLIP ACCUMULATION (ddos-score skill)
-8. GENERATE_EDITORIAL (ddos-score skill) ← зупинка тут
+4. GENERATE_EDITORIAL (ddos-score skill) ← зупинка тут
+
+> TRANSCRIBE відбувається в Stage 2 (resume skill, крок 2) — після editorial рішень, на clean.mp4.
 
 Після GENERATE_EDITORIAL — відкрити браузер і зупинитись:
 ```bash

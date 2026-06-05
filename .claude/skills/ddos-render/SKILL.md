@@ -85,10 +85,7 @@ Zoom punch та color punch effects вимкнені — реалізація в
 
 ## CAPTIONS
 
-Субтитри генеруються ТІЛЬКИ для шортсів — в рамках ddos-shorts skill, після вибору shortClipIds.
-На цьому етапі (ddos-render) субтитри НЕ генеруються.
-
-Встановити `state.stages.captions = "skip"` і продовжити.
+Субтитри генеруються в ddos-shorts skill (після RENDER LONG). Не пропускати — вони обов'язкові для шортсів.
 
 ---
 

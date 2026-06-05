@@ -48,7 +48,7 @@ curl -s "https://api.twitch.tv/helix/games/top?first=20" \
 З топ-20 взяти перші 5, виключивши:
 
 - id вже є в core
-- name (lowercase) містить: slots, casino, gambling, betting, poker, tarkov, overwatch, marvel rivals, sports betting
+- name (lowercase) містить: slots, casino, gambling, betting, poker, tarkov, overwatch, marvel rivals, sports betting, dark and darker, path of exile
 
 Результат: ~14 категорій загалом.
 
@@ -80,7 +80,7 @@ node scripts/progress.js "projects/<runId>" 2 "Фільтрація та від�
 **Офіційні org-акаунти (відхиляти):**
 
 ```
-esl_csgo, eslcs, blasttv, pgl, riotgames, valorant, esl_dota2,
+esl_csgo, eslcs, eslcsb, blasttv, pgl, riotgames, valorant, esl_dota2,
 weplay_esports, faceit, dreamhack, esltv, iem
 ```
 
@@ -101,14 +101,14 @@ GET /helix/channels?broadcaster_id=id1&broadcaster_id=id2...
 | `broadcaster_name` в blacklist: lyasyaa, qoqsik | streamer_blacklist |
 | `broadcaster_id` в vtuberBroadcasterIds | vtuber |
 | title містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event |
-| game_name містить: slots/casino/gambling/betting/poker/tarkov/overwatch/marvel rivals/sports betting | banned_game |
+| game_name містить: slots/casino/gambling/betting/poker/tarkov/overwatch/marvel rivals/sports betting/dark and darker/path of exile | banned_game |
 | `duration < 6` або `duration > 90` | duration |
 
 **ORG_BLACKLIST** (official broadcasters, не стрімери):
-- Esports: esl_csgo, eslcs, blasttv, pgl, riotgames, valorant, esl_dota2, weplay_esports, faceit, dreamhack, esltv, iem
+- Esports: esl_csgo, eslcs, eslcsb, blasttv, pgl, riotgames, valorant, esl_dota2, weplay_esports, faceit, dreamhack, esltv, iem
 - Sports/Media: espn, espn2, nba, nfl, mlb, nhl, ufc, cnn, bbcnews, skynews, twitch, twitchgaming, twitchrivals
 - Gaming media: gamespot, ign, kotaku
-- Esports leagues: lolesports, lcs, lec, lck, lpl, dota2ti, pgl_dota2, overwatchleague, callofduty, fifa
+- Esports leagues: lolesports, lcs, lec, lck, lpl, dota2ti, pgl_dota2, overwatchleague, callofduty, fifa, pubg_battlegrounds
 
 Зберегти у `filtered-clips.json` і `rejected-clips.json`.
 Оновити `state.counts.filtered`.

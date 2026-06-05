@@ -51,7 +51,7 @@ function httpsPost(url, body) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const RU_KW = ['русский','россия','russian','путін','рф'];
-const ORG   = new Set(['esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem']);
+const ORG   = new Set(['esl_csgo','eslcs','eslcsb','blasttv','pgl','riotgames','valorant','esl_dota2','weplay_esports','faceit','dreamhack','esltv','iem','pubg_battlegrounds']);
 
 function isRu(c) {
   if (RU_KW.some(k=>(c.title||'').toLowerCase().includes(k))) return true;

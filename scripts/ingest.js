@@ -151,7 +151,7 @@ async function main() {
 
   const ORG_BLACKLIST = new Set([
     // Esports tournament orgs
-    'esl_csgo','eslcs','blasttv','pgl','riotgames','valorant','esl_dota2',
+    'esl_csgo','eslcs','eslcsb','blasttv','pgl','riotgames','valorant','esl_dota2',
     'weplay_esports','faceit','dreamhack','esltv','iem',
     // Official broadcasters / media (not individual streamers)
     'espn','espn2','nba','nfl','mlb','nhl','ufc',
@@ -160,12 +160,12 @@ async function main() {
     'gamespot','ign','kotaku',
     'lolesports','lcs','lec','lck','lpl',
     'dota2ti','pgl_dota2','epicenter_cs',
-    'overwatchleague','callofduty','fifa',
+    'overwatchleague','callofduty','fifa','pubg_battlegrounds',
   ]);
   const STREAMER_BLACKLIST = new Set(['lyasyaa', 'qoqsik']);
   const RU_KEYWORDS = ['русский','россия','russian','путін','рф'];
   const TOURNAMENT_KEYWORDS = [' major',' grand final','championship',' tournament','qualifier'];
-  const BANNED_GAMES = ['slots','casino','gambling','betting','poker','tarkov','overwatch','marvel rivals','sports betting'];
+  const BANNED_GAMES = ['slots','casino','gambling','betting','poker','tarkov','overwatch','marvel rivals','sports betting','dark and darker','path of exile'];
 
   // Fetch VTuber tags via channels API (batch, 1-2 requests for all unique broadcaster_ids)
   console.log('[FILTER] Fetching channel tags to detect VTubers...');

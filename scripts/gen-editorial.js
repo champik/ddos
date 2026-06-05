@@ -15,13 +15,14 @@ function buildEditorialClip(c) {
   return {
     id: c.id,
     streamer: c.broadcaster_name,
-    category: c._categoryName || c.game_name,
+    category: c._categoryName || c.game_name || c._category,
     gameId: c.game_id,
     duration: c.duration,
     videoPath: '../downloads/' + path.basename(c.localPath),
     title: c.title,
     viewCount: c.view_count,
     language: c.language,
+    url: c.url,
   };
 }
 
@@ -60,24 +61,27 @@ const template = fs.readFileSync('assets/editorial/edit-template.html', 'utf8');
 const html = template.replace('__CLIPS_JSON__', JSON.stringify(editorialData, null, 2));
 fs.writeFileSync(path.join(RUN_DIR, 'edit/edit.html'), html);
 
-// Save episode-plan stub
-const episodePlan = {
-  runId,
-  episodeNumber,
-  generatedAt: new Date().toISOString(),
-  selectedCount: selected.length,
-  totalDurationEstimate: totalDuration,
-  clips: selected.map((c) => ({
-    id: c.id,
-    streamer: c.streamer,
-    title: c.title,
-    duration: c.duration,
-  })),
-};
-fs.writeFileSync(
-  path.join(RUN_DIR, 'edit/episode-plan.json'),
-  JSON.stringify(episodePlan, null, 2),
-);
+// Save episode-plan stub — only if clipOrder not yet set (resume hasn't run yet)
+const episodePlanPath = path.join(RUN_DIR, 'edit/episode-plan.json');
+const existingPlan = fs.existsSync(episodePlanPath)
+  ? JSON.parse(fs.readFileSync(episodePlanPath, 'utf8'))
+  : null;
+if (!existingPlan?.clipOrder) {
+  const episodePlan = {
+    runId,
+    episodeNumber,
+    generatedAt: new Date().toISOString(),
+    selectedCount: selected.length,
+    totalDurationEstimate: totalDuration,
+    clips: selected.map((c) => ({
+      id: c.id,
+      streamer: c.streamer,
+      title: c.title,
+      duration: c.duration,
+    })),
+  };
+  fs.writeFileSync(episodePlanPath, JSON.stringify(episodePlan, null, 2));
+}
 
 // Update state
 state.stages.generate_editorial = 'done';
@@ -88,7 +92,7 @@ fs.writeFileSync(path.join(RUN_DIR, 'state.json'), JSON.stringify(state, null, 2
 // Write scored-clips.json for downstream compat (no scoring fields, just clip metadata)
 const scoredClips = downloaded.map(c => ({
   ...c,
-  _categoryName: c._categoryName || c.game_name,
+  _categoryName: c._categoryName || c.game_name || c._category,
 }));
 fs.writeFileSync(path.join(CLIPS_DIR, 'scored-clips.json'), JSON.stringify(scoredClips, null, 2));
 

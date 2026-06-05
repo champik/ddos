@@ -13,7 +13,7 @@ const DOWNLOADS_DIR = path.join(RUN_DIR, 'downloads');
 const MAX_PARALLEL = 5;
 
 function buildFilename(clip) {
-  const cat = (clip.game_name || 'unknown')
+  const cat = (clip.game_name || clip._category || 'unknown')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');

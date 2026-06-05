@@ -90,7 +90,7 @@ function makeClipRow(id, num) {
   // Tags cell
   const edClip = (editorial.clips || {})[id] || {};
   const tags = [];
-  if (plan.shortClipIds.includes(id)) {
+  if ((plan.shortClipIds || []).includes(id)) {
     const mode = edClip.short?.mode || 'desktop';
     tags.push(`<span style="color:#a78bfa;font-size:10px;font-weight:700">SHORT:${mode.toUpperCase()}</span>`);
   }
@@ -135,11 +135,16 @@ const allTitles = [
   ...titleOptionsArr.map((t, i) => ({ label: String(i + 1), text: t, style: '' })),
   ...pipeCaptions.map((t, i) => ({ label: String.fromCharCode(65 + i), text: t, style: 'color:#aaa' }))
 ];
-const titleCards = allTitles.map((item, i) =>
-  `  <div class="title-card" onclick="selectTitle(this, TITLES[${i}])">`+
-  `<span class="title-num" style="${item.style}">${item.label}</span>`+
-  `<span>${esc(item.text)}</span></div>`
-).join('\n');
+const selectedTitle = meta.selectedTitle || '';
+const titleCards = allTitles.map((item, i) => {
+  const isSelected = isPublished && selectedTitle && item.text === selectedTitle;
+  const cls = isSelected ? ' title-selected' : '';
+  return `  <div class="title-card${cls}" onclick="selectTitle(this, TITLES[${i}])">`+
+    `<span class="title-num" style="${item.style}">${item.label}</span>`+
+    `<span>${esc(item.text)}</span>`+
+    (isSelected ? `<span style="margin-left:auto;color:#f5ff3d;font-size:13px">✓</span>` : '')+
+    `</div>`;
+}).join('\n');
 
 const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   `  <div class="short-card">
@@ -248,18 +253,22 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 <div class="section">
 <h2>Thumbnail</h2>
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-  <div class="thumb-option thumb-selected" onclick="selectThumb(this,'v1')" style="cursor:pointer;border-radius:8px;border:2px solid #f5ff3d;padding:8px">
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V1 — Puppeteer</div>
-    <img src="../exports/thumbnail.png" alt="V1" style="width:100%;border-radius:4px">
-  </div>
-  <div class="thumb-option" onclick="selectThumb(this,'v2')" style="cursor:pointer;border-radius:8px;border:2px solid #2a2a2e;padding:8px">
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V2 — Higgsfield emotion</div>
-    <img src="../exports/thumbnail-v2.png" alt="V2" style="width:100%;border-radius:4px" onerror="this.parentElement.style.opacity='.4'">
-  </div>
-  <div class="thumb-option" onclick="selectThumb(this,'v3')" style="cursor:pointer;border-radius:8px;border:2px solid #2a2a2e;padding:8px">
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace">V3 — Higgsfield composite</div>
-    <img src="../exports/thumbnail-v3.png" alt="V3" style="width:100%;border-radius:4px" onerror="this.parentElement.style.opacity='.4'">
-  </div>
+${[
+  { id: 'v1', label: 'V1 — Puppeteer', src: fs.existsSync(path.join(projectDir, 'exports/thumbnail-v1.png')) ? '../exports/thumbnail-v1.png' : '../exports/thumbnail.png' },
+  { id: 'v2', label: 'V2 — Higgsfield emotion', src: '../exports/thumbnail-v2.png' },
+  { id: 'v3', label: 'V3 — Higgsfield composite', src: '../exports/thumbnail-v3.png' },
+].map(t => {
+  const sel = isPublished
+    ? (meta.selectedThumbnail === t.id)
+    : (t.id === 'v1');
+  const border = sel ? '#f5ff3d' : '#2a2a2e';
+  const badge = sel && isPublished ? `<span style="color:#f5ff3d;margin-left:6px">✓</span>` : '';
+  const err = t.id !== 'v1' ? ` onerror="this.parentElement.style.opacity='.4'"` : '';
+  return `  <div class="thumb-option${sel ? ' thumb-selected' : ''}" onclick="selectThumb(this,'${t.id}')" style="cursor:pointer;border-radius:8px;border:2px solid ${border};padding:8px">
+    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace;display:flex;align-items:center">${t.label}${badge}</div>
+    <img src="${t.src}" alt="${t.id.toUpperCase()}" style="width:100%;border-radius:4px"${err}>
+  </div>`;
+}).join('\n')}
 </div>
 </div>
 
@@ -353,9 +362,17 @@ function selectThumb(el, variant) {
 function copyApprove() {
   const text = document.getElementById('approve-cmd').textContent;
   navigator.clipboard.writeText(text).then(() => {
-    const btn = event.target;
-    btn.textContent = '✓ Copied!';
-    setTimeout(() => btn.textContent = '📋 Copy', 2000);
+    const btn = document.getElementById('approve-btn');
+    btn.textContent = '✓ Copied';
+    btn.style.background = '#f5ff3d';
+    btn.style.color = '#0e0e10';
+    btn.style.cursor = 'default';
+    setTimeout(() => {
+      btn.textContent = '📋 Copy';
+      btn.style.background = '#f5ff3d';
+      btn.style.color = '#0e0e10';
+      btn.style.cursor = 'pointer';
+    }, 2000);
   });
 }
 </script>
