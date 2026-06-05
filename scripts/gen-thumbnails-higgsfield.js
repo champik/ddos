@@ -78,6 +78,7 @@ function buildV2Prompt() {
     `If their mouth is open — make it more dramatically open. ` +
     `If their mouth is closed — keep it closed, but make eyes wider, brows higher, expression more intense. ` +
     `Never add an open mouth that does not exist in @image. ` +
+    `Never add people or characters that are not in @image — only the person(s) already present. ` +
     `YouTube thumbnail aesthetic: extreme contrast, vivid saturated colors, ` +
     `sharp face detail, cinematic lighting boost. ` +
     `Remove all stream overlays, chat, UI, watermarks. ` +
