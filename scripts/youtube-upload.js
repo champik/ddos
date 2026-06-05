@@ -297,12 +297,23 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
   }
 }
 
+async function updateThumbnail(videoId, thumbnailPath) {
+  if (!videoId || !thumbnailPath) throw new Error('Usage: update-thumbnail <videoId> <thumbnailPath>');
+  if (!fs.existsSync(thumbnailPath)) throw new Error(`Thumbnail not found: ${thumbnailPath}`);
+  const auth = await getAuth();
+  const yt = google.youtube({ version: 'v3', auth });
+  const mimeType = thumbnailPath.endsWith('.jpg') || thumbnailPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+  await yt.thumbnails.set({ videoId, media: { mimeType, body: fs.createReadStream(thumbnailPath) } });
+  console.log(`Thumbnail updated: https://youtu.be/${videoId}`);
+}
+
 const [,, cmd, ...args] = process.argv;
 const cmds = {
-  'upload-video':  () => uploadVideo(...args),
-  'upload-short':  () => uploadShort(...args),
-  'publish-video': () => publishVideo(args[0]),
-  'publish-all':   () => publishAll(args[0], args[1], args[2], args[3], args[4])
+  'upload-video':     () => uploadVideo(...args),
+  'upload-short':     () => uploadShort(...args),
+  'publish-video':    () => publishVideo(args[0]),
+  'publish-all':      () => publishAll(args[0], args[1], args[2], args[3], args[4]),
+  'update-thumbnail': () => updateThumbnail(args[0], args[1]),
 };
 if (!cmds[cmd]) { console.error('Unknown command:', cmd, '\nValid: upload-video, upload-short, publish-video, publish-all'); process.exit(1); }
 cmds[cmd]().catch(e => { console.error('Error:', e.message); process.exit(1); });
