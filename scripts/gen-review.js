@@ -147,6 +147,49 @@ const shortsGrid = (meta.shortsMetadata || []).map(sm =>
   </div>`
 ).join('\n');
 
+// X section — merge xPublishAt from state if not in metadata
+const shortsPublishMap = Object.fromEntries(
+  (state.outputs?.youtubeShortsIds || []).map(s => [s.clipId, s.publishAt])
+);
+const xEpisodeCaption = meta.xEpisodeCaption || '';
+const xShortsData = (meta.shortsMetadata || []).map(sm => ({
+  ...sm,
+  xPublishAt: sm.xPublishAt || shortsPublishMap[sm.clipId] || null,
+}));
+const hasCleanFiles = xShortsData.some(s => {
+  const p = path.join(projectDir, 'exports', 'clean', s.clipId + '.mp4');
+  return require('fs').existsSync(p);
+});
+
+const xSection = `<div class="section">
+<h2>X Posts</h2>
+<div class="x-post-wrap">
+  <div class="x-post-label">Episode caption</div>
+  <div class="x-post-row">
+    <div class="x-caption-text">${esc(xEpisodeCaption || '—')}</div>
+    ${xEpisodeCaption ? `<button class="copy-btn" data-text="${esc(xEpisodeCaption)}" onclick="copyXText(this)">Copy</button>` : ''}
+  </div>
+</div>
+<div style="margin-top:24px">
+  <div class="x-post-label" style="margin-bottom:12px">Shorts schedule${hasCleanFiles ? ' <span style="color:#555;font-size:11px;font-weight:400;font-family:monospace">· files in exports/clean/</span>' : ''}</div>
+  <div class="x-shorts-list">
+  ${xShortsData.map(sm => {
+    const t = sm.xPublishAt ? new Date(sm.xPublishAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kiev' }) : '—';
+    const caption = sm.xCaption || sm.title || '';
+    const cleanFile = sm.clipId.slice(0, 24) + '….mp4';
+    return `  <div class="x-short-row">
+      <div class="x-time">${t}</div>
+      <div class="x-short-body">
+        <div class="x-caption-text">${esc(caption)}</div>
+        <div class="x-file">${cleanFile}</div>
+      </div>
+      ${caption ? `<button class="copy-btn" data-text="${esc(caption)}" onclick="copyXText(this)">Copy</button>` : ''}
+    </div>`;
+  }).join('\n  ')}
+  </div>
+</div>
+</div>`;
+
 const descEscaped = esc(meta.description);
 const tagsStr = esc(meta.tags.join(' · '));
 const shortsCount = (meta.shortsMetadata || []).length;
@@ -205,6 +248,18 @@ const html = `<!DOCTYPE html>
   .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
   .reconnect-row td { background: #111113; color: #383838; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #1e1e22; }
 
+  .x-post-wrap { background: #1a1a1e; border-radius: 10px; padding: 20px 24px; max-width: 800px; }
+  .x-post-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .x-post-row { display: flex; align-items: flex-start; gap: 12px; }
+  .x-caption-text { font-size: 14px; color: #f4f0e6; line-height: 1.6; flex: 1; }
+  .x-shorts-list { display: flex; flex-direction: column; gap: 10px; max-width: 800px; }
+  .x-short-row { background: #1a1a1e; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 16px; }
+  .x-time { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; color: #f5ff3d; min-width: 44px; }
+  .x-short-body { flex: 1; min-width: 0; }
+  .x-file { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #444; margin-top: 4px; }
+  .copy-btn { background: #2a2a2e; color: #f4f0e6; border: 1px solid #333; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-family: 'JetBrains Mono', monospace; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.15s; }
+  .copy-btn:hover { background: #f5ff3d; color: #0e0e10; border-color: #f5ff3d; }
+  .copy-btn.copied { background: #4ade80; color: #0e0e10; border-color: #4ade80; }
   .approve-box { background: #1a1a1e; padding: 24px; border-radius: 10px; border: 1px solid #333; margin-top: 48px; }
   .approve-box p { margin: 0 0 10px; color: #888; font-size: 14px; }
   code { color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; }
@@ -298,6 +353,8 @@ ${shortsGrid}
 </div>
 </div>
 
+${xSection}
+
 ${approveBox}
 
 </div>
@@ -338,6 +395,15 @@ function selectThumb(el, variant) {
   el.style.borderColor = '#f5ff3d';
   el.classList.add('thumb-selected');
   updateCmd();
+}
+
+function copyXText(btn) {
+  const text = btn.getAttribute('data-text');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
 }
 
 function copyApprove() {

@@ -12,6 +12,7 @@ if (!runId) { console.error('Usage: node scripts/apply-editorial.js <runId>'); p
 const projectDir = path.join('projects', runId);
 const editorialPath = path.join(projectDir, 'edit', 'editorial.json');
 const downloadedPath = path.join(projectDir, 'clips', 'downloaded-clips.json');
+const cleanExportDir = path.join(projectDir, 'exports', 'clean');
 
 if (!fs.existsSync(editorialPath)) {
   console.error('editorial.json not found:', editorialPath);
@@ -109,7 +110,16 @@ for (const clipId of editorial.clipOrder) {
   const result = spawnSync('ffmpeg', args, { stdio: 'inherit' });
 
   if (result.status !== 0) { console.error('FAILED:', clipId); failed++; }
-  else { console.log('OK:', clipId); processed++; }
+  else {
+    console.log('OK:', clipId);
+    processed++;
+    if (editorial.clips?.[clipId]?.short) {
+      fs.mkdirSync(cleanExportDir, { recursive: true });
+      const dest = path.join(cleanExportDir, clipId + '.mp4');
+      fs.copyFileSync(outPath, dest);
+      console.log('  → exports/clean/', clipId + '.mp4');
+    }
+  }
 }
 
 console.log(`\nDone: ${processed} processed, ${skipped} skipped, ${failed} failed`);

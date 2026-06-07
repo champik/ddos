@@ -287,6 +287,27 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
   finalState.status = 'published';
   fs.writeFileSync(statePath, JSON.stringify(finalState, null, 2));
 
+  // Write xPublishAt into metadata.json for each short so user can schedule X posts
+  const metaPath2 = path.join('projects', runId, 'exports', 'metadata.json');
+  if (fs.existsSync(metaPath2)) {
+    const meta2 = JSON.parse(fs.readFileSync(metaPath2, 'utf8'));
+    const shortsMap = Object.fromEntries((finalState.outputs?.youtubeShortsIds || []).map(s => [s.clipId, s]));
+    if (Array.isArray(meta2.shortsMetadata)) {
+      meta2.shortsMetadata = meta2.shortsMetadata.map(s => ({
+        ...s,
+        xPublishAt: shortsMap[s.clipId]?.publishAt || null,
+      }));
+      fs.writeFileSync(metaPath2, JSON.stringify(meta2, null, 2));
+      console.log('\nX post schedule:');
+      meta2.shortsMetadata.forEach(s => {
+        if (s.xPublishAt) {
+          const t = new Date(s.xPublishAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+          console.log(`  ${t}  ${s.xCaption || s.title}`);
+        }
+      });
+    }
+  }
+
   // Cleanup large intermediate files
   const { execFileSync } = require('child_process');
   try {
