@@ -130,35 +130,16 @@ function buildShortsTags(clipId) {
   return { descriptionHashtags, tags };
 }
 
-function replaceStreamersWithHashtags(text) {
-  const names = [...new Set(ALL_CLIP_IDS.map(id => byId[id]?.broadcaster_name).filter(Boolean))];
-  let result = text;
-  for (const name of names) {
-    const tag = '#' + name.replace(/[^a-zA-Z0-9]/g, '');
-    const re = new RegExp('(?<![#\\w])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w])', 'ig');
-    result = result.replace(re, matched => '#' + matched.replace(/[^a-zA-Z0-9]/g, ''));
-  }
-  return result;
-}
-
 function buildXEpisodeCaption() {
   const title = meta.selectedTitle || (meta.titleOptions && meta.titleOptions[0]) || '';
   if (!title) return '';
-  return replaceStreamersWithHashtags(title) + ' #Twitch #TwitchClips';
+  return title + ' #Twitch #TwitchClips';
 }
 
 function buildXShortCaption(clipId) {
   const s = (meta.shortsMetadata || []).find(x => x.clipId === clipId);
   if (!s) return '';
-  const c = byId[clipId];
-  const name = c?.broadcaster_name || '';
-  const tag = name ? '#' + name.replace(/[^a-zA-Z0-9]/g, '') : '';
-  let caption = s.title || '';
-  if (name && tag) {
-    const re = new RegExp('(?<![#\\w])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w])', 'ig');
-    caption = caption.replace(re, tag);
-  }
-  return caption + ' #Twitch';
+  return (s.title || '') + ' #Twitch';
 }
 
 function buildHashtags() {
