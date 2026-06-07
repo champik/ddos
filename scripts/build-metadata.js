@@ -197,15 +197,7 @@ fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
 console.log('[OK] metadata.json written');
 console.log(`\nTags (${meta.tags.length}): ${meta.tags.join(', ')}`);
 console.log('\nChapters:\n' + chaptersStr);
-if (meta.titleOptions) {
-  console.log('\nTitles:');
-  if (Array.isArray(meta.titleOptions)) {
-    meta.titleOptions.forEach((t, i) => console.log(`  [${i+1}] ${t}`));
-  } else {
-    Object.entries(meta.titleOptions).forEach(([k, v]) => console.log(`  [${k}] ${v}`));
-  }
-}
-if (Array.isArray(meta.thumbnailCaptions) && meta.thumbnailCaptions.length > 0) {
+if (Array.isArray(meta.titleOptions) && meta.titleOptions.length > 0) {
   console.log('\nThumbnail captions (pipe-style):');
-  meta.thumbnailCaptions.forEach((t, i) => console.log(`  [${i+1}] ${t}`));
+  meta.titleOptions.forEach((t, i) => console.log(`  [${i+1}] ${t}`));
 }

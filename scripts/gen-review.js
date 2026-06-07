@@ -127,21 +127,14 @@ for (let gi = 0; gi < plan.groups.length; gi++) {
 }
 const rows = rowParts.join('\n');
 
-const titleOptionsArr = Array.isArray(meta.titleOptions)
-  ? meta.titleOptions
-  : Object.values(meta.titleOptions || {});
-const pipeCaptions = meta.thumbnailCaptions || [];
-const allTitles = [
-  ...titleOptionsArr.map((t, i) => ({ label: String(i + 1), text: t, style: '' })),
-  ...pipeCaptions.map((t, i) => ({ label: String.fromCharCode(65 + i), text: t, style: 'color:#aaa' }))
-];
+const titleVariants = meta.titleOptions || [];
 const selectedTitle = meta.selectedTitle || '';
-const titleCards = allTitles.map((item, i) => {
-  const isSelected = isPublished && selectedTitle && item.text === selectedTitle;
+const titleCards = titleVariants.map((text, i) => {
+  const isSelected = isPublished && text === selectedTitle;
   const cls = isSelected ? ' title-selected' : '';
   return `  <div class="title-card${cls}" onclick="selectTitle(this, TITLES[${i}])">`+
-    `<span class="title-num" style="${item.style}">${item.label}</span>`+
-    `<span>${esc(item.text)}</span>`+
+    `<span class="title-num">${String.fromCharCode(65 + i)}</span>`+
+    `<span>${esc(text)}</span>`+
     (isSelected ? `<span style="margin-left:auto;color:#f5ff3d;font-size:13px">✓</span>` : '')+
     `</div>`;
 }).join('\n');
@@ -163,13 +156,9 @@ const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof
 const approveBox = isPublished
   ? ''
   : `<div class="approve-box">
-  <p>⚠️ <strong>Клікни на заголовок вище</strong>, потім скопіюй команду:</p>
-  <div id="selected-title-preview" style="display:none;background:#1a2a0a;border:2px solid #f5ff3d;border-radius:8px;padding:12px 16px;margin-bottom:12px">
-    <div style="font-size:10px;color:#888;font-family:'JetBrains Mono',monospace;letter-spacing:1px;margin-bottom:4px">ВИБРАНИЙ ЗАГОЛОВОК:</div>
-    <div id="selected-title-text" style="font-size:15px;font-weight:700;color:#f5ff3d;line-height:1.4"></div>
-  </div>
-  <pre id="approve-cmd" style="background:#111;color:#888;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">← спочатку вибери заголовок вище</pre>
-  <button onclick="copyApprove()" style="background:#555;color:#999;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:not-allowed" id="approve-btn" disabled>📋 Copy</button>
+  <p>Клікни на заголовок вище щоб змінити вибір, потім скопіюй команду:</p>
+  <pre id="approve-cmd" style="background:#111;color:#666;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">← вибери заголовок і обкладинку вище</pre>
+  <button onclick="copyApprove()" style="background:#333;color:#666;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:not-allowed" id="approve-btn" disabled>📋 Copy</button>
 </div>`;
 
 const html = `<!DOCTYPE html>
@@ -258,9 +247,7 @@ ${[
   { id: 'v2', label: 'V2 — Higgsfield emotion', src: '../exports/thumbnail-v2.png' },
   { id: 'v3', label: 'V3 — Higgsfield composite', src: '../exports/thumbnail-v3.png' },
 ].map(t => {
-  const sel = isPublished
-    ? (meta.selectedThumbnail === t.id)
-    : (t.id === 'v1');
+  const sel = isPublished && meta.selectedThumbnail === t.id;
   const border = sel ? '#f5ff3d' : '#2a2a2e';
   const badge = sel && isPublished ? `<span style="color:#f5ff3d;margin-left:6px">✓</span>` : '';
   const err = t.id !== 'v1' ? ` onerror="this.parentElement.style.opacity='.4'"` : '';
@@ -273,8 +260,7 @@ ${[
 </div>
 
 <div class="section">
-<h2>Title Options</h2>
-<div style="font-size:11px;color:#555;font-family:monospace;margin-bottom:12px">1-5 = curiosity/specific/emotion/direct/unexpected &nbsp;·&nbsp; A-C = pipe style</div>
+<h2>Title</h2>
 <div class="title-cards">
 ${titleCards}
 </div>
@@ -317,28 +303,23 @@ ${approveBox}
 </div>
 <script>
 const RUN_ID = ${JSON.stringify(runId)};
-const TITLES = ${JSON.stringify(allTitles.map(t => t.text))};
+const TITLES = ${JSON.stringify(titleVariants)};
 let _title = null;
-let _thumb = 'v1';
+let _thumb = null;
 
 function updateCmd() {
   const el = document.getElementById('approve-cmd');
   const btn = document.getElementById('approve-btn');
-  const preview = document.getElementById('selected-title-preview');
-  const previewText = document.getElementById('selected-title-text');
   if (!el) return;
-  if (!_title) {
-    el.style.color = '#888';
-    el.textContent = '← спочатку вибери заголовок вище';
-    if (btn) { btn.disabled = true; btn.style.background = '#555'; btn.style.color = '#999'; btn.style.cursor = 'not-allowed'; }
-    if (preview) preview.style.display = 'none';
+  if (!_title || !_thumb) {
+    el.style.color = '#666';
+    el.textContent = '← вибери заголовок і обкладинку вище';
+    if (btn) { btn.disabled = true; btn.style.background = '#333'; btn.style.color = '#666'; btn.style.cursor = 'not-allowed'; }
     return;
   }
   el.style.color = '#f5ff3d';
   el.textContent = '/approve\\n\\n' + JSON.stringify({ runId: RUN_ID, title: _title, thumbnail: _thumb }, null, 2);
   if (btn) { btn.disabled = false; btn.style.background = '#f5ff3d'; btn.style.color = '#0e0e10'; btn.style.cursor = 'pointer'; }
-  if (preview) preview.style.display = 'block';
-  if (previewText) previewText.textContent = _title;
 }
 
 function selectTitle(el, text) {

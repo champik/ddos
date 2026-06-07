@@ -69,7 +69,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
     part: ['snippet', 'status'],
     requestBody: {
       snippet: {
-        title: meta.selectedTitle || meta.title || (meta.titleOptions && meta.titleOptions.specificityStakes) || 'Daily Dose Of Stream',
+        title: meta.selectedTitle || (Array.isArray(meta.titleOptions) && meta.titleOptions[0]) || 'Daily Dose Of Stream',
         description: meta.description || '',
         tags: meta.tags || ['twitch', 'gaming', 'clips'],
         categoryId: '20',
