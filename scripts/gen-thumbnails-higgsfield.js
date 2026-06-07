@@ -44,6 +44,15 @@ const secondaryThumbs = thumbnails.filter((t) => !t.main);
 
 // ── frame extraction ──────────────────────────────────────────────────────────
 
+function getVideoDimensions(filePath) {
+  const result = execSync(
+    `ffprobe -v quiet -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "${filePath}"`,
+    { encoding: 'utf8', stdio: 'pipe' },
+  ).trim();
+  const [w, h] = result.split(',').map(Number);
+  return { w: w || 1920, h: h || 1080 };
+}
+
 function extractFrame(clipId, atSec, outPath, crop) {
   const srcMp4 = localPaths[clipId] || path.join(projectDir, 'processed', clipId, 'clean.mp4');
   const cleanMp4 = srcMp4;
@@ -52,10 +61,11 @@ function extractFrame(clipId, atSec, outPath, crop) {
   }
   let vf = '';
   if (crop && crop.w < 99) {
-    const cx = Math.round((crop.x / 100) * 1920);
-    const cy = Math.round((crop.y / 100) * 1080);
-    const cw = Math.round((crop.w / 100) * 1920);
-    const ch = Math.round((crop.h / 100) * 1080);
+    const { w: vw, h: vh } = getVideoDimensions(cleanMp4);
+    const cx = Math.round((crop.x / 100) * vw);
+    const cy = Math.round((crop.y / 100) * vh);
+    const cw = Math.round((crop.w / 100) * vw);
+    const ch = Math.round((crop.h / 100) * vh);
     vf = `-vf "crop=${cw}:${ch}:${cx}:${cy},scale=1920:1080"`;
   }
   execSync(
@@ -73,12 +83,12 @@ function extractFrame(clipId, atSec, outPath, crop) {
 
 function buildV2Prompt() {
   return (
-    `Transform @image into a hyperbolized YouTube thumbnail reaction. ` +
+    `Transform <<<image_1>>> into a hyperbolized YouTube thumbnail reaction. ` +
     `Take the exact expression the person already has and push it to the extreme. ` +
     `If their mouth is open — make it more dramatically open. ` +
     `If their mouth is closed — keep it closed, but make eyes wider, brows higher, expression more intense. ` +
-    `Never add an open mouth that does not exist in @image. ` +
-    `Never add people or characters that are not in @image — only the person(s) already present. ` +
+    `Never add an open mouth that does not exist in <<<image_1>>>. ` +
+    `Never add people or characters that are not in <<<image_1>>> — only the person(s) already present. ` +
     `YouTube thumbnail aesthetic: extreme contrast, vivid saturated colors, ` +
     `sharp face detail, cinematic lighting boost. ` +
     `Remove all stream overlays, chat, UI, watermarks. ` +
@@ -98,11 +108,11 @@ function buildV3Prompt(mainClip, secondaryClips) {
   };
   const mainEmotion = emotions[mainClip.emotionalCategory] || 'showing strong expression';
   const secondaryDesc = secondaryClips
-    .map((c, i) => `person from @image_${i + 2} (${emotions[c.emotionalCategory] || 'reacting'})`)
+    .map((c, i) => `person from <<<image_${i + 2}>>> (${emotions[c.emotionalCategory] || 'reacting'})`)
     .join(', ');
   return (
     `Ultra-high-quality YouTube thumbnail with multiple people. ` +
-    `Person from @image_1 large in foreground — ${mainEmotion}, dramatically amplified expression. ` +
+    `Person from <<<image_1>>> large in foreground — ${mainEmotion}, dramatically amplified expression. ` +
     (secondaryDesc
       ? `${secondaryDesc} smaller in background, all hyperbolized — wide eyes, strong emotions, high energy. `
       : '') +
@@ -115,8 +125,11 @@ function buildV3Prompt(mainClip, secondaryClips) {
 }
 
 // ── Higgsfield params (passed by Claude when calling generate_image MCP) ──────
-const HIGGSFIELD_MODEL = 'seedream_v4_5';
-const HIGGSFIELD_RESOLUTION = '4k';
+// nano_banana_pro  → resolution: "2k"
+// seedream_v4_5    → quality: "high"  (outputs 4k)
+// Both use aspect_ratio: "16:9"
+const HIGGSFIELD_NANO_RESOLUTION = '2k';
+const HIGGSFIELD_SEEDREAM_QUALITY = 'high';
 const HIGGSFIELD_ASPECT_RATIO = '16:9';
 
 // ── scored-clips lookup ───────────────────────────────────────────────────────

@@ -278,7 +278,7 @@ Hard cap: 8 тегів. Game tag — перший зі списку specialty а
 - Нова глава = новий `broadcaster_name` (у порядку кліпів з `episode-plan`)
 - Перша глава завжди `00:00` (поглинає інтро 1.25s)
 - Consecutive кліпи від ТОГО САМОГО стрімера — не новий таймкод
-- INTRO_DUR = 1.25s, RECONNECT_DUR = 1.0s між групами
+- INTRO_DUR = 1.25s, RECONNECT_DUR = реальна тривалість `edit/reconnecting.mp4` (ffprobe, НЕ хардкод 1.0s)
 
 ### Хештеги у description — базові + топ-5 стрімерів по появі
 

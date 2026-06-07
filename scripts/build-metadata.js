@@ -144,7 +144,12 @@ function buildHashtags() {
 // ── chapters (broadcaster_name per clip, new chapter on streamer change) ───────
 
 const INTRO_DUR     = 1.25;
-const RECONNECT_DUR = 1.0;
+const reconnectPath = path.join(projectDir, 'edit', 'reconnecting.mp4');
+const RECONNECT_DUR = (() => {
+  if (!fs.existsSync(reconnectPath)) return 1.0;
+  try { return parseFloat(execSync(`ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${reconnectPath}"`).toString().trim()) || 1.0; }
+  catch { return 1.0; }
+})();
 
 const chapters = [];
 let offset      = INTRO_DUR;
@@ -174,9 +179,11 @@ const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
 
 meta.tags = buildVideoTags();
 
-// Append timecodes + hashtags to description (guard against double-appending)
-if (meta.description && !meta.description.includes('\n\n00:00')) {
-  meta.description = meta.description + '\n\n' + chaptersStr + '\n\n' + buildHashtags();
+// Replace timecodes + hashtags (strip old ones first, then append fresh)
+if (meta.description) {
+  const cutAt = meta.description.indexOf('\n\n00:00');
+  const base = cutAt !== -1 ? meta.description.slice(0, cutAt) : meta.description;
+  meta.description = base + '\n\n' + chaptersStr + '\n\n' + buildHashtags();
 }
 
 // Enrich each Short's hashtags based on its actual clip
