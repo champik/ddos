@@ -69,7 +69,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
     part: ['snippet', 'status'],
     requestBody: {
       snippet: {
-        title: meta.selectedTitle || (Array.isArray(meta.titleOptions) && meta.titleOptions[0]) || 'Daily Dose Of Stream',
+        title: (meta.selectedTitle || (Array.isArray(meta.titleOptions) && meta.titleOptions[0]) || 'Daily Dose Of Stream').slice(0, 100),
         description: meta.description || '',
         tags: meta.tags || ['twitch', 'gaming', 'clips'],
         categoryId: '20',
@@ -90,8 +90,19 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
   console.log(`Uploaded (private): https://youtu.be/${videoId}`);
 
   if (thumbnailPath && fs.existsSync(thumbnailPath)) {
-    const thumbMime = thumbnailPath.endsWith('.jpg') || thumbnailPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
-    await yt.thumbnails.set({ videoId, media: { mimeType: thumbMime, body: fs.createReadStream(thumbnailPath) } });
+    let finalThumbPath = thumbnailPath;
+    const thumbSizeMB = fs.statSync(thumbnailPath).size / 1e6;
+    if (thumbSizeMB > 1.9 || thumbnailPath.endsWith('.png')) {
+      const { spawnSync } = require('child_process');
+      const compressedPath = thumbnailPath.replace(/\.[^.]+$/, '-yt.jpg');
+      spawnSync('ffmpeg', ['-i', thumbnailPath, '-vf', 'scale=1920:1080', '-q:v', '3', '-update', '1', '-y', compressedPath], { stdio: 'pipe' });
+      if (fs.existsSync(compressedPath)) {
+        finalThumbPath = compressedPath;
+        console.log(`Thumbnail compressed: ${(fs.statSync(compressedPath).size / 1e6).toFixed(2)}MB`);
+      }
+    }
+    const thumbMime = finalThumbPath.endsWith('.jpg') || finalThumbPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+    await yt.thumbnails.set({ videoId, media: { mimeType: thumbMime, body: fs.createReadStream(finalThumbPath) } });
     console.log('Thumbnail set.');
   }
 

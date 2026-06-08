@@ -98,7 +98,7 @@ async function main() {
   const SPECIALTY_IDS = new Set(['26936', '116747788']);
 
   // Dynamic categories: top-5 from top-20, excluding core and banlist
-  const BAN_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker', 'tarkov', 'overwatch', 'marvel rivals'];
+  const BAN_KEYWORDS = ['slots', 'casino', 'gambling', 'betting', 'poker', 'tarkov', 'overwatch', 'marvel rivals', 'sports betting', 'dark and darker', 'path of exile'];
   console.log('[INGEST] Fetching top games...');
   const topGames = await getTopGames();
   const dynamic = topGames

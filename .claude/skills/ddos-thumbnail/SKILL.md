@@ -1,126 +1,77 @@
 # Skill: ddos-thumbnail
 
-Рендер thumbnail PNG через Puppeteer (V1) + Higgsfield генерація V2 і V3.
+Генерація thumbnail кандидатів через Higgsfield — по два кандидати (nano + seedream) на кожне вибране зображення з `editorial.thumbnails`.
 
 **Залежність:** `exports/metadata.json` повинен існувати — генерується `ddos-youtube-creatives` (Stage 13).
 
 ---
 
 ```bash
-node scripts/progress.js "projects/<runId>" 14 "Thumbnail (Puppeteer + Higgsfield)"
+node scripts/progress.js "projects/<runId>" 14 "Thumbnail (Higgsfield)"
 ```
 
-### Крок 1 — Читати thumbnails з editorial.json
-
-```javascript
-const editorial = JSON.parse(fs.readFileSync('edit/editorial.json'));
-const thumbnails = editorial.thumbnails || [];
-const mainThumb = thumbnails.find(t => t.main) || thumbnails[0];
-// mainThumb = { clipId, at, crop, main: true }
-// crop = { x, y, w, h } — відсотки від кадру
-// null або w >= 99 → повний кадр без зуму
-```
-
-Якщо `thumbnails` порожній — fallback на перший кліп з `clipOrder`.
-
-### Крок 2 — V1: Puppeteer рендер (головний thumbnail)
-
-```bash
-# Використовуємо оригінальний кліп — at задано відносно нього в editorial UI
-CLIP_SRC=$(node -p "require('./clips/downloaded-clips.json').find(c=>c.id==='<mainThumb.clipId>')?.localPath")
-THUMB_AT=<mainThumb.at>  # або 60% тривалості якщо не задано
-
-ffmpeg -ss $THUMB_AT -i "$CLIP_SRC" -frames:v 1 -q:v 2 -y "exports/best-frame.png"
-```
-
-```bash
-THUMBNAIL_HOOK=$(node -p "require('./exports/metadata.json').thumbnailHook")
-
-CROP_JSON=$(node -p "
-  const e = require('./edit/editorial.json');
-  const thumbs = e.thumbnails || [];
-  const main = thumbs.find(t => t.main) || thumbs[0];
-  const c = main?.crop;
-  (c && c.w < 99) ? JSON.stringify(c) : ''
-")
-
-if [ -n "$CROP_JSON" ]; then
-  node scripts/render-thumbnail.js "exports/best-frame.png" "$THUMBNAIL_HOOK" "exports/thumbnail.png" --crop "$CROP_JSON"
-else
-  node scripts/render-thumbnail.js "exports/best-frame.png" "$THUMBNAIL_HOOK" "exports/thumbnail.png"
-fi
-```
-
-Одразу після рендеру — зберегти копію як `thumbnail-v1.png`:
-```bash
-cp "exports/thumbnail.png" "exports/thumbnail-v1.png"
-```
-`thumbnail-v1.png` — завжди оригінальний Puppeteer рендер, не замінюється при approve.
-`thumbnail.png` — основний файл, може бути замінений на v2/v3 при approve.
-
-### Крок 3 — V2 і V3: Higgsfield генерація з оцінкою
-
-Запустити скрипт щоб отримати кадри і промпти:
+### Крок 1 — Підготовка кадрів і промптів
 
 ```bash
 node scripts/gen-thumbnails-higgsfield.js <runId>
 ```
 
-Скрипт виводить JSON з полями:
-- `mainFrame` — шлях до витягнутого кадру main thumbnail
-- `secondaryFrames` — масив кадрів secondary thumbnails
-- `v2.prompt` / `v2.outPath`
-- `v3.prompt` / `v3.outPath` (null якщо менше 2 thumbnails)
-
----
-
-**Flow для кожного варіанту (V2 і V3 окремо):**
-
-**Раунд 1 — паралельно дві моделі:**
-1. `media_upload` + `media_confirm` для потрібних кадрів
-2. Запустити `generate_image` **4 рази паралельно** (V2 і V3 одночасно):
-   - V2 × `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
-   - V2 × `seedream_v4_5`, quality `high`, aspect_ratio `16:9`
-   - V3 × `nano_banana_pro`, resolution `2k`, aspect_ratio `16:9`
-   - V3 × `seedream_v4_5`, quality `high`, aspect_ratio `16:9`
-3. Дочекатись всіх 4, переглянути результати (Read image)
-4. Оцінити кожну пару (V2 і V3 окремо) → вибрати переможця
-
-**Якщо для версії є переможець** → зберегти і перейти далі.
-
-**Якщо обидва для версії незадовільні** → Раунд 2: ще 2 генерації для тієї версії (nano + seedream). Максимум 3 раунди на версію.
-
-**Якщо всі спроби незадовільні** → пропустити V2/V3, залогувати. V1 Puppeteer залишається основним.
-
----
-
-**Критерії оцінки (пріоритет по порядку):**
-
-1. **Обличчя** — найважливіше. Людина на зображенні має бути впізнавано схожою на reference frame. Якщо обличчя змінилось, виглядає як інша людина або змішане — FAIL.
-
-2. **Відповідність промпту** — чи відображено головний момент/емоцію яка описана в промпті.
-
-3. **Якість як YouTube обкладинка** — висока контрастність, чітке головне фото, вільне місце для тексту (thumbnailHook), читабельно на 200px мобільному розмірі.
-
----
-
-Зберегти сирий результат як `exports/thumbnail-v2-raw.png` і `exports/thumbnail-v3-raw.png`.
-
-**Після вибору переможця** — накласти дефолтну плашку (hook text + yellow stripes) через Puppeteer:
-
-```bash
-# thumbnailHook береться з exports/metadata.json
-# V2: з текстом hook
-node scripts/render-thumbnail.js "exports/thumbnail-v2-raw.png" "<thumbnailHook>" "exports/thumbnail-v2.png"
-# V3: без тексту (--no-text), лише смуги
-node scripts/render-thumbnail.js "exports/thumbnail-v3-raw.png" "exports/thumbnail-v3.png" --no-text
+Скрипт витягує кадр для кожного запису з `editorial.thumbnails` і повертає JSON:
+```json
+{
+  "items": [
+    {
+      "index": 0,
+      "clipId": "...",
+      "isMain": true,
+      "broadcasterName": "YonnaJay",
+      "framePath": "projects/<runId>/exports/thumb-frame-0.png",
+      "prompt": "...",
+      "nanoCandidatePath": "projects/<runId>/exports/thumb-candidate-0-nano.png",
+      "seedreamCandidatePath": "projects/<runId>/exports/thumb-candidate-0-seedream.png"
+    }
+  ]
+}
 ```
 
-### Крок 4 — Завершення
+Якщо `thumbnails` порожній — fallback на перший кліп з `clipOrder` як єдиний item.
+
+### Крок 2 — Higgsfield генерація (всі паралельно)
+
+Для кожного item: `media_upload` + `media_confirm` кадру → зберегти media ID.
+
+Запустити **всі генерації паралельно** (items.length × 2 jobs):
+- кожен item × `nano_banana_pro` (resolution: `2k`, aspect_ratio: `16:9`)
+- кожен item × `seedream_v4_5` (quality: `high`, aspect_ratio: `16:9`)
+
+Дочекатись усіх (job_status sync: true).
+
+Якщо генерація для певного item провалилась 2 рази поспіль — пропустити і залогувати, продовжити з рештою.
+
+### Крок 3 — Overlay на кожного кандидата
+
+Для кожного результату:
+1. Завантажити raw image через curl → `exports/thumb-candidate-{i}-{model}-raw.png`
+2. Прочитати hook для цього кліпу: `metadata.json → thumbnailHooks` → знайти запис де `clipId` співпадає
+3. Накласти overlay через Puppeteer:
+```bash
+node scripts/render-thumbnail.js \
+  "projects/<runId>/exports/thumb-candidate-{i}-{model}-raw.png" \
+  "<hook>" \
+  "projects/<runId>/exports/thumb-candidate-{i}-{model}.png"
+```
+
+### Крок 4 — Default thumbnail.png
+
+Перший item де `isMain: true`, nano варіант → скопіювати як `exports/thumbnail.png`.
+Якщо жоден не `isMain` — використати перший item nano.
+
+### Крок 5 — Завершення
 
 Оновити `state.stages.thumbnail = "done"`.
 
-Наявні файли після stage:
-- `exports/thumbnail.png` — V1 (Puppeteer, йде в YouTube API)
-- `exports/thumbnail-v2.png` — V2 (Higgsfield emotion, для A/B тесту вручну)
-- `exports/thumbnail-v3.png` — V3 (Higgsfield composite, для A/B тесту вручну)
+**Файли після stage:**
+- `exports/thumb-candidate-{i}-nano.png` — Higgsfield nano з hook overlay
+- `exports/thumb-candidate-{i}-seedream.png` — Higgsfield seedream з hook overlay
+- `exports/thumbnail.png` — default (main item nano)
+- `exports/thumb-candidate-{i}-{model}-raw.png` — raw без overlay (для reference)

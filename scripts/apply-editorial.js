@@ -20,7 +20,7 @@ if (!fs.existsSync(editorialPath)) {
 }
 
 const editorial = JSON.parse(fs.readFileSync(editorialPath, 'utf8'));
-const downloaded = JSON.parse(fs.readFileSync(downloadedPath, 'utf8'));
+const downloaded = JSON.parse(fs.readFileSync(downloadedPath, 'utf8').replace(/^﻿/, ''));
 
 const dlMap = {};
 downloaded.forEach(c => { dlMap[c.id] = c; });

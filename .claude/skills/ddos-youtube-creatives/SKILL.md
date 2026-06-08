@@ -29,7 +29,7 @@ node scripts/progress.js "projects/<runId>" 13 "YouTube metadata (Claude)"
 Перед генерацією промпту зчитати дані автоматично:
 1. `edit/episode-plan.json` → список кліпів в порядку відео + `shortClipIds`
 2. `clips/scored-clips.json` → `broadcaster_name`, `title`, `view_count`, `game_name` по кожному clipId
-3. `edit/editorial.json` → `thumbnails` array
+3. `edit/editorial.json` → `thumbnails` array (список clipId для яких потрібні `thumbnailHooks`)
 4. Для кожного кліпу з `clipOrder`:
    - `processed/<clipId>/transcript.json` → `text` (повний, без обрізки)
    - Якщо transcript відсутній → `""` (порожній рядок)
@@ -60,16 +60,16 @@ Episode data:
   ---
   (repeat for each short)
 
-  Main hook: <clip with longest/most interesting transcript — streamer + key quote or action from transcript>
+  Thumbnail clips (need thumbnailHooks): <comma-separated list of clipIds from editorial.thumbnails>
 
 Respond ONLY with valid JSON, no markdown:
 {
-  "titleOptions": [
-    "<pipe-title variant 1>",
-    "<pipe-title variant 2>",
-    "<pipe-title variant 3>"
+  "clipHooks": [
+    {"clipId": "<id>", "hook": "<StreamerName Action/Event — max 60 chars>"}
   ],
-  "thumbnailHook": "<2-4 WORDS ALL CAPS — must NOT reveal the ending>",
+  "thumbnailHooks": [
+    {"clipId": "<id>", "hook": "<2-4 WORDS ALL CAPS>"}
+  ],
   "thumbnailStrategy": "<One sentence: which frame moment to use, what emotion/action is visible, why it works at mobile size.>",
   "description": "<150-200 words English. Opening 2 sentences: name the streamer, describe the specific action, why it landed — no 'In this episode' or 'Today's episode covers'. Then one flowing paragraph (NOT a list) describing 4-6 other moments with specific details, quotes, or outcomes; weave in game names and category keywords naturally. No 'zero filler', no 'all in one sitting', no episode number. End EXACTLY: Subscribe for daily Twitch highlights and the best stream moments every day!>",
   "chapterDescriptions": {
@@ -85,26 +85,25 @@ Respond ONLY with valid JSON, no markdown:
   ]
 }
 
-titleOptions rules — HARD CONSTRAINTS:
-- Array of exactly 3 variants, each covering 3 key moments from the episode
-- Format per variant: "Streamer Event/Moment | Streamer Action | Streamer Achievement"
-  — Each segment: short noun phrase (3-6 words), no full sentences
-  — Lead segment: the most memorable/shareable moment (boxing event, collab, milestone)
-  — Reference examples: "JasonTheWeen's Boxing Event | HAchubby Embarrasses Deb | NoraExplorer Gets Gold"
-- NO emojis, NO channel suffix, NO punctuation within segments
+clipHooks rules — HARD CONSTRAINTS:
+- Include ONLY clips with a genuinely strong, shareable moment: viral action, hype event, surprising outcome, famous streamer milestone
+- No fixed count — judge purely on clip quality; weak clips get no hook
+- Format: starts with streamer name + specific action/event — max 60 chars, no full sentence
+- Reference examples: "JasonTheWeen's Boxing Event", "HAchubby Embarrasses Deb", "NoraExplorer Gets Gold", "SoleaStella Cuts Wrong Wire"
+- NO emojis, NO channel suffix, NO punctuation after streamer name except apostrophe
 - NEVER mention: "Stream", "Twitch", "Live" — describe the EVENT, not the platform
-- Total length per variant: max 100 characters
-- 3 variants must cover different top moments (vary which clips are highlighted)
 - ONLY use events from the provided transcripts
 
-thumbnailHook rules — HARD CONSTRAINTS:
+thumbnailHooks rules — HARD CONSTRAINTS:
+- ONE entry per thumbnail clip — exactly the clipIds listed under "Thumbnail clips"
 - ALL CAPS only — zero exceptions
 - NO emojis — zero exceptions
 - 2-4 words — hard limit
+- Based on THAT CLIP's specific moment from its transcript — not the overall episode
 - Must NOT reveal the ending (never: "HE FALLS", "SHE WINS", "THIS GOES WRONG", "IT WORKS")
-- Creates open loop: viewer sees the hook and needs to watch to know what it refers to
+- Creates open loop: viewer sees hook and needs to watch to know what it refers to
 - Must be readable at 200px wide (mobile feed) — short words, no clutter
-- Good: "IT WON" / "PICK SOMEONE ELSE" / "LAST MEOW" / "SHE WARNED THEM" / "NOT AGAIN"
+- Good: "THEY LIED" / "PICK SOMEONE ELSE" / "LAST MEOW" / "SHE WARNED THEM" / "NOT AGAIN"
 - Bad: "NOBODY SAW THIS COMING" (generic), "NO COMMENT" (no hook), any emoji
 
 thumbnailStrategy rules:
@@ -141,7 +140,7 @@ Bad example (avoid):
 
 ```
 
-Зберегти `titleOptions`, `thumbnailHook`, `thumbnailStrategy`, `description`, `chapterDescriptions` у `exports/metadata.json`.
+Зберегти `clipHooks`, `thumbnailHooks`, `thumbnailStrategy`, `description`, `chapterDescriptions` у `exports/metadata.json`.
 
 ---
 

@@ -127,17 +127,33 @@ for (let gi = 0; gi < plan.groups.length; gi++) {
 }
 const rows = rowParts.join('\n');
 
-const titleVariants = meta.titleOptions || [];
+// Thumbnail candidates (new-style: thumb-candidate-{i}-{model}.png)
+const thumbCandidates = [];
+(editorial.thumbnails || []).forEach((t, i) => {
+  const clip = scored.find(x => x.id === t.clipId) || {};
+  const streamer = clip.broadcaster_name || t.clipId;
+  const MODEL_LABELS = { nano: 'Nano Banana Pro', seedream: 'Seedream 4.5', prev: 'prev', 'prev-nano': 'Nano Banana Pro (prev)' };
+  const prevNanoExists = fs.existsSync(path.join(projectDir, 'exports', `thumb-candidate-${i}-prev-nano.png`));
+  ['nano', 'seedream', 'prev', 'prev-nano'].forEach(model => {
+    // skip 'prev' if 'prev-nano' exists for the same candidate — prev-nano supersedes it
+    if (model === 'prev' && prevNanoExists) return;
+    const filename = `thumb-candidate-${i}-${model}`;
+    if (fs.existsSync(path.join(projectDir, 'exports', `${filename}.png`))) {
+      const label = `${streamer} - ${MODEL_LABELS[model] || model}`;
+      thumbCandidates.push({
+        id: filename,
+        src: `../exports/${filename}.png`,
+        label,
+        isDefault: !!t.main && model === 'nano',
+      });
+    }
+  });
+});
+const defaultThumb = (thumbCandidates.find(c => c.isDefault) || thumbCandidates[0] || null)?.id || null;
+
+// Title hooks (new-style) or legacy titleOptions
+const clipHooks = meta.clipHooks || [];
 const selectedTitle = meta.selectedTitle || '';
-const titleCards = titleVariants.map((text, i) => {
-  const isSelected = isPublished && text === selectedTitle;
-  const cls = isSelected ? ' title-selected' : '';
-  return `  <div class="title-card${cls}" onclick="selectTitle(this, TITLES[${i}])">`+
-    `<span class="title-num">${String.fromCharCode(65 + i)}</span>`+
-    `<span>${esc(text)}</span>`+
-    (isSelected ? `<span style="margin-left:auto;color:#f5ff3d;font-size:13px">✓</span>` : '')+
-    `</div>`;
-}).join('\n');
 
 const publishMap = Object.fromEntries(
   (state.outputs?.youtubeShortsIds || []).map(s => [s.clipId, s.publishAt])
@@ -170,8 +186,8 @@ const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof
 const approveBox = isPublished
   ? ''
   : `<div class="approve-box">
-  <p>Клікни на заголовок вище щоб змінити вибір, потім скопіюй команду:</p>
-  <pre id="approve-cmd" style="background:#111;color:#666;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">← вибери заголовок і обкладинку вище</pre>
+  <p>Вибери обкладинку та заголовок, потім скопіюй команду:</p>
+  <pre id="approve-cmd" style="background:#111;color:#666;font-family:'JetBrains Mono',monospace;font-size:13px;padding:14px 16px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:0 0 12px">← вибери обкладинку вище</pre>
   <button onclick="copyApprove()" style="background:#333;color:#666;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:13px;cursor:not-allowed" id="approve-btn" disabled>📋 Copy</button>
 </div>`;
 
@@ -195,11 +211,20 @@ const html = `<!DOCTYPE html>
   .video-wrap { background: #000; border-radius: 10px; overflow: hidden; display: inline-block; max-width: 100%; }
   .video-wrap video { display: block; width: 100%; max-width: 960px; height: auto; }
   .thumb-wrap img { max-width: 640px; width: 100%; border-radius: 10px; border: 2px solid #222; display: block; }
-  .title-cards { display: flex; flex-direction: column; gap: 10px; max-width: 800px; }
-  .title-card { background: #1a1a1e; padding: 14px 18px; border-radius: 8px; border: 2px solid #2a2a2e; cursor: pointer; display: flex; align-items: center; gap: 14px; transition: border-color 0.15s; }
-  .title-card:hover { border-color: #f5ff3d55; }
-  .title-card.title-selected { border-color: #f5ff3d; background: #1a2a0a; }
-  .title-num { font-family: 'Anton', sans-serif; color: #f5ff3d; font-size: 20px; min-width: 20px; }
+  .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .thumb-option { cursor: pointer; border-radius: 8px; border: 2px solid #2a2a2e; padding: 8px; transition: border-color 0.15s; }
+  .thumb-option:hover { border-color: #f5ff3d55; }
+  .thumb-option.thumb-selected { border-color: #f5ff3d; background: #1a2a0a; }
+  .thumb-label { font-size: 11px; line-height: 14px; color: #888; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; display: flex; align-items: center; justify-content: space-between; }
+  .thumb-label .check { color: #f5ff3d; font-size: 13px; }
+  .hooks-list { display: flex; flex-direction: column; gap: 8px; max-width: 800px; margin-bottom: 16px; }
+  .hook-item { display: flex; align-items: center; gap: 12px; background: #1a1a1e; padding: 12px 16px; border-radius: 8px; border: 2px solid #2a2a2e; cursor: pointer; transition: border-color 0.15s; }
+  .hook-item:hover { border-color: #f5ff3d33; }
+  .hook-item.hook-checked { border-color: #f5ff3d55; background: #1a1e0a; }
+  .hook-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: #f5ff3d; cursor: pointer; flex-shrink: 0; }
+  .hook-text { font-size: 14px; font-weight: 500; color: #f4f0e6; }
+  .title-preview-wrap { display: flex; align-items: center; gap: 10px; max-width: 800px; }
+  .title-preview-wrap textarea { flex: 1; background: #111; color: #f5ff3d; border: 1px solid #333; border-radius: 6px; padding: 10px 14px; font-family: 'JetBrains Mono', monospace; font-size: 13px; resize: none; height: 48px; line-height: 1.5; }
   .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #222; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th { background: #1a1a1e; color: #f5ff3d; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; border-bottom: 1px solid #333; text-align: left; white-space: nowrap; }
@@ -258,33 +283,6 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
 </div>
 
 <div class="section">
-<h2>Thumbnail</h2>
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-${[
-  { id: 'v1', label: 'V1 — Puppeteer', src: fs.existsSync(path.join(projectDir, 'exports/thumbnail-v1.png')) ? '../exports/thumbnail-v1.png' : '../exports/thumbnail.png' },
-  { id: 'v2', label: 'V2 — Higgsfield emotion', src: '../exports/thumbnail-v2.png' },
-  { id: 'v3', label: 'V3 — Higgsfield composite', src: '../exports/thumbnail-v3.png' },
-].map(t => {
-  const sel = isPublished && meta.selectedThumbnail === t.id;
-  const border = sel ? '#f5ff3d' : '#2a2a2e';
-  const badge = sel && isPublished ? `<span style="color:#f5ff3d;margin-left:6px">✓</span>` : '';
-  const err = t.id !== 'v1' ? ` onerror="this.parentElement.style.opacity='.4'"` : '';
-  return `  <div class="thumb-option${sel ? ' thumb-selected' : ''}" onclick="selectThumb(this,'${t.id}')" style="cursor:pointer;border-radius:8px;border:2px solid ${border};padding:8px">
-    <div style="font-size:11px;color:#888;margin-bottom:6px;font-family:monospace;display:flex;align-items:center">${t.label}${badge}</div>
-    <img src="${t.src}" alt="${t.id.toUpperCase()}" style="width:100%;border-radius:4px"${err}>
-  </div>`;
-}).join('\n')}
-</div>
-</div>
-
-<div class="section">
-<h2>Title</h2>
-<div class="title-cards">
-${titleCards}
-</div>
-</div>
-
-<div class="section">
 <h2>Clips (${plan.clipOrder.length})</h2>
 <div class="table-wrap">
 <table>
@@ -299,6 +297,37 @@ ${rows}
 </tbody>
 </table>
 </div>
+</div>
+
+<div class="section">
+<h2>Thumbnail</h2>
+${thumbCandidates.length > 0
+  ? `<div class="thumb-grid">
+${thumbCandidates.map(tc => {
+  const sel = isPublished ? meta.selectedThumbnail === tc.id : tc.id === defaultThumb;
+  return `  <div class="thumb-option${sel ? ' thumb-selected' : ''}" onclick="selectThumb(this,'${esc(tc.id)}')">
+    <div class="thumb-label">${esc(tc.label)}${sel ? '<span class="check">✓</span>' : ''}</div>
+    <img src="${esc(tc.src)}" alt="${esc(tc.label)}" style="width:100%;border-radius:4px" onerror="this.parentElement.style.opacity='.4'">
+  </div>`;
+}).join('\n')}
+</div>`
+  : `<div class="thumb-wrap"><img src="../exports/thumbnail.png" alt="thumbnail"></div>`}
+</div>
+
+<div class="section">
+<h2>Title</h2>
+${clipHooks.length > 0
+  ? `<div class="hooks-list">
+${clipHooks.map((h, i) => {
+  const checked = isPublished && selectedTitle.includes(h.hook);
+  return `  <label class="hook-item${checked ? ' hook-checked' : ''}">
+    <input type="checkbox" name="hook" value="${esc(h.hook)}"${checked ? ' checked' : ''} onchange="updateTitle(this)">
+    <span class="hook-text">${esc(h.hook)}</span>
+  </label>`;
+}).join('\n')}
+</div>
+<textarea id="title-preview" readonly placeholder="← вибери хуки вище" style="width:100%;max-width:800px;background:#111;color:#f5ff3d;border:1px solid #333;border-radius:6px;padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:13px;resize:none;min-height:48px;overflow:hidden;line-height:1.5">${esc(selectedTitle)}</textarea>`
+  : `<p style="color:#555;font-size:13px">clipHooks не знайдено в metadata.json</p>`}
 </div>
 
 <div class="section">
@@ -321,41 +350,65 @@ ${approveBox}
 </div>
 <script>
 const RUN_ID = ${JSON.stringify(runId)};
-const TITLES = ${JSON.stringify(titleVariants)};
-let _title = null;
-let _thumb = null;
+let _thumb = ${JSON.stringify(defaultThumb)};
+let _hooks = ${JSON.stringify(isPublished && selectedTitle ? selectedTitle.split(' | ').filter(Boolean) : [])};
+
+function updateTitle(checkbox) {
+  const hook = checkbox.value;
+  const label = checkbox.closest('.hook-item');
+  if (checkbox.checked) {
+    if (!_hooks.includes(hook)) _hooks.push(hook);
+    label && label.classList.add('hook-checked');
+  } else {
+    _hooks = _hooks.filter(h => h !== hook);
+    label && label.classList.remove('hook-checked');
+  }
+  const preview = document.getElementById('title-preview');
+  if (preview) { preview.value = _hooks.join(' | '); preview.style.height = 'auto'; preview.style.height = preview.scrollHeight + 'px'; }
+  updateCmd();
+}
+
+function selectThumb(el, id) {
+  _thumb = id;
+  document.querySelectorAll('.thumb-option').forEach(c => {
+    c.classList.remove('thumb-selected');
+    const lbl = c.querySelector('.thumb-label .check');
+    if (lbl) lbl.remove();
+  });
+  el.classList.add('thumb-selected');
+  const lbl = el.querySelector('.thumb-label');
+  if (lbl && !lbl.querySelector('.check')) {
+    const chk = document.createElement('span');
+    chk.className = 'check';
+    chk.textContent = '✓';
+    lbl.appendChild(chk);
+  }
+  updateCmd();
+}
 
 function updateCmd() {
   const el = document.getElementById('approve-cmd');
   const btn = document.getElementById('approve-btn');
   if (!el) return;
-  if (!_title || !_thumb) {
+  if (!_thumb) {
     el.style.color = '#666';
-    el.textContent = '← вибери заголовок і обкладинку вище';
+    el.textContent = '← вибери обкладинку вище';
     if (btn) { btn.disabled = true; btn.style.background = '#333'; btn.style.color = '#666'; btn.style.cursor = 'not-allowed'; }
     return;
   }
   el.style.color = '#f5ff3d';
-  el.textContent = '/approve\\n\\n' + JSON.stringify({ runId: RUN_ID, title: _title, thumbnail: _thumb }, null, 2);
+  el.textContent = '/approve\\n\\n' + JSON.stringify({ runId: RUN_ID, title: _hooks.join(' | '), thumbnail: _thumb }, null, 2);
   if (btn) { btn.disabled = false; btn.style.background = '#f5ff3d'; btn.style.color = '#0e0e10'; btn.style.cursor = 'pointer'; }
 }
 
-function selectTitle(el, text) {
-  _title = text;
-  document.querySelectorAll('.title-card').forEach(c => c.classList.remove('title-selected'));
-  el.classList.add('title-selected');
-  updateCmd();
-}
-
-function selectThumb(el, variant) {
-  _thumb = variant;
-  document.querySelectorAll('.thumb-option').forEach(c => {
-    c.style.borderColor = '#2a2a2e';
-    c.classList.remove('thumb-selected');
+function copyTitle() {
+  const preview = document.getElementById('title-preview');
+  if (!preview) return;
+  navigator.clipboard.writeText(preview.value).then(() => {
+    const btns = document.querySelectorAll('.title-preview-wrap .copy-btn');
+    btns.forEach(b => { b.textContent = '✓'; b.classList.add('copied'); });
+    setTimeout(() => btns.forEach(b => { b.textContent = 'Copy'; b.classList.remove('copied'); }), 1500);
   });
-  el.style.borderColor = '#f5ff3d';
-  el.classList.add('thumb-selected');
-  updateCmd();
 }
 
 function copyApprove() {
@@ -363,17 +416,12 @@ function copyApprove() {
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById('approve-btn');
     btn.textContent = '✓ Copied';
-    btn.style.background = '#f5ff3d';
-    btn.style.color = '#0e0e10';
-    btn.style.cursor = 'default';
-    setTimeout(() => {
-      btn.textContent = '📋 Copy';
-      btn.style.background = '#f5ff3d';
-      btn.style.color = '#0e0e10';
-      btn.style.cursor = 'pointer';
-    }, 2000);
+    setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
   });
 }
+
+// initialize: show approve cmd if thumb already set (pre-selected default)
+updateCmd();
 </script>
 </body>
 </html>`;

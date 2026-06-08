@@ -9,7 +9,7 @@ if (!projectDir) { console.error('Usage: node build-metadata.js <projectDir>'); 
 const plan     = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-plan.json'), 'utf8'));
 const scored   = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/scored-clips.json'), 'utf8'));
 const dlPath   = path.join(projectDir, 'clips/downloaded-clips.json');
-const dl       = fs.existsSync(dlPath) ? JSON.parse(fs.readFileSync(dlPath, 'utf8')) : [];
+const dl       = fs.existsSync(dlPath) ? JSON.parse(fs.readFileSync(dlPath, 'utf8').replace(/^﻿/, '')) : [];
 const byId     = Object.fromEntries([...dl, ...scored].map(c => [c.id, c]));
 const metaPath = path.join(projectDir, 'exports/metadata.json');
 

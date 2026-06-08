@@ -268,12 +268,6 @@ function getClipState(id) { if (!state.clips[id]) state.clips[id] = {}; return s
 
 function getThumbEntry(clipId) { return (state.thumbnails || []).find(t => t.clipId === clipId) || null; }
 function isThumbClip(clipId) { return !!(state.thumbnails || []).find(t => t.clipId === clipId); }
-function isMainThumb(clipId) { const e = getThumbEntry(clipId); return !!e?.main; }
-function setMainThumb(clipId) {
-  (state.thumbnails || []).forEach(t => { t.main = (t.clipId === clipId); });
-  saveState();
-  (state.thumbnails || []).forEach(t => updateCardInPlace(t.clipId));
-}
 
 function fmtTime(sec) {
   const m = Math.floor(sec / 60);
@@ -362,7 +356,6 @@ function buildClipCard(clip, num) {
   const cs = getClipState(clip.id);
   const isShort = !!(cs.short);
   const isThumb = isThumbClip(clip.id);
-  const isMain  = isMainThumb(clip.id);
   const isRecon = !!state.reconnects[clip.id];
   const isReconSrc = state.reconnectSource?.clipId === clip.id;
   const cutCount = (cs.keeps || []).length;
@@ -380,7 +373,7 @@ function buildClipCard(clip, num) {
       <span class="clip-dur-used" id="dur-used-${clip.id}" style="font-family:monospace;font-size:11px;color:#555"><span style="color:#f5ff3d">${fmtTimeSec(getClipUsedDur(clip.id))}</span>/${fmtTimeSec(clip.duration)}</span>
       <div class="card-tags">
         ${isShort ? `<span class="tag tag-short on" style="cursor:default">SHORT</span>` : ''}
-        ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB${isMain ? ' ★' : ''}</span>` : ''}
+        ${isThumb ? `<span class="tag tag-thumb on" style="cursor:default">THUMB</span>` : ''}
         ${isRecon ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
         ${isReconSrc ? `<span class="tag tag-reconnect on" style="cursor:default">RECONNECT</span>` : ''}
         ${cutCount > 0 ? `<span class="mini-badge mb-cut">✂ ${cutCount}</span>` : ''}
@@ -443,20 +436,21 @@ function toggleTag(e, clipId, tag) {
   const cs = getClipState(clipId);
   const clip = getClip(clipId);
   const extraUpdates = [];
+  let tagAdded = false;
   if (tag === 'short') {
-    if (cs.short) { delete cs.short; } else { cs.short = { mode: 'desktop' }; }
+    if (cs.short) { delete cs.short; } else { cs.short = { mode: 'desktop' }; tagAdded = true; }
   } else if (tag === 'thumb') {
     const video = document.getElementById('vid-' + clipId);
     const currentTime = video ? +video.currentTime.toFixed(2) : 0;
     const existing = getThumbEntry(clipId);
     if (existing) {
-      const wasMain = existing.main;
       state.thumbnails = state.thumbnails.filter(t => t.clipId !== clipId);
-      if (wasMain && state.thumbnails.length > 0) state.thumbnails[0].main = true;
+      if (state.thumbnails.length > 0) state.thumbnails[0].main = true;
       state.thumbnails.forEach(t => extraUpdates.push(t.clipId));
     } else {
       const isFirst = state.thumbnails.length === 0;
       state.thumbnails.push({ clipId, at: currentTime, main: isFirst });
+      tagAdded = true;
     }
   } else if (tag === 'reconnect') {
     if (state.reconnects[clipId]) {
@@ -469,6 +463,15 @@ function toggleTag(e, clipId, tag) {
   updateCardInPlace(clipId);
   extraUpdates.forEach(id => updateCardInPlace(id));
   if (tag === 'reconnect') refreshSeps();
+  if (tagAdded) {
+    if (tag === 'thumb') {
+      const btn = document.getElementById('thumb-mode-btn-' + clipId);
+      if (btn) setPlayMode(clipId, 'thumbnail', btn);
+    } else if (tag === 'short') {
+      const btn = document.getElementById('shorts-mode-btn-' + clipId);
+      if (btn) setPlayMode(clipId, 'shorts', btn);
+    }
+  }
 }
 
 // ── SORTABLE ──────────────────────────────────────────────────────────────────
@@ -522,7 +525,6 @@ function updateCardInPlace(clipId) {
   const cs = getClipState(clipId);
   const isShort = !!cs.short;
   const isThumb = isThumbClip(clipId);
-  const isMain  = isMainThumb(clipId);
   const isRecon = !!state.reconnects[clipId];
   const isReconSrc = state.reconnectSource?.clipId === clipId;
   const cutCount = (cs.keeps || []).length;
@@ -540,7 +542,7 @@ function updateCardInPlace(clipId) {
   const mkTag = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.style.cursor = 'default'; s.textContent = text; cardTags.appendChild(s); };
   const mkBadge = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; cardTags.appendChild(s); };
   if (isShort) mkTag('tag tag-short on', 'SHORT');
-  if (isThumb) mkTag('tag tag-thumb on', isMain ? 'THUMB ★' : 'THUMB');
+  if (isThumb) mkTag('tag tag-thumb on', 'THUMB');
   if (isRecon) mkTag('tag tag-reconnect on', 'RECONNECT');
   if (isReconSrc) mkTag('tag tag-reconnect on', 'RECONNECT');
   if (cutCount > 0) mkBadge('mini-badge mb-cut', `✂ ${cutCount}`);
@@ -570,10 +572,8 @@ function updateTimingExtras(clipId) {
   }
   const thumbEntry = getThumbEntry(clipId);
   if (thumbEntry) {
-    const multiThumb = state.thumbnails.length > 1;
     html += `<div class="ctrl-row" style="margin-top:5px">
       <span style="color:#4ade80;font-size:11px;font-family:monospace">🖼 ${fmtTime(thumbEntry.at)}</span>
-      ${multiThumb ? `<button class="ctrl-btn" style="border-color:${thumbEntry.main ? '#4ade80' : '#333'};color:${thumbEntry.main ? '#4ade80' : '#555'};font-size:10px;padding:2px 8px;margin-left:6px" onclick="setMainThumb('${clipId}')">★ Main</button>` : ''}
     </div>`;
   }
   el.innerHTML = html;
@@ -1361,6 +1361,9 @@ function setReconnectSource(clipId) {
   syncTagSections(clipId);
   updateCardInPlace(clipId);
   saveState();
+  if (state.reconnectSource?.clipId === clipId && reconBtn) {
+    setPlayMode(clipId, 'reconnect', reconBtn);
+  }
 }
 
 function initReconTimeline(clipId) {
@@ -1605,11 +1608,8 @@ function updateTopbar() {
   const thumbBadge = document.getElementById('thumb-badge');
   if (state.thumbnails && state.thumbnails.length > 0) {
     thumbBadge.style.display = '';
-    const mainT = state.thumbnails.find(t => t.main) || state.thumbnails[0];
-    const secCount = state.thumbnails.length - 1;
     document.getElementById('thumb-display').textContent =
-      `${getClip(mainT.clipId)?.streamer || '?'} ${fmtTime(mainT.at)} ★` +
-      (secCount > 0 ? ` +${secCount}` : '');
+      state.thumbnails.map(t => getClip(t.clipId)?.streamer || '?').join(', ');
   } else { thumbBadge.style.display = 'none'; }
 }
 

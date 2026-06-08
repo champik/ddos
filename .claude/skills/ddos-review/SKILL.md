@@ -23,8 +23,8 @@ node scripts/gen-review.js "projects/<runId>"
 2. Subtitle: runId · дата · статус · кількість кліпів
 3. Якщо опубліковано — рядок з кнопками YouTube ↗ та Short 1 ↗ Short 2 ↗ ... одразу під subtitle
 4. Long-form video (episode-NNN.mp4)
-5. Thumbnail
-6. Title options (клікабельні картки)
+5. Thumbnail — радіо-кнопки по кандидатах `thumb-candidate-{i}-{model}.png`; підпис `[streamerNickname] - [model]`
+6. Title — чекбокси з `clipHooks`; live textarea що конкатенує вибрані через ` | `
 7. Таблиця кліпів — деталі нижче
 8. Shorts grid (9:16 vertical відео + title + caption)
 9. Metadata block (description + tags)
