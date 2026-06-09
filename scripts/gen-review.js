@@ -429,3 +429,12 @@ updateCmd();
 fs.mkdirSync(path.join(projectDir, 'review'), { recursive: true });
 fs.writeFileSync(path.join(projectDir, 'review/review.html'), html);
 console.log('✓ review.html ->', path.join(projectDir, 'review/review.html'));
+
+const statePath = path.join(projectDir, 'state.json');
+if (fs.existsSync(statePath)) {
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.stages.review = 'done';
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch {}
+}

@@ -123,4 +123,16 @@ for (const clipId of editorial.clipOrder) {
 }
 
 console.log(`\nDone: ${processed} processed, ${skipped} skipped, ${failed} failed`);
+
+if (failed === 0) {
+  const statePath = path.join(projectDir, 'state.json');
+  if (fs.existsSync(statePath)) {
+    try {
+      const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      state.stages.trim = 'done';
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    } catch {}
+  }
+}
+
 if (failed > 0) process.exit(1);

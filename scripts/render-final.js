@@ -35,4 +35,13 @@ if (r.status !== 0) {
   else console.log('Last stderr:\n' + lines.slice(-15).join('\n'));
 } else {
   console.log('[OK]', output);
+  const statePath = path.join(base, 'state.json');
+  if (fs.existsSync(statePath)) {
+    try {
+      const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      state.stages.renderLong = 'done';
+      if (state.outputs) state.outputs.longformPath = output;
+      fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+    } catch {}
+  }
 }

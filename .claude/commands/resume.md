@@ -24,8 +24,10 @@ Editorial decisions for /ddos resume — paste this to Claude:
 ```javascript
 {
   clipOrder: editorial.clipOrder,
-  groups: // розбити clipOrder на групи по 4 (VIBE_GROUP)
-  openerClipId: editorial.thumbnail?.clipId || editorial.clipOrder[0],
+  groups: // розбити clipOrder на групи по 4 (VIBE_GROUP).
+          // Для кожної групи: { clipIds: [...], label: broadcaster_name першого кліпу в групі }
+          // broadcaster_name — з clips/downloaded-clips.json (byId lookup)
+  openerClipId: editorial.thumbnails?.[0]?.clipId || editorial.clipOrder[0],
   reconnectingClipId: editorial.reconnect?.clipId || null,
   shortClipIds: Object.entries(editorial.clips || {})
     .filter(([id, c]) => c.short)
@@ -44,7 +46,7 @@ Editorial decisions for /ddos resume — paste this to Claude:
 **Порядок:**
 1. `scripts/apply-editorial.js <runId>` — clean.mp4 для кожного кліпу (trim + cuts); після: `state.stages.trim = "done"`
 2. `scripts/transcribe-batch.js <runId>` — транскрипція тільки вибраних кліпів (з clipOrder); після: `state.stages.transcribe = "done"`
-3. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай OVERLAYS + RECONNECT + CHILL FINALE + RENDER LONG
+3. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай OVERLAYS + RENDER LONG
 4. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай CAPTIONS + RENDER SHORTS
 5. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай THUMBNAIL + METADATA
 6. Прочитай `.claude/skills/ddos-review/SKILL.md` → виконай REVIEW

@@ -7,7 +7,7 @@
 ## Генерація review.html
 
 ```bash
-node scripts/progress.js "projects/<runId>" 14 "Генерую review.html"
+node scripts/progress.js "projects/<runId>" 15 "Генерую review.html"
 ```
 
 Запустити готовий скрипт:

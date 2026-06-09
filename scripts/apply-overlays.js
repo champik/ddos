@@ -207,11 +207,9 @@ for (const group of plan.groups) {
   }
 }
 
-const noOverlayIds = new Set(plan.noOverlayClipIds || []);
-
 let prevBroadcaster = null;
 for (const { clipId, broadcaster } of orderedClips) {
-  const skipBanner = broadcaster === prevBroadcaster || noOverlayIds.has(clipId);
+  const skipBanner = broadcaster === prevBroadcaster;
   applyStreamerOverlay(clipId, broadcaster, skipBanner);
   prevBroadcaster = broadcaster;
 }
@@ -225,4 +223,15 @@ for (const clipId of plan.clipOrder) {
 }
 
 renderReconnecting();
+
+const statePath = path.join(projectDir, 'state.json');
+if (fs.existsSync(statePath)) {
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.stages.overlays = 'done';
+    state.stages.reconnecting = 'done';
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch {}
+}
+
 console.log('\nDone.\n');

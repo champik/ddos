@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// render-overlay.js — renders animated HTML overlays to WebM with alpha channel
+// render-overlay.js — renders animated HTML overlays to FFV1 MKV with alpha channel
 // Modes:
-//   node render-overlay.js streamer <name> <out.webm>   — streamer name overlay (3s, 30fps)
-//   node render-overlay.js reconnecting <out.webm>      — reconnecting panel (3s, 30fps)
+//   node render-overlay.js streamer <name> <out.mkv>   — streamer name overlay (3s, 30fps)
+//   node render-overlay.js reconnecting <out.mkv>      — reconnecting panel (3s, 30fps)
 'use strict';
 const puppeteer = require('puppeteer');
 const fs = require('fs');

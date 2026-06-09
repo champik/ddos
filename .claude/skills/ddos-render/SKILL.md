@@ -11,7 +11,7 @@ node scripts/progress.js "projects/<runId>" 6 "Обробка кліпів (edit
 ```
 
 ```bash
-node scripts/apply-editorial.js "projects/<runId>"
+node scripts/apply-editorial.js "<runId>"
 ```
 
 Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує `processed/<clipId>/clean.mp4` з:

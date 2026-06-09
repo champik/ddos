@@ -180,3 +180,12 @@ for (const clipId of clipIds) {
 }
 
 console.log(`\n[DONE] Generated ${generated} shorts captions\n`);
+
+const statePath = path.join(projectDir, 'state.json');
+if (fs.existsSync(statePath)) {
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.stages.captions = 'done';
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch {}
+}

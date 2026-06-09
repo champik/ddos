@@ -143,3 +143,12 @@ for (const clipId of clipIds) {
 }
 
 console.log(`\nDone. ${ok} ok, ${fail} failed.\n`);
+
+const statePath = path.join(base, 'state.json');
+if (fs.existsSync(statePath)) {
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.stages.renderShorts = 'done';
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch {}
+}

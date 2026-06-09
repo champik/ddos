@@ -117,7 +117,7 @@ Gaming     → до 40  (30 по вірусності + 10 по популярн
 ### Фільтри — ЗАВЖДИ відхиляти
 - language != "en" — будь-яка мова крім англійської (RU, UK, JA, KO, ZH, TH та всі інші)
 - title містить: русский, россия, russian, путін, рф (додатковий захист для хибно-класифікованих кліпів)
-- category: Slots, Casino, Gambling, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals, Dark and Darker, Path of Exile 2
+- category: Slots, Casino, Gambling, Poker, Sports Betting, Escape from Tarkov, Overwatch 2, Marvel Rivals, Dark and Darker, Path of Exile 2
 - стрімер у blacklist: Lyasyaa, Qoqsik, vedal987 (VTuber)
 
 ### DDOS Score формула
@@ -154,7 +154,6 @@ projects/<runId>/
 │   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
 │   ├── captions-longform.ass
 │   └── captions-vertical.ass
-├── cache/overlays/<broadcaster>.mkv   # cached streamer overlays (FFV1 MKV) + reconnecting-panel.mkv
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
 │   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
@@ -168,8 +167,15 @@ projects/<runId>/
 │   ├── episode-NNN.mp4
 │   ├── thumbnail.png
 │   ├── metadata.json
-│   └── shorts/<clipId>.mp4
+│   ├── shorts/<clipId>.mp4
+│   └── clean/<clipId>.mp4           # копія clean.mp4 для шортсів (тільки short-кліпи)
 └── review/review.html
+```
+
+**Глобальний кеш (поза папкою проекту):**
+```
+cache/overlays/<broadcaster>.mkv    # кешовані streamer overlays (FFV1 MKV, перевикористовуються між епізодами)
+cache/overlays/reconnecting-panel.mkv
 ```
 
 ---
