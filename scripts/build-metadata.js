@@ -16,6 +16,8 @@ const metaPath = path.join(projectDir, 'exports/metadata.json');
 // Read Claude-generated metadata if present, otherwise start with empty shell
 let meta = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')) : {};
 
+const { fmt, buildVideoTags, buildShortsTags } = require('./lib/metadata-utils');
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function getDur(clipId) {
@@ -26,109 +28,8 @@ function getDur(clipId) {
   } catch { return 0; }
 }
 
-function fmt(secs) {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-
-function sanitizeGameTag(name) {
-  return name.replace(/[^a-zA-Z0-9\s]/g, '').trim()
-    .split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-}
-
-// ── tag config ────────────────────────────────────────────────────────────────
-
-// game_id → extra tags for specialty categories (JC/IRL handled via base tags)
-const SPECIALTY = {
-  '26936':     ['TwitchMusic', 'MusicStream'],
-  '509667':    ['CookingStream', 'FoodTwitch'],
-  '509671':    ['FitnessTwitch'],
-  '116747788': ['HotTubStream'],
-  '417752':    ['TwitchPodcast'],
-};
-// IDs that don't generate a gaming tag
-const CORE_IDS = new Set(['509658', '509672', ...Object.keys(SPECIALTY)]);
-
 // clips actually in the episode, in timeline order
 const ALL_CLIP_IDS = plan.groups.flatMap(g => g.clipIds);
-
-// ── tag builders ──────────────────────────────────────────────────────────────
-
-function buildVideoTags() {
-  const base = [
-    'DailyDoseOfStream', 'TwitchClips', 'TwitchHighlights', 'TwitchMoments',
-    'StreamHighlights', 'Twitch', 'FunnyMoments', 'BestMoments', 'StreamerMoments',
-    'ClipCompilation', 'TwitchCompilation', 'DailyHighlights', 'JustChatting', 'IRL', 'Streaming',
-  ];
-  const streamerTags = [], specialtyTags = [], gamingTags = [];
-  let hasGaming = false;
-
-  for (const id of ALL_CLIP_IDS) {
-    const c = byId[id];
-    if (!c) continue;
-
-    if (c.broadcaster_name && !streamerTags.includes(c.broadcaster_name))
-      streamerTags.push(c.broadcaster_name);
-
-    const gid = String(c.game_id || '');
-    if (SPECIALTY[gid]) {
-      for (const t of SPECIALTY[gid])
-        if (!specialtyTags.includes(t)) specialtyTags.push(t);
-    } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
-      hasGaming = true;
-      const tag = sanitizeGameTag(c.game_name);
-      if (tag && !gamingTags.includes(tag)) gamingTags.push(tag);
-    }
-  }
-
-  const gamingBase = hasGaming ? ['Gaming', 'TwitchGaming', 'GameClips'] : [];
-  // order: base → streamers (appearance order) → specialty → gaming
-  return [...base, ...streamerTags, ...specialtyTags, ...gamingBase, ...gamingTags].slice(0, 30);
-}
-
-function buildShortsTags(clipId) {
-  const c = byId[clipId];
-
-  const streamerTag = c?.broadcaster_name ? '#' + c.broadcaster_name.replace(/[^a-zA-Z0-9]/g, '') : null;
-  const categoryTag = c?.game_name ? '#' + c.game_name.replace(/[^a-zA-Z0-9]/g, '') : null;
-  const descriptionHashtags = [
-    ...(streamerTag ? [streamerTag] : []),
-    ...(categoryTag ? [categoryTag] : []),
-    '#twitch', '#stream', '#live',
-  ];
-
-  const specific = [...descriptionHashtags, '#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
-  if (c) {
-    const gid = String(c.game_id || '');
-    if (SPECIALTY[gid]) {
-      for (const t of SPECIALTY[gid]) specific.push('#' + t);
-    } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
-      specific.push('#' + sanitizeGameTag(c.game_name), '#Gaming', '#TwitchGaming');
-    }
-  }
-  const general = [
-    '#TwitchShorts', '#StreamerMoments', '#FunnyMoments', '#TwitchMoments',
-    '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
-    '#StreamClips', '#TwitchFunny', '#JustChatting', '#LiveStreaming',
-    '#TwitchHighlight', '#TwitchClip', '#ClipOfTheDay', '#TwitchCommunity',
-    '#StreamMoment', '#TwitchStream', '#ContentCreator', '#ShortsVideo',
-    '#TwitchFails', '#DailyClips', '#TopClips', '#TwitchTV', '#Streaming',
-  ];
-  const candidates = [...new Set([...specific, ...general])];
-  const tags = [];
-  let len = 0;
-  for (const t of candidates) {
-    const bare = t.replace(/^#/, '');
-    const add = (tags.length > 0 ? 1 : 0) + bare.length;
-    if (len + add > 500) break;
-    tags.push(t);
-    len += add;
-  }
-  return { descriptionHashtags, tags };
-}
 
 function buildXEpisodeCaption() {
   const title = meta.selectedTitle || (meta.titleOptions && meta.titleOptions[0]) || '';
@@ -189,7 +90,7 @@ const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
 
 // ── assemble ──────────────────────────────────────────────────────────────────
 
-meta.tags = buildVideoTags();
+meta.tags = buildVideoTags(ALL_CLIP_IDS, byId);
 meta.xEpisodeCaption = buildXEpisodeCaption();
 
 // Replace timecodes + hashtags (strip old ones first, then append fresh)
@@ -203,7 +104,7 @@ if (meta.description) {
 if (Array.isArray(meta.shortsMetadata)) {
   meta.shortsMetadata = meta.shortsMetadata.map(s => ({
     ...s,
-    ...buildShortsTags(s.clipId),
+    ...buildShortsTags(s.clipId, byId),
     xCaption: buildXShortCaption(s.clipId),
   }));
 }

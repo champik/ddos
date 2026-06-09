@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
 
 const [,, runId] = process.argv;
 const RUN_DIR = path.join('projects', runId);
@@ -49,7 +49,7 @@ function downloadClip(clip) {
     let stderr = '';
     proc.stderr.on('data', d => stderr += d.toString());
     proc.on('close', code => {
-      if (code === 0 && fs.existsSync(outPath)) {
+      if (code === 0) {
         resolve({ clip, filename, status: 'ok' });
       } else {
         resolve({ clip, filename, status: 'error', error: stderr.slice(0, 200) });

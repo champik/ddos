@@ -20,7 +20,7 @@ try { editorialClips = readJson(path.join(projectDir, 'edit/editorial.json')).cl
 // Hot words trigger emotional highlight
 const HOT = new Set(['no','bro','what','wait','oh','stop','go','yes','wtf','literally',
   'insane','crazy','nah','holy','hell','wow','bruh','yo','omg','damn','actually',
-  'really','seriously','bro','dude','man','guys','let','go','come','look','watch']);
+  'really','seriously','dude','man','guys','let','come','look','watch']);
 
 function isHot(word) {
   return HOT.has(word.replace(/[^a-z]/g, '').toLowerCase());

@@ -13,6 +13,8 @@ const plan   = JSON.parse(fs.readFileSync(path.join(projectDir, 'edit/episode-pl
 const scored = JSON.parse(fs.readFileSync(path.join(projectDir, 'clips/scored-clips.json'), 'utf8'));
 const byId   = Object.fromEntries(scored.map(c => [c.id, c]));
 
+const { fmt, buildVideoTags, buildShortsTags } = require('./lib/metadata-utils');
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function duration(clipId) {
@@ -22,11 +24,6 @@ function duration(clipId) {
   return parseFloat(r.stdout) || 0;
 }
 
-function fmt(seconds) {
-  const total = Math.floor(seconds);
-  return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
-}
-
 function reconnectDur() {
   const file = path.join(projectDir, 'edit/reconnecting.mp4');
   if (!fs.existsSync(file)) return 1.0;
@@ -34,95 +31,7 @@ function reconnectDur() {
   return parseFloat(r.stdout) || 1.0;
 }
 
-function sanitizeGameTag(name) {
-  return name.replace(/[^a-zA-Z0-9\s]/g, '').trim()
-    .split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('');
-}
-
-// ── tag config ────────────────────────────────────────────────────────────────
-
-const SPECIALTY = {
-  '26936':     ['TwitchMusic', 'MusicStream'],
-  '509667':    ['CookingStream', 'FoodTwitch'],
-  '509671':    ['FitnessTwitch'],
-  '116747788': ['HotTubStream'],
-  '417752':    ['TwitchPodcast'],
-};
-const CORE_IDS = new Set(['509658', '509672', ...Object.keys(SPECIALTY)]);
-
 const ALL_CLIP_IDS = plan.groups.flatMap(g => g.clipIds);
-
-// ── tag builders ──────────────────────────────────────────────────────────────
-
-function buildVideoTags() {
-  const base = [
-    'DailyDoseOfStream', 'TwitchClips', 'TwitchHighlights', 'TwitchMoments',
-    'StreamHighlights', 'Twitch', 'FunnyMoments', 'BestMoments', 'StreamerMoments',
-    'ClipCompilation', 'TwitchCompilation', 'DailyHighlights', 'JustChatting', 'IRL', 'Streaming',
-  ];
-  const streamerTags = [], specialtyTags = [], gamingTags = [];
-  let hasGaming = false;
-
-  for (const id of ALL_CLIP_IDS) {
-    const c = byId[id];
-    if (!c) continue;
-    if (c.broadcaster_name && !streamerTags.includes(c.broadcaster_name))
-      streamerTags.push(c.broadcaster_name);
-    const gid = String(c.game_id || '');
-    if (SPECIALTY[gid]) {
-      for (const t of SPECIALTY[gid])
-        if (!specialtyTags.includes(t)) specialtyTags.push(t);
-    } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
-      hasGaming = true;
-      const tag = sanitizeGameTag(c.game_name);
-      if (tag && !gamingTags.includes(tag)) gamingTags.push(tag);
-    }
-  }
-
-  const gamingBase = hasGaming ? ['Gaming', 'TwitchGaming', 'GameClips'] : [];
-  return [...base, ...streamerTags, ...specialtyTags, ...gamingBase, ...gamingTags].slice(0, 30);
-}
-
-function buildShortsTags(clipId) {
-  const c = byId[clipId];
-
-  const streamerTag = c?.broadcaster_name ? '#' + c.broadcaster_name.replace(/[^a-zA-Z0-9]/g, '') : null;
-  const categoryTag = c?.game_name ? '#' + c.game_name.replace(/[^a-zA-Z0-9]/g, '') : null;
-  const descriptionHashtags = [
-    ...(streamerTag ? [streamerTag] : []),
-    ...(categoryTag ? [categoryTag] : []),
-    '#twitch', '#stream', '#live',
-  ];
-
-  const specific = [...descriptionHashtags, '#DailyDoseOfStream', '#TwitchClips', '#TwitchHighlights', '#Shorts'];
-  if (c) {
-    const gid = String(c.game_id || '');
-    if (SPECIALTY[gid]) {
-      for (const t of SPECIALTY[gid]) specific.push('#' + t);
-    } else if (gid && !CORE_IDS.has(gid) && c.game_name) {
-      specific.push('#' + sanitizeGameTag(c.game_name), '#Gaming', '#TwitchGaming');
-    }
-  }
-  const general = [
-    '#TwitchShorts', '#StreamerMoments', '#FunnyMoments', '#TwitchMoments',
-    '#StreamHighlights', '#TwitchCompilation', '#BestMoments',
-    '#StreamClips', '#TwitchFunny', '#JustChatting', '#LiveStreaming',
-    '#TwitchHighlight', '#TwitchClip', '#ClipOfTheDay', '#TwitchCommunity',
-    '#StreamMoment', '#TwitchStream', '#ContentCreator', '#ShortsVideo',
-    '#TwitchFails', '#DailyClips', '#TopClips', '#TwitchTV', '#Streaming',
-  ];
-  const candidates = [...new Set([...specific, ...general])];
-  const tags = [];
-  let len = 0;
-  for (const t of candidates) {
-    const bare = t.replace(/^#/, '');
-    const add = (tags.length > 0 ? 1 : 0) + bare.length;
-    if (len + add > 500) break;
-    tags.push(t);
-    len += add;
-  }
-  return { descriptionHashtags, tags };
-}
 
 // ── chapters ──────────────────────────────────────────────────────────────────
 
@@ -149,7 +58,7 @@ const chaptersStr = chapters.map(c => fmt(c.t) + ' ' + c.label).join('\n');
 
 // ── tags + hashtags ───────────────────────────────────────────────────────────
 
-const tags = buildVideoTags();
+const tags = buildVideoTags(ALL_CLIP_IDS, byId);
 
 const streamers = [];
 for (const id of ALL_CLIP_IDS) {
@@ -168,7 +77,7 @@ const shortsMetadata = (plan.shortClipIds || []).map(clipId => {
     clipId,
     title: `${name} Had A Moment | Daily Dose Of Stream`,
     description: '',
-    ...buildShortsTags(clipId),
+    ...buildShortsTags(clipId, byId),
   };
 });
 

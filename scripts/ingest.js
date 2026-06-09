@@ -243,11 +243,10 @@ async function main() {
           if (seenTopup.has(c.id)) continue;
           seenTopup.add(c.id);
           const clip = { ...c, game_id: gameId, game_name: JCIRL_TOPUP_NAMES[gameId] };
-          const lang = (clip.language || '').toLowerCase();
           const title = (clip.title || '').toLowerCase();
           const broadcaster = (clip.broadcaster_name || '').toLowerCase();
           let rejectReason = null;
-          if (lang !== 'en') rejectReason = 'non_english';
+          if ((clip.language || '').toLowerCase() !== 'en') rejectReason = 'non_english';
           else if (RU_KEYWORDS.some(k => title.includes(k))) rejectReason = 'ru_keyword';
           else if (STREAMER_BLACKLIST.has(broadcaster)) rejectReason = 'streamer_blacklist';
           else if (ORG_BLACKLIST.has(broadcaster)) rejectReason = 'tournament_official';
@@ -332,10 +331,10 @@ async function main() {
   const specialtyPick = pickBucket(specialtyPool,  7,  3,    6, 5);  // up to 10, max 6/cat, max 5/streamer
   const gamingPick    = pickBucket(gamingPool,     30, 10,    5, 5);  // up to 40, max 5/game, max 5/streamer
 
-  const seen2 = new Set();
+  const downloadedIds = new Set();
   const toDownload = [];
   for (const c of [...jcIrlPick, ...specialtyPick, ...gamingPick]) {
-    if (!seen2.has(c.id)) { seen2.add(c.id); toDownload.push(c); }
+    if (!downloadedIds.has(c.id)) { downloadedIds.add(c.id); toDownload.push(c); }
   }
 
   // Safety: enforce JC/IRL minimum 50

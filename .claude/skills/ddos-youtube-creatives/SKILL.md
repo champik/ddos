@@ -20,7 +20,7 @@ description: Use when generating YouTube titles, thumbnail hooks, descriptions, 
 
 ---
 
-## Stage 14 — запуск
+## Stage 13 — запуск
 
 ```bash
 node scripts/progress.js "projects/<runId>" 13 "YouTube metadata (Claude)"

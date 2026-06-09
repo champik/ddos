@@ -25,9 +25,9 @@ function saveCache(cache) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-function httpsGetText(url) {
+function httpsGet(url, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0', ...headers } }, res => {
       let data = '';
       res.on('data', d => data += d);
       res.on('end', () => resolve(data));
@@ -37,21 +37,9 @@ function httpsGetText(url) {
   });
 }
 
-function httpsGetJson(url, headers = {}) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, res => {
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
-
 async function fetchFromTwitchTracker(broadcaster) {
   const url = `https://twitchtracker.com/${encodeURIComponent(broadcaster.toLowerCase())}`;
-  const html = await httpsGetText(url);
+  const html = await httpsGet(url);
 
   // TwitchTracker shows avg viewers as a number near "average viewers" text
   // Patterns: "8,006" or "8006" near "Average viewers" or "Avg. viewers"
@@ -68,18 +56,13 @@ async function fetchFromTwitchApi(broadcaster, token, clientId) {
   if (!token || !clientId) return null;
   try {
     const searchUrl = `https://api.twitch.tv/helix/users?login=${encodeURIComponent(broadcaster)}`;
-    const res = await httpsGetJson(searchUrl, {
-      'Client-ID': clientId,
-      'Authorization': `Bearer ${token}`
-    });
+    const authHeaders = { 'Client-ID': clientId, 'Authorization': `Bearer ${token}` };
+    const res = JSON.parse(await httpsGet(searchUrl, authHeaders));
     const userId = res.data?.[0]?.id;
     if (!userId) return null;
 
     const chanUrl = `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${userId}&first=1`;
-    const chanRes = await httpsGetJson(chanUrl, {
-      'Client-ID': clientId,
-      'Authorization': `Bearer ${token}`
-    });
+    const chanRes = JSON.parse(await httpsGet(chanUrl, authHeaders));
     const followers = chanRes.total || 0;
     return Math.max(100, Math.round(followers / 20));
   } catch {

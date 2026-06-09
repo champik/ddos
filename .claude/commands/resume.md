@@ -42,8 +42,8 @@ Editorial decisions for /ddos resume — paste this to Claude:
 Читай skill і виконуй повністю перед переходом до наступного.
 
 **Порядок:**
-1. `scripts/apply-editorial.js <runId>` — clean.mp4 для кожного кліпу (trim + cuts)
-2. `scripts/transcribe-batch.js <runId>` — транскрипція тільки вибраних кліпів (з clipOrder)
+1. `scripts/apply-editorial.js <runId>` — clean.mp4 для кожного кліпу (trim + cuts); після: `state.stages.trim = "done"`
+2. `scripts/transcribe-batch.js <runId>` — транскрипція тільки вибраних кліпів (з clipOrder); після: `state.stages.transcribe = "done"`
 3. Прочитай `.claude/skills/ddos-render/SKILL.md` → виконай OVERLAYS + RECONNECT + CHILL FINALE + RENDER LONG
 4. Прочитай `.claude/skills/ddos-shorts/SKILL.md` → виконай CAPTIONS + RENDER SHORTS
 5. Прочитай `.claude/skills/ddos-thumbnail/SKILL.md` → виконай THUMBNAIL + METADATA

@@ -82,8 +82,6 @@ h1{font-family:Anton,Impact,sans-serif;font-size:26px;color:#f5ff3d;letter-spaci
 .coord-hint{font-size:10px;color:#333;font-family:monospace;margin-top:5px}
 .preview-col{display:flex;flex-direction:column;align-items:center;gap:6px}
 .preview-lbl{font-size:10px;color:#444;font-family:monospace}
-.split-preview-canvas{border-radius:8px;border:1px solid #222;background:#111;display:block;cursor:pointer}
-.split-preview-canvas:hover{border-color:#444}
 .recon-sep{display:flex;align-items:center;gap:8px;padding:6px 13px;background:#150808;border:1px solid #ff4a4a33;border-radius:8px;margin:5px 0}
 .recon-sep-standalone{cursor:grab}.recon-sep-standalone:active{cursor:grabbing}
 .recon-sep.sortable-ghost{opacity:0.3}
@@ -673,8 +671,7 @@ function buildCardBody(clip) {
       <button class="ctrl-btn tag-short ${isShort?'on':''}" data-tag="short" onclick="toggleTag(event,'${clip.id}','short')">✂ Short</button>
     </div>
     <div id="cuts-list-${clip.id}"></div>
-    <div id="timing-extras-${clip.id}"></div>
-    ${buildTagSections(clip)}`;
+    <div id="timing-extras-${clip.id}"></div>`;
 }
 
 function initCardMedia(card) {
@@ -1473,11 +1470,6 @@ function initReconTimeline(clipId) {
     const v = document.getElementById('vid-' + clipId);
     if (v) v.currentTime = pct * clip.duration;
   });
-}
-
-// ── TAG SECTIONS ──────────────────────────────────────────────────────────────
-function buildTagSections(clip) {
-  return ``;
 }
 
 function syncTagSections(clipId) {

@@ -15,13 +15,11 @@ require('./progress').step(projectDir, 10, 'Оверлеї стрімерів');
 function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, '')); }
 
 const plan   = readJson(path.join(projectDir, 'edit/episode-plan.json'));
-const scored = readJson(path.join(projectDir, 'clips/scored-clips.json'));
 const dlPath = path.join(projectDir, 'clips/downloaded-clips.json');
 const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
 
 const broadcasters = {};
 for (const clip of downloaded) broadcasters[clip.id] = clip.broadcaster_name;
-for (const clip of scored) broadcasters[clip.id] = clip.broadcaster_name;
 
 // Cache dir for overlay MKVs — reused across episodes since design doesn't change
 const CACHE_DIR = path.resolve('cache/overlays');

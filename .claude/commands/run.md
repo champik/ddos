@@ -53,7 +53,8 @@
 
 **Порядок:**
 1. Прочитай `.claude/skills/ddos-ingest/SKILL.md` → виконай INGEST + FILTER + SELECT + DOWNLOAD
-2. Запусти `node scripts/gen-editorial.js <runId>` → GENERATE_EDITORIAL ← **зупинка тут**
+2. Запусти `node scripts/gen-editorial.js <runId>` → GENERATE_EDITORIAL
+   Після успіху: `state.stages.generate_editorial = "done"` ← **зупинка тут**
 
 ### Крок 3 — Показати користувачу і зупинитись
 

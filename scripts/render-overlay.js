@@ -69,51 +69,44 @@ function inlineLogoSvg(html) {
   return html.replace(/['"]\.\/logo\.svg['"]/g, `"data:image/svg+xml;base64,${b64}"`);
 }
 
-async function renderStreamer(name, outputPath) {
-  let html = fs.readFileSync('assets/streamer-overlay/streamer_name.html', 'utf8');
+async function renderOverlay({ htmlFile, replacements = {}, width, height, durationS = DURATION_S, outputPath }) {
+  let html = fs.readFileSync(htmlFile, 'utf8');
   html = inlineLogoSvg(html);
-  html = html.replace(/NORTHERNLION_OFFICIAL/g, name.toUpperCase());
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-str-'));
+  for (const [from, to] of Object.entries(replacements)) {
+    html = html.replace(new RegExp(from, 'g'), to);
+  }
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-ov-'));
   try {
-    await captureFrames(html, 1920, 1080, tmpDir);
+    await captureFrames(html, width, height, tmpDir, durationS);
     compileOverlay(tmpDir, outputPath);
-    console.log(`Streamer overlay (${name}) → ${outputPath}`);
+    console.log(`${path.basename(htmlFile)} → ${outputPath}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+async function renderStreamer(name, outputPath) {
+  await renderOverlay({
+    htmlFile: 'assets/streamer-overlay/streamer_name.html',
+    replacements: { 'NORTHERNLION_OFFICIAL': name.toUpperCase() },
+    width: 1920, height: 1080, outputPath,
+  });
 }
 
 async function renderReconnecting(outputPath) {
-  let html = fs.readFileSync('assets/overlays/reconnecting.html', 'utf8');
-  html = inlineLogoSvg(html);
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-rc-'));
-  try {
-    await captureFrames(html, 1920, 1080, tmpDir);
-    compileOverlay(tmpDir, outputPath);
-    console.log(`Reconnecting panel → ${outputPath}`);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  await renderOverlay({
+    htmlFile: 'assets/overlays/reconnecting.html',
+    width: 1920, height: 1080, outputPath,
+  });
 }
 
-// Render pulsating 1080×1920 MKV header for Shorts (logo + @streamer, 2 heartbeat cycles)
+// 2 heartbeat cycles at 2.4s each = 4.8s; loops seamlessly via -stream_loop
 async function renderShortsHeader(name, outputPath) {
-  let html = fs.readFileSync('assets/overlays/shorts-header-pulse.html', 'utf8');
-  html = inlineLogoSvg(html);
-  html = html.replace(/STREAMER_PLACEHOLDER/g, name.toUpperCase());
-
-  // 2 complete heartbeat cycles at 2.4s each = 4.8s; loops seamlessly via -stream_loop
-  const HEADER_DURATION = 4.8;
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-hdr-'));
-  try {
-    await captureFrames(html, 1080, 1920, tmpDir, HEADER_DURATION);
-    compileOverlay(tmpDir, outputPath);
-    console.log(`Shorts header pulse (@${name}) → ${outputPath}`);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  await renderOverlay({
+    htmlFile: 'assets/overlays/shorts-header-pulse.html',
+    replacements: { 'STREAMER_PLACEHOLDER': name.toUpperCase() },
+    width: 1080, height: 1920, durationS: 4.8, outputPath,
+  });
 }
 
 const [,, mode, ...args] = process.argv;

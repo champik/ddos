@@ -60,8 +60,6 @@ for (const clipId of clipIds) {
 
   const hasAss = fs.existsSync(assFile);
 
-  const activeAssFile = assFile;
-
   const short  = getShort(clipId);
   const mode   = short?.mode || 'desktop';
   const noSubs = getNoSubs(clipId);
@@ -76,7 +74,7 @@ for (const clipId of clipIds) {
     const cw = px(c.w, 'w'), ch = px(c.h, 'h'), cx = px(c.x, 'w'), cy = px(c.y, 'h');
     const cropFilter = `crop=${cw}:${ch}:${cx}:${cy},scale=1080:1920`;
     filterParts = useAss
-      ? [`[0:v]${cropFilter},ass=${ffmpegPath(activeAssFile)}[out]`]
+      ? [`[0:v]${cropFilter},ass=${ffmpegPath(assFile)}[out]`]
       : [`[0:v]${cropFilter}[out]`];
 
   } else if (mode === 'split' && short?.split) {
@@ -97,7 +95,7 @@ for (const clipId of clipIds) {
       `[vsrc2]crop=${GW}:${GH}:${GX}:${GY},scale=1080:${GAME_H}[game]`,
       '[cam][game]vstack=inputs=2[stacked]'
     ];
-    if (useAss) fc.push(`[stacked]ass=${ffmpegPath(activeAssFile)}[out]`);
+    if (useAss) fc.push(`[stacked]ass=${ffmpegPath(assFile)}[out]`);
     else fc[fc.length - 1] = fc[fc.length - 1].replace('[stacked]', '[out]');
     filterParts = fc;
 
@@ -113,7 +111,7 @@ for (const clipId of clipIds) {
       '[main]scale=1080:-2[fg]'
     ];
     filterParts = useAss
-      ? [...blurFilters, `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(activeAssFile)}[out]`]
+      ? [...blurFilters, `[blurred][fg]overlay=(W-w)/2:(H-h)/2,ass=${ffmpegPath(assFile)}[out]`]
       : [...blurFilters, '[blurred][fg]overlay=(W-w)/2:(H-h)/2[out]'];
   }
 
