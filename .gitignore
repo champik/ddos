@@ -1,0 +1,20 @@
+auth/
+cache/
+.env
+.twitch_token
+.worktrees/
+projects/*/downloads/
+projects/*/exports/*.mp4
+projects/*/exports/shorts/
+projects/
+node_modules/
+.superpowers/
+__pycache__/
+*.pyc
+.worktrees/
+tmp/
+logs/
+# analytics: генеровані дані (README, videos-index і manual-ctr — трекаються)
+analytics/data/
+analytics/performance.json
+analytics/index.html

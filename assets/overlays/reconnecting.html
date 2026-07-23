@@ -1,0 +1,260 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>DDOS · Reconnecting</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        background: transparent; /* ← transparent for WebM alpha export */
+        overflow: hidden;
+      }
+
+      .rc {
+        position: absolute;
+        bottom: 44px;
+        left: 44px; /* Variant A position */
+        width: 360px;
+        --dur: 1.5s;
+      }
+
+      .rc.v2 {
+        bottom: auto;
+        left: auto;
+        top: 44px;
+        right: 44px;
+      }
+
+      /* Panel */
+      .rc-panel {
+        background: rgba(14, 14, 16, 0.88);
+        border: 1.5px solid rgba(245, 255, 61, 0.55);
+        box-shadow:
+          0 0 0 1px rgba(14, 14, 16, 0.6),
+          4px 4px 0 rgba(245, 255, 61, 0.18);
+        padding: 14px 16px 12px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* Caution tape top strip */
+      .rc-panel::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: repeating-linear-gradient(-45deg, #f5ff3d 0 18px, #0e0e10 18px 36px);
+      }
+
+      .rc-panel::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: repeating-linear-gradient(-45deg, #f5ff3d 0 18px, #0e0e10 18px 36px);
+      }
+
+      /* Top row: dot + label */
+      .rc-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 4px;
+        margin-bottom: 8px;
+      }
+
+      .rc-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #ff2d2d;
+        flex-shrink: 0;
+        animation: dot-blink 0.6s steps(2) infinite;
+      }
+      @keyframes dot-blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.15;
+        }
+      }
+
+      .rc-label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: rgba(255, 45, 45, 0.9);
+      }
+
+      /* RECONNECTING text */
+      .rc-text {
+        font-family: 'Anton', sans-serif;
+        font-size: 28px;
+        letter-spacing: -0.5px;
+        color: #f5ff3d;
+        display: flex;
+        align-items: baseline;
+        gap: 3px;
+      }
+
+      .rc-dots span {
+        opacity: 0;
+        animation: dot-seq 0.75s ease infinite;
+      }
+      .rc-dots span:nth-child(1) {
+        animation-delay: 0s;
+      }
+      .rc-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .rc-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes dot-seq {
+        0%,
+        60%,
+        100% {
+          opacity: 0;
+        }
+        20%,
+        40% {
+          opacity: 1;
+        }
+      }
+
+      /* Progress bar */
+      .rc-bar-track {
+        height: 3px;
+        background: rgba(245, 255, 61, 0.2);
+        margin-top: 10px;
+        overflow: hidden;
+      }
+      .rc-bar-fill {
+        height: 100%;
+        background: #f5ff3d;
+        width: 0%;
+        animation: bar-fill 0.72s ease 0.1s forwards;
+      }
+      @keyframes bar-fill {
+        0% {
+          width: 0%;
+          background: #f5ff3d;
+        }
+        40% {
+          width: 45%;
+          background: #f5ff3d;
+        }
+        65% {
+          width: 62%;
+          background: #ff2d2d;
+        } /* glitch stall */
+        70% {
+          width: 58%;
+        }
+        100% {
+          width: 100%;
+          background: #9fe7c4;
+        }
+      }
+
+      /* Sub-info */
+      .rc-sub {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: rgba(244, 240, 230, 0.5);
+        margin-top: 6px;
+      }
+
+      /* Occasional glitch on the panel */
+      .rc-panel {
+        animation: panel-glitch 1.5s steps(20) 0s;
+      }
+      @keyframes panel-glitch {
+        0%,
+        100% {
+          filter: none;
+          transform: none;
+        }
+        38% {
+          filter: hue-rotate(90deg);
+          transform: translateX(2px);
+        }
+        39% {
+          filter: none;
+          transform: none;
+        }
+        68% {
+          filter: hue-rotate(-60deg);
+          transform: translateX(-3px);
+        }
+        69% {
+          filter: none;
+          transform: none;
+        }
+      }
+      .rc-wide {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 460px;
+      }
+
+      .rc-wide .rc-panel {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 18px 12px;
+      }
+
+      .rc-wide .rc-panel::before {
+        display: block;
+      }
+
+      .rc-wide .rc-info {
+        flex: 1;
+      }
+      .rc-wide .rc-logo img {
+        max-width: 90px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rc-wide v2" id="varB">
+      <div class="rc-panel">
+        <div class="rc-logo"><img src="./logo.svg" alt="DDOS" /></div>
+        <div class="rc-info">
+          <div class="rc-top" style="margin-bottom: 4px">
+            <div class="rc-dot"></div>
+            <div class="rc-label">signal lost</div>
+          </div>
+          <div class="rc-text">
+            RECONNECTING<span class="rc-dots"><span>.</span><span>.</span><span>.</span></span>
+          </div>
+          <div class="rc-bar-track" style="margin-top: 4px"><div class="rc-bar-fill"></div></div>
+          <div class="rc-sub">DAILY DOSE OF STREAM</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

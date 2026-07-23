@@ -1,0 +1,276 @@
+<!doctype html>
+<!--
+╔══════════════════════════════════════════════════════════════════════╗
+║  DDOS · OVERLAYS SHOWCASE                                            ║
+║  A. Long-form subtitles (lower-third, selective use)                 ║
+║  B. Shorts subtitles (large, dynamic, keyword highlight)             ║
+║  C. Streamer Name Overlay (animated, adaptive width)                 ║
+║                                                                       ║
+║  CLAUDE CODE: import CSS classes directly from this file,            ║
+║  render overlay HTML on top of video frame (1280×720 or 1080×1920)  ║
+╚══════════════════════════════════════════════════════════════════════╝
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>DDOS · Overlays</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        font-family: 'Space Grotesk', sans-serif;
+        overflow-x: hidden;
+      }
+
+      /* ═══════════════════════════════════════════════════════
+   PREVIEW SCAFFOLD (not exported — just for this page)
+═══════════════════════════════════════════════════════ */
+      .preview-row {
+        display: flex;
+        gap: 32px;
+        padding: 32px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .preview-label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #f5ff3d;
+        margin-bottom: 12px;
+        display: block;
+      }
+      .preview-note {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: rgba(244, 240, 230, 0.5);
+        margin-top: 10px;
+        line-height: 1.6;
+        max-width: 560px;
+      }
+      .section-head {
+        padding: 28px 32px 8px;
+        font-family: 'Anton', sans-serif;
+        font-size: 42px;
+        letter-spacing: -1px;
+        color: #f5ff3d;
+        border-top: 2px solid rgba(245, 255, 61, 0.25);
+        margin-top: 24px;
+      }
+      .section-sub {
+        padding: 0 32px 20px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        letter-spacing: 2px;
+        color: rgba(244, 240, 230, 0.5);
+      }
+
+      /* Fake video frame shell */
+      .vframe {
+        position: relative;
+        overflow: hidden;
+        background: #141418;
+        flex-shrink: 0;
+        /* pattern to simulate video content */
+        background-image:
+          linear-gradient(135deg, rgba(245, 255, 61, 0.04) 25%, transparent 25%),
+          linear-gradient(225deg, rgba(245, 255, 61, 0.04) 25%, transparent 25%),
+          linear-gradient(315deg, rgba(245, 255, 61, 0.04) 25%, transparent 25%),
+          linear-gradient(45deg, rgba(245, 255, 61, 0.04) 25%, transparent 25%);
+        background-size: 30px 30px;
+      }
+      .vframe-label {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: 'Anton', sans-serif;
+        font-size: 18px;
+        letter-spacing: 1px;
+        color: rgba(244, 240, 230, 0.18);
+        text-align: center;
+        pointer-events: none;
+      }
+
+      /* Safe area overlays for shorts */
+      .safe-tiktok {
+        position: absolute;
+        pointer-events: none;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 8%;
+        background: rgba(255, 100, 0, 0.07);
+        border-bottom: 1px dashed rgba(255, 100, 0, 0.3);
+      }
+      .safe-tiktok-btm {
+        position: absolute;
+        pointer-events: none;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 25%;
+        background: rgba(255, 100, 0, 0.07);
+        border-top: 1px dashed rgba(255, 100, 0, 0.3);
+      }
+      .safe-tiktok-r {
+        position: absolute;
+        pointer-events: none;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 20%;
+        background: rgba(255, 100, 0, 0.05);
+        border-left: 1px dashed rgba(255, 100, 0, 0.25);
+      }
+
+      /* ═══════════════════════════════════════════════════════
+   C. STREAMER NAME OVERLAY
+   Usage: render .ddos-streamer element over video
+   JS: showStreamer(el, nick, game, durationMs)
+   Adapts width to nick length automatically.
+   Three position variants: .pos-bl .pos-br .pos-tl
+═══════════════════════════════════════════════════════ */
+
+      .ddos-streamer {
+        /* Positioning base — Claude Code overrides per clip */
+        position: absolute;
+        bottom: 13%;
+        left: 32px; /* .pos-bl default */
+
+        /* Layout */
+        display: flex;
+        align-items: stretch;
+        min-width: 200px;
+        max-width: 540px;
+
+        /* Entrance animation lifecycle */
+        animation: overlay-lifecycle 5s linear forwards;
+        --hold-ms: 5s;
+        will-change: transform;
+      }
+      .ddos-streamer.pos-br {
+        left: auto;
+        right: 32px;
+      }
+
+      @keyframes overlay-lifecycle {
+        0% {
+          transform: translateX(-150%);
+          animation-timing-function: ease-out;
+        }
+        15% {
+          transform: translateX(0);
+        }
+        85% {
+          transform: translateX(0);
+          animation-timing-function: ease-in;
+        }
+        100% {
+          transform: translateX(-150%);
+        }
+      }
+
+      /* Caution-tape accent left strip */
+      .ddos-streamer__tape {
+        width: 14px;
+        flex-shrink: 0;
+        background: repeating-linear-gradient(-45deg, #f5ff3d 0 8px, #0e0e10 8px 16px);
+      }
+
+      /* Main panel */
+      .ddos-streamer__panel {
+        background: rgba(14, 14, 16, 0.9);
+        border: 1.5px solid rgba(245, 255, 61, 0.5);
+        border-left: none;
+        padding: 10px 16px 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      /* Avatar placeholder */
+      .ddos-streamer__av {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: transparent;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      /* Text block */
+      .ddos-streamer__info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .ddos-streamer__nick {
+        font-family: 'Archivo Black', sans-serif;
+        font-size: 36px;
+        letter-spacing: 0;
+        color: #f4f0e6;
+        white-space: nowrap;
+        line-height: 1.1;
+      }
+
+      /* Variant B: larger, for featured streamer */
+      .ddos-streamer.lg .ddos-streamer__panel {
+        padding: 14px 20px 14px 18px;
+        gap: 14px;
+      }
+      .ddos-streamer.lg .ddos-streamer__av {
+        width: 46px;
+        height: 46px;
+        font-size: 17px;
+      }
+      .ddos-streamer.lg .ddos-streamer__nick {
+        font-size: 20px;
+      }
+      .ddos-streamer.lg .ddos-streamer__tape {
+        width: 16px;
+      }
+
+      /* Variant C: compact, no avatar */
+      .ddos-streamer.compact .ddos-streamer__av {
+        display: none;
+      }
+      .ddos-streamer.compact .ddos-streamer__panel {
+        padding: 16px 22px 16px 20px;
+      }
+      .ddos-streamer.compact .ddos-streamer__nick {
+        font-size: 36px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ddos-streamer pos-bl" id="so">
+      <div class="ddos-streamer__tape"></div>
+      <div class="ddos-streamer__panel">
+        <div class="ddos-streamer__av">
+          <img data-ddos-avatar
+               src="https://static-cdn.jtvnw.net/jtv_user_pictures/46a38d3a-a39c-4c43-ac12-c331b1c469c2-profile_image-300x300.png"
+               style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">
+        </div>
+        <div class="ddos-streamer__info">
+          <div class="ddos-streamer__nick" data-ddos-name>ISHOWSPEED</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

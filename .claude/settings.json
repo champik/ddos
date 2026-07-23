@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "PowerShell(*)",
+      "mcp__claude_ai_higgsfield__*",
+      "WebSearch",
+      "WebFetch",
+      "Read(//tmp/**)"
+    ]
+  }
+}
