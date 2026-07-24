@@ -1,7 +1,5 @@
 'use strict';
-// yt-auth.js — спільний OAuth2 для youtube-upload.js і pull-analytics.js.
-// УВАГА: якщо auth/token.json видано без scope yt-analytics.readonly (старі токени),
-// analytics-виклики повернуть 403 — видали auth/token.json і пройди авторизацію заново.
+// yt-auth.js — OAuth2 для youtube-upload.js.
 
 const fs = require('fs');
 const readline = require('readline');
@@ -12,7 +10,6 @@ const TOKEN_PATH  = 'auth/token.json';
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube.upload',
   'https://www.googleapis.com/auth/youtube',
-  'https://www.googleapis.com/auth/yt-analytics.readonly',
 ];
 
 async function getAuth() {

@@ -4,6 +4,7 @@ const fs   = require('fs');
 const path = require('path');
 const { readJson } = require('./lib/state');
 const { getProjectDir } = require('./lib/project-path');
+const { getDuration, hasAudioStream, hasVideoStream, analyzeSilence, hasMuteGap } = require('./lib/media-probe');
 
 const runId = process.argv[2];
 if (!runId) { console.error('Usage: node scripts/build-concat.js <runId>'); process.exit(1); }
@@ -13,29 +14,78 @@ const editorial  = readJson(path.join(projectDir, 'edit/editorial.json'));
 const reconnectSet  = new Set(editorial.reconnectPositions || []);
 const introPath     = path.resolve('assets/intro/intro_30fps.mp4').replace(/\\/g, '/');
 const outroPath     = path.resolve('assets/outro/outro_30fps.mp4').replace(/\\/g, '/');
-const reconnectPath = path.resolve(projectDir, 'edit/reconnecting.mp4').replace(/\\/g, '/');
+const reconnectFile = path.resolve(projectDir, 'edit/reconnecting.mp4');
+const reconnectPath = reconnectFile.replace(/\\/g, '/');
+
+const MIN_RECON_DUR = 0.8;
+const MUTE_GAP_SEC  = 3.0; // коротші провали — звичайні паузи в мовленні
+
+// Перебивка мусить бути придатною, а не просто існувати: файл на 0.04s
+// (наслідок -ss за кінець кліпу) проходив колишню перевірку fs.existsSync
+// і потрапляв у відео, зсуваючи все, що йде після нього.
+function reconnectProblem(file) {
+  if (!fs.existsSync(file)) return 'файл відсутній';
+  const dur = getDuration(file);
+  if (dur < MIN_RECON_DUR) return `тривалість ${dur.toFixed(2)}s < ${MIN_RECON_DUR}s`;
+  if (!hasVideoStream(file)) return 'немає відео-доріжки';
+  if (!hasAudioStream(file)) return 'немає аудіо-доріжки';
+  return null;
+}
+
+const reconIssue = reconnectProblem(reconnectFile);
+const reconnectUsable = reconIssue === null;
+if (!reconnectUsable) console.warn(`[RECONNECT] пропускаю перебивку: ${reconIssue}`);
+
+// Кожен сегмент мусить нести звук. Без аудіо-доріжки concat -c copy у
+// render-final.js ламає звук усього епізоду — і робить це мовчки, з кодом 0.
+// Тиша всередині доріжки сюди ж: DMCA-мют і битий мердж лишають стрім на місці.
+const audioIssues = [];
+function checkSegmentAudio(file, label) {
+  if (!hasAudioStream(file)) {
+    audioIssues.push({ label, fatal: true, reason: 'немає аудіо-доріжки' });
+    return;
+  }
+  const sil = analyzeSilence(file);
+  if (!sil) return; // не змогли виміряти — не блокуємо
+  if (sil.silentRatio >= 0.98) {
+    audioIssues.push({ label, fatal: false, reason: `повністю німий (max RMS ${sil.maxRms.toFixed(1)} dB)` });
+  } else if (hasMuteGap(sil, MUTE_GAP_SEC)) {
+    audioIssues.push({ label, fatal: false, reason: `${sil.longestMuteSec.toFixed(1)}s суцільної тиші` });
+  }
+}
 
 const lines = [];
 lines.push("file '" + introPath + "'");
 
 for (const clipId of editorial.clipOrder) {
   if (clipId.startsWith('__recon')) {
-    if (fs.existsSync(path.resolve(projectDir, 'edit/reconnecting.mp4'))) {
-      lines.push("file '" + reconnectPath + "'");
-    }
+    if (reconnectUsable) lines.push("file '" + reconnectPath + "'");
     continue;
   }
   const overlayed = path.resolve(projectDir, 'processed', clipId, 'overlayed.mp4');
   const clean     = path.resolve(projectDir, 'processed', clipId, 'clean.mp4');
   const src = fs.existsSync(overlayed) ? overlayed : clean;
   if (!fs.existsSync(src)) { console.warn('MISSING:', clipId); continue; }
+  checkSegmentAudio(src, clipId);
   lines.push("file '" + src.replace(/\\/g, '/') + "'");
-  if (reconnectSet.has(clipId)) {
+  if (reconnectSet.has(clipId) && reconnectUsable) {
     lines.push("file '" + reconnectPath + "'");
   }
 }
 
 lines.push("file '" + outroPath + "'");
+
+if (audioIssues.length > 0) {
+  console.warn(`\n[AUDIO] проблеми зі звуком у ${audioIssues.length} сегм.:`);
+  audioIssues.forEach(i => console.warn(`  ${i.fatal ? '✗' : '⚠'} ${i.label}: ${i.reason}`));
+}
+
+const fatal = audioIssues.filter(i => i.fatal);
+if (fatal.length > 0) {
+  console.error(`\n[AUDIO] ${fatal.length} сегм. без аудіо-доріжки — concat -c copy зламає звук усього епізоду.`);
+  console.error('Перезапусти APPLY_EDITORIAL для цих кліпів або прибери їх з clipOrder.');
+  process.exit(1);
+}
 
 const outPath = path.join(projectDir, 'edit/concat-list.txt');
 fs.writeFileSync(outPath, lines.join('\n') + '\n');

@@ -19,14 +19,6 @@
 
 ## Що робить
 
-Паралельно з INGEST (не блокує pipeline, помилки не зупиняють запуск) —
-запустити аналітичний фідбек-луп:
-```bash
-node scripts/pull-analytics.js
-```
-Деталі: `analytics/README.md`. Результат (analytics/performance.json) читається
-пізніше на кроці METADATA (ddos-youtube-creatives skill, "Відомі стрімери").
-
 Запускає pipeline стадії в порядку:
 1. INGEST (ddos-ingest skill)
 2. FILTER (ddos-ingest skill)

@@ -39,4 +39,30 @@ function buildChapters({ clipIds, reconnectAfter, getDur, getStreamer, getLabel,
   return chapters;
 }
 
-module.exports = { reconnectAfterSet, clipSequence, buildChapters };
+// Сегменти кліпу після editorial — та сама розкладка, що в apply-editorial.js:
+// keeps перетинаються з trim, порожні відкидаються; без keeps — один [in, out].
+function editorialSegments(keeps, inT, outT) {
+  if (keeps && keeps.length > 0) {
+    return keeps
+      .map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)])
+      .filter(([s, e]) => e > s);
+  }
+  return outT > inT ? [[inT, outT]] : [];
+}
+
+// Таймстамп у координатах ОРИГІНАЛЬНОГО кліпу → координати clean.mp4.
+// Повертає null, якщо момент потрапив у вирізане або за межі trim.
+//
+// null тут принциповий: раніше apply-overlays.js у цьому випадку мовчки брав
+// кінець останнього keep, через що -ss ставав рівним кінцю файлу і ffmpeg
+// віддавав порожню перебивку з кодом 0 — епізод їхав, помилки ніхто не бачив.
+function mapToCleanTimeline(t, keeps, inT = 0, outT = Infinity) {
+  let acc = 0;
+  for (const [s, e] of editorialSegments(keeps, inT, outT)) {
+    if (t >= s && t <= e) return acc + (t - s);
+    acc += (e - s);
+  }
+  return null;
+}
+
+module.exports = { reconnectAfterSet, clipSequence, buildChapters, editorialSegments, mapToCleanTimeline };

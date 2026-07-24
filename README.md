@@ -33,9 +33,6 @@ everything end-to-end via natural-language commands.
    plus a generated title, description, tags, and chapter list.
 9. **Publish** — uploads the episode and Shorts to YouTube via the Data API
    (OAuth2), on a schedule, once approved.
-10. **Analytics feedback loop** — pulls per-video performance (views, retention,
-    traffic sources) from the YouTube Analytics API and folds it back into
-    future clip-selection decisions.
 
 The whole flow runs autonomously from a single command; the only pauses are
 a quick editorial review and a final upload approval.
@@ -53,7 +50,7 @@ Twitch API ──▶ filter ──▶ select ──▶ yt-dlp download ──▶
                                                                 │
                                                      thumbnail render ──▶ review page
                                                                 │
-                                                   YouTube upload ──▶ analytics pull
+                                                          YouTube upload
 ```
 
 Each stage writes its state to a per-episode `state.json`, so any run can be
@@ -65,19 +62,17 @@ inspected, resumed, or retried from the point of failure.
 - **Video/audio:** FFmpeg (concat, loudness normalization, overlay compositing)
 - **Rendering:** Puppeteer (HTML/CSS → overlays, thumbnails)
 - **Transcription:** WhisperX (large-v3, CUDA) with optional vocal separation
-- **APIs:** Twitch Helix, YouTube Data API v3, YouTube Analytics API
-- **Storage:** Cloudflare R2 (S3-compatible) for asset caching
+- **APIs:** Twitch Helix, YouTube Data API v3
 
 ## Project structure
 
 ```
-scripts/            pipeline stages (ingest, filter, download, render, publish, analytics…)
+scripts/            pipeline stages (ingest, filter, download, render, publish…)
 scripts/lib/         shared helpers (state, download, categories, timeline, audio)
 .claude/skills/       Claude Code skills — one per pipeline stage
 .claude/commands/     slash commands (/run, /ddos resume, /ddos approve …)
 assets/               intro/outro clips, overlay templates, thumbnail template
 brand/                content and tone-of-voice guidelines
-analytics/            performance report generator + feedback ledger
 projects/             per-episode output (git-ignored — generated content)
 ```
 

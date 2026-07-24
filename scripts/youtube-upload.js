@@ -15,7 +15,6 @@ const { readJson, readJsonSafe, writeJsonAtomic, updateState } = require('./lib/
 const { getProjectDir } = require('./lib/project-path');
 const { NON_GAMING_IDS } = require('./lib/categories');
 const { getAuth } = require('./lib/yt-auth');
-const ledger = require('./lib/analytics-ledger');
 
 async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
   const auth = await getAuth();
@@ -72,21 +71,6 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
     s.stages.publish = 'done';
   });
 
-  // Ledger для pull-analytics: мапінг videoId → runId + стрімери епізоду
-  try {
-    const plan = readJsonSafe(path.join(getProjectDir(runId), 'edit', 'episode-plan.json'), {});
-    const streamers = [...new Set((plan.clips || []).map(c => c.streamer).filter(Boolean))];
-    ledger.appendEntry({
-      videoId,
-      type: 'episode',
-      runId,
-      title: meta.selectedTitle || (Array.isArray(meta.titleOptions) && meta.titleOptions[0]) || '',
-      streamers,
-      uploadedAt: new Date().toISOString(),
-    });
-  } catch (e) {
-    console.warn('[ledger] Warning:', e.message);
-  }
   return videoId;
 }
 
@@ -175,22 +159,6 @@ async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publ
     s.outputs.youtubeShortsIds.push({ clipId, shortId, publishAt: publishAt || 'now' });
   });
 
-  // Ledger для pull-analytics: мапінг videoId → clipId/стрімер/гра
-  try {
-    ledger.appendEntry({
-      videoId: shortId,
-      type: 'short',
-      runId,
-      clipId,
-      title,
-      streamer: dlClip?.broadcaster_name || null,
-      game: dlClip?.game_name || null,
-      uploadedAt: new Date().toISOString(),
-      publishAt: publishAt || 'now',
-    });
-  } catch (e) {
-    console.warn('[ledger] Warning:', e.message);
-  }
   return shortId;
 }
 

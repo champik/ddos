@@ -11,6 +11,7 @@ const os = require('os');
 const { readJson, updateState, stageStatus } = require('./lib/state');
 const { getProjectDir } = require('./lib/project-path');
 const { LOUDNORM_TARGET, measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
+const { SILENCE_DB } = require('./lib/media-probe');
 
 const runId = process.argv[2];
 if (!runId) { console.error('Usage: node scripts/apply-editorial.js <runId>'); process.exit(1); }
@@ -193,6 +194,16 @@ async function processClip(clipId) {
   const measured = hasAudio ? await measureLoudness(src) : null;
   const audioFilter = hasAudio ? buildLoudnormFilter(measured) : null;
   if (!hasAudio) console.warn(`  [NO AUDIO] ${clipId} — додаю тишу (anullsrc)`);
+
+  // Німа доріжка ≠ відсутня доріжка: заглушений або битий кліп має аудіо-стрім,
+  // просто порожній. input_i вже виміряний для loudnorm, тож перевірка безкоштовна.
+  // ffmpeg віддає "-inf" для цифрової тиші → parseFloat дає NaN.
+  if (hasAudio && measured) {
+    const inputI = parseFloat(measured.input_i);
+    if (!isFinite(inputI) || inputI <= SILENCE_DB) {
+      console.warn(`  [SILENT] ${clipId} — доріжка є, але вона німа (${measured.input_i} LUFS)`);
+    }
+  }
 
   const plan = buildPlan(inT, outT, keeps, hasAudio ? 0 : 1, audioFilter);
 

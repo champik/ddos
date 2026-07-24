@@ -48,12 +48,15 @@ const ALL_CLIP_IDS = editorial.clipOrder ? clipSequence(editorial) : plan.groups
 const INTRO_DUR     = 1.25;
 const reconnectPath = path.join(projectDir, 'edit', 'reconnecting.mp4');
 const RECONNECT_DUR = (() => {
-  if (!fs.existsSync(reconnectPath)) return 1.0;
+  // Немає файлу — build-concat не вставив перебивку взагалі, отже 0.
+  // Раніше тут стояла 1.0, і таймкоди розділів з'їжджали на секунду за кожну
+  // reconnect-позицію, коли перебивка не зробилась.
+  if (!fs.existsSync(reconnectPath)) return 0;
   try {
     return parseFloat(execFileSync('ffprobe',
       ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', reconnectPath],
-      { encoding: 'utf8' }).trim()) || 1.0;
-  } catch { return 1.0; }
+      { encoding: 'utf8' }).trim()) || 0;
+  } catch { return 0; }
 })();
 
 const chapters = buildChapters({

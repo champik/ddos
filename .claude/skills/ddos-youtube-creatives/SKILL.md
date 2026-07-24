@@ -32,12 +32,13 @@ node scripts/progress.js "<projectDir>" 12 "YouTube metadata (Claude)"
 
 Перед генерацією промпту зчитати дані автоматично:
 0. **Анти-шаблон:** прочитати `description` з `exports/metadata.json` останніх 2-3 попередніх
-   епізодів (знайти через `analytics/videos-index.json` → runId → папка проекту; якщо файлів
-   немає — пропустити). Передати їх у промпт як `Previous episode descriptions` — модель
-   зобов'язана НЕ повторювати структуру перших речень і закривачку.
-0b. **Відомі стрімери:** якщо існує `analytics/performance.json` — зібрати список стрімерів
-   з вердиктом «boost» / середніми views шортсів ≥ медіани. Вони + загальновідомі імена
-   (xQc, Kai Cenat, HAchubby тощо) = "recognizable" для Title rules нижче.
+   епізодів. Знайти їх у `projects/`:
+   ```bash
+   ls -1dt projects/*/Episode_*/exports/metadata.json | head -4
+   ```
+   (`-t` сортує за часом зміни; поточний епізод пропустити). Якщо файлів немає — пропустити крок.
+   Передати їх у промпт як `Previous episode descriptions` — модель зобов'язана НЕ повторювати
+   структуру перших речень і закривачку.
 1. `edit/episode-plan.json` → список кліпів в порядку відео + `shortClipIds`
 2. `clips/scored-clips.json` → `broadcaster_name`, `title`, `view_count`, `game_name` по кожному clipId
 3. `edit/editorial.json` → `thumbnails` array (список clipId для яких потрібні `thumbnailHooks`)
@@ -80,7 +81,7 @@ Episode data:
 
   Thumbnail clips (need thumbnailHooks): <comma-separated list of clipIds from editorial.thumbnails>
 
-  Recognizable streamers (analytics «boost» + universally famous): <comma-separated list, or "none">
+  Recognizable streamers (universally famous — xQc, Kai Cenat, HAchubby тощо): <comma-separated list, or "none">
 
   Previous episode descriptions (do NOT reuse their sentence structure, question, or closing CTA):
   1. "<description of previous episode>"

@@ -38,26 +38,14 @@ node scripts/youtube-upload.js upload-video \
 
 ## PUBLISH ALL (рекомендований шлях)
 
-Дві команди паралельно: YouTube + Instagram з одним і тим самим часом публікації.
-
 ```bash
 node scripts/youtube-upload.js publish-all "<runId>" "<publishAtISO>" "<selectedTitle>"
-node scripts/publish-instagram.js publish-all "<runId>" "<publishAtISO>"
 ```
 
-Обидві запускаються з однаковим `publishAtISO`. YouTube і Instagram публікуються одночасно.
-
-Що відбувається в YouTube:
+Що відбувається:
 1. Основне відео → public зараз або за розкладом
 2. Шортси з `shortClipIds` → `private + publishAt` (+2год, +4год, +6год...)
 3. Зберігає `state.publishedAt` і `state.outputs.youtubeShortsIds[]`
-
-Що відбувається в Instagram:
-1. thumbnail.png → feed post (scheduled)
-2. Кожен short → Reel (scheduled, той самий інтервал +2год між ними)
-3. Завантажує файли на R2 тимчасово, Meta скачує, R2 файли видаляються автоматично
-4. Зберігає `state.outputs.instagramPostId` і `state.outputs.instagramReelsIds[]`
-5. В консолі нагадування: опублікувати Story вручну з телефону
 
 ---
 
@@ -95,7 +83,6 @@ PUBLISH_AT=$(node -e "
   console.log(t > now ? t.toISOString() : '');
 ")
 node scripts/youtube-upload.js publish-all "<runId>" "$PUBLISH_AT" "<selectedTitle>"
-node scripts/publish-instagram.js publish-all "<runId>" "$PUBLISH_AT"
 ```
 
 **ВАЖЛИВО:**ніколи не передавати `""` буквально — це означає "опублікувати негайно".
@@ -105,8 +92,6 @@ node scripts/publish-instagram.js publish-all "<runId>" "$PUBLISH_AT"
 ```
 ✅ Епізод #N опублікований: https://youtu.be/<videoId>
 📱 YouTube Shorts заплановані: +2год, +4год, +6год...
-📸 Instagram post + Reels заплановані на той самий час
-📱 Story: опублікувати вручну з телефону
 ```
 
 Після publish — оновити review і index:

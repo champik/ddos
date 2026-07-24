@@ -14,6 +14,7 @@ const { readJson, updateState } = require('./lib/state');
 const { pythonBin } = require('./lib/sys');
 const { getProjectDir } = require('./lib/project-path');
 const { measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
+const { getDuration, hasAudioStream, analyzeSilence, hasMuteGap, isSilent } = require('./lib/media-probe');
 
 const [,, runId, ...clipIds] = process.argv;
 if (!runId || clipIds.length === 0) {
@@ -42,12 +43,7 @@ function ffmpegAsync(args, label) {
   });
 }
 
-async function getVideoDuration(filePath) {
-  const r = spawnSync('ffprobe', [
-    '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath
-  ], { encoding: 'utf8' });
-  return parseFloat(r.stdout) || 0;
-}
+const getVideoDuration = getDuration; // lib/media-probe
 
 // Find exact position of original clip's start within raw VOD file via audio cross-correlation.
 // radius controls how far around expectedOffset to search — small for the common case
@@ -108,12 +104,42 @@ function findExactSsOffset(origClipPath, rawVodPath, expectedOffset, radius = 5)
   return offset;
 }
 
-async function hasAudioStream(filePath) {
-  const r = spawnSync('ffprobe', [
-    '-v', 'error', '-select_streams', 'a',
-    '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', filePath
-  ], { encoding: 'utf8' });
-  return r.stdout.trim().length > 0;
+// Чи заглушений потрібний діапазон VOD.
+//
+// Наявності аудіо-стріму тут недостатньо: Twitch глушить VOD за DMCA, лишаючи
+// доріжку на місці — вона просто німа, і то лише на тому відрізку, де грала
+// музика. Еталон для порівняння — той самий діапазон оригінального кліпу: якщо
+// тиша є і там, це властивість самого моменту, а не мют VOD.
+//
+// → { muted: bool, detail: string|null }
+function detectVodMute(rawPath, ssOffset, duration, srcPath, segStart) {
+  const vod = analyzeSilence(rawPath, { ss: ssOffset, dur: duration });
+  if (!vod) return { muted: false, detail: null }; // не змогли виміряти — не блокуємо
+
+  const fullyMuted = vod.silentRatio >= 0.98;
+  const partialMute = hasMuteGap(vod);
+  if (!fullyMuted && !partialMute) return { muted: false, detail: null };
+
+  const orig = fs.existsSync(srcPath)
+    ? analyzeSilence(srcPath, { ss: segStart, dur: duration })
+    : null;
+
+  if (fullyMuted) {
+    // Повна тиша у VOD. Якщо оригінал у тому ж місці теж німий — так і має бути.
+    if (orig && orig.silentRatio >= 0.98) return { muted: false, detail: null };
+    return { muted: true, detail: `VOD повністю німий (max RMS ${vod.maxRms.toFixed(1)} dB)` };
+  }
+
+  // Частковий мют — тільки якщо провал помітно довший, ніж в оригіналі.
+  // Без еталона не вгадуємо: пауза в мовленні виглядає так само.
+  if (!orig) return { muted: false, detail: null };
+  if (vod.longestMuteSec >= orig.longestMuteSec + 1.0) {
+    return {
+      muted: true,
+      detail: `провал тиші ${vod.longestMuteSec.toFixed(1)}s проти ${orig.longestMuteSec.toFixed(1)}s в оригіналі`,
+    };
+  }
+  return { muted: false, detail: null };
 }
 
 // Завантажити один сегмент з VOD через yt-dlp --download-sections
@@ -233,6 +259,7 @@ async function processClip(clipId, results) {
 
   // Encode кожного keep-сегмента з raw_vod.mp4 (застосовуємо editorial поверх VOD-кліпу)
   const encodedPaths = [];
+  const mutedSegments = [];
   for (let i = 0; i < segments.length; i++) {
     const [segStart, segEnd] = segments[i];
     const ssOffset = xcorrOffset !== null
@@ -241,19 +268,42 @@ async function processClip(clipId, results) {
     const duration = segEnd - segStart;
     const encodedPath = segments.length === 1 ? cleanPath : path.join(tmpDir, `enc${i}.mp4`);
 
-    const hasAudio = await hasAudioStream(rawPath);
-    // When VOD has no audio: use original clip as audio source (preserves real audio vs anullsrc silence)
-    const useOrigAudio = !hasAudio && fs.existsSync(srcPath) && await hasAudioStream(srcPath);
-    const audioInput = hasAudio ? 0 : 1;
-    const fallbackInputs = hasAudio
+    // Аудіо VOD придатне, тільки якщо доріжка є І в цьому діапазоні реально є
+    // звук. Перевірка самого стріму не ловить DMCA-мют — доріжка при ньому на місці.
+    const vodHasStream = hasAudioStream(rawPath);
+    const mute = vodHasStream
+      ? detectVodMute(rawPath, ssOffset, duration, srcPath, segStart)
+      : { muted: false, detail: null };
+    const vodAudioOk = vodHasStream && !mute.muted;
+
+    if (!vodHasStream) console.warn(`  [MUTE] seg${i}: у VOD немає аудіо-доріжки`);
+    else if (mute.muted) console.warn(`  [MUTE] seg${i}: ${mute.detail}`);
+
+    // Звук з оригінального кліпу поверх VOD-картинки. Синхронність тримається
+    // на тому, що ssOffset = xcorrOffset + segStart — це той самий момент.
+    const useOrigAudio = !vodAudioOk && fs.existsSync(srcPath) && hasAudioStream(srcPath);
+    if (mute.muted && useOrigAudio) {
+      console.warn(`  [MUTE] seg${i}: беру звук з оригінального кліпу`);
+      mutedSegments.push({ seg: i, detail: mute.detail, recovered: true });
+    } else if (mute.muted || !vodHasStream) {
+      console.warn(`  [MUTE] seg${i}: оригінал теж без звуку — сегмент лишиться німим`);
+      mutedSegments.push({ seg: i, detail: mute.detail || 'no audio stream in VOD', recovered: false });
+    }
+
+    const audioInput = vodAudioOk ? 0 : 1;
+    const fallbackInputs = vodAudioOk
       ? []
       : useOrigAudio
         ? ['-ss', String(segStart), '-i', srcPath]  // original clip, pre-seeked to segment start
         : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
 
     // No-boost policy: only attenuate loud audio, never boost quiet clips.
-    const loudnessSrc = hasAudio ? rawPath : (useOrigAudio ? srcPath : null);
-    const measured = loudnessSrc ? await measureLoudness(loudnessSrc) : null;
+    // Міряємо саме той діапазон, що піде у відео, а не весь завантажений шматок.
+    const loudnessSrc = vodAudioOk ? rawPath : (useOrigAudio ? srcPath : null);
+    const loudnessRange = vodAudioOk
+      ? { ss: ssOffset, dur: duration }
+      : { ss: segStart, dur: duration };
+    const measured = loudnessSrc ? await measureLoudness(loudnessSrc, loudnessRange) : null;
     const loudnormFilter = loudnessSrc ? buildLoudnormFilter(measured) : null;
     const audioFilterChain = loudnormFilter ? `,${loudnormFilter}` : '';
 
@@ -299,9 +349,31 @@ async function processClip(clipId, results) {
     ], 'concat');
 
     if (!result.ok) {
-      console.error(`  FAIL concat: ${result.stderr.slice(-200)}`);
+      const errMsg = result.stderr.slice(-200).trim();
+      console.error(`  FAIL concat: ${errMsg}`);
       if (fs.existsSync(cleanBak)) fs.renameSync(cleanBak, cleanPath);
       fs.rmSync(tmpDir, { recursive: true, force: true });
+      results[clipId] = { status: 'failed', streamer: dlClip.broadcaster_name, reason: `concat failed: ${errMsg || 'unknown error'}` };
+      return false;
+    }
+  }
+
+  // Відкат: якщо мют не вдалося перекрити звуком оригіналу, а той clean.mp4,
+  // який ми щойно замінили, звук мав — VOD-версія гірша за наявну. Краще
+  // лишити оригінал із субтитрами, ніж німий епізод.
+  const unrecovered = mutedSegments.filter(m => !m.recovered);
+  if (unrecovered.length > 0 && fs.existsSync(cleanBak)) {
+    const bakSilent = isSilent(cleanBak);
+    if (bakSilent === false) {
+      console.warn(`  ↩ VOD-заміну скасовано: ${unrecovered.length} сегм. без звуку, а оригінал звук мав`);
+      fs.rmSync(cleanPath, { force: true });
+      fs.renameSync(cleanBak, cleanPath);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      results[clipId] = {
+        status: 'rejected',
+        streamer: dlClip.broadcaster_name,
+        reason: `VOD muted: ${unrecovered.map(m => m.detail).join('; ')}`,
+      };
       return false;
     }
   }
@@ -320,8 +392,24 @@ async function processClip(clipId, results) {
     extractFrameSync(cleanPath, timestamps[i], path.join(framesDir, `frame-${i + 1}.jpg`));
   }
 
+  // Фінальна перевірка результату — VOD-заміна не повинна лишати німий кліп.
+  const warnings = mutedSegments
+    .filter(m => m.recovered)
+    .map(m => `seg${m.seg}: ${m.detail} → звук з оригіналу`);
+  if (!hasAudioStream(cleanPath)) {
+    warnings.push('у готовому clean.mp4 немає аудіо-доріжки');
+  } else if (isSilent(cleanPath) === true) {
+    warnings.push('готовий clean.mp4 повністю німий');
+  }
+  warnings.forEach(w => console.warn(`  ⚠ ${w}`));
+
   console.log(`  ✓ clean.mp4 замінено з VOD, кадри оновлено (${dur.toFixed(1)}s)`);
-  results[clipId] = { status: 'ok', streamer: dlClip.broadcaster_name, reason: null };
+  results[clipId] = {
+    status: 'ok',
+    streamer: dlClip.broadcaster_name,
+    reason: null,
+    warnings: warnings.length ? warnings : undefined,
+  };
   return true;
 }
 
@@ -343,10 +431,20 @@ async function main() {
 
   const failed = clipIds.filter(id => results[id]?.status === 'failed');
   const skipped = clipIds.filter(id => results[id]?.status === 'skipped');
+  const rejected = clipIds.filter(id => results[id]?.status === 'rejected');
+  const warned = clipIds.filter(id => results[id]?.warnings?.length);
   console.log(`\n=== vod-segment.js done: ${ok}/${clipIds.length} replaced ===`);
   if (skipped.length > 0) {
     console.log(`Пропущено (${skipped.length}):`);
     skipped.forEach(id => console.log(`  ⚠ ${results[id].streamer || id}: ${results[id].reason}`));
+  }
+  if (rejected.length > 0) {
+    console.log(`Скасовано через мют (${rejected.length}) — лишився оригінальний clean.mp4:`);
+    rejected.forEach(id => console.log(`  ↩ ${results[id].streamer || id}: ${results[id].reason}`));
+  }
+  if (warned.length > 0) {
+    console.log(`Зі звуковими зауваженнями (${warned.length}):`);
+    warned.forEach(id => results[id].warnings.forEach(w => console.log(`  ⚠ ${results[id].streamer || id}: ${w}`)));
   }
   if (failed.length > 0) {
     console.log(`Не вдалося (${failed.length}):`);

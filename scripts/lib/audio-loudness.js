@@ -18,8 +18,16 @@ function ffmpegRun(args) {
 }
 
 // Measures integrated loudness (LUFS) without altering the file.
-async function measureLoudness(src) {
-  const result = await ffmpegRun(['-i', src, '-af', `loudnorm=${LOUDNORM_TARGET}:print_format=json`, '-f', 'null', '-']);
+// ss/dur обмежують вимір діапазоном — інакше для VOD ми б міряли весь
+// завантажений шматок разом із буфером ±3с (або ±60с при wide retry), а не
+// той відрізок, що реально піде у відео.
+async function measureLoudness(src, { ss = null, dur = null } = {}) {
+  const args = [];
+  if (ss != null) args.push('-ss', String(ss));
+  args.push('-i', src);
+  if (dur != null) args.push('-t', String(dur));
+  args.push('-af', `loudnorm=${LOUDNORM_TARGET}:print_format=json`, '-f', 'null', '-');
+  const result = await ffmpegRun(args);
   const m = result.stderr.match(/\{[^{}]*\}/);
   if (!m) return null;
   try { return JSON.parse(m[0]); } catch { return null; }

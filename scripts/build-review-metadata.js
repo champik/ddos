@@ -30,10 +30,11 @@ function duration(clipId) {
 }
 
 function reconnectDur() {
+  // Немає файлу — перебивки у відео немає, отже 0 (раніше 1.0 зсувало таймкоди).
   const file = path.join(projectDir, 'edit/reconnecting.mp4');
-  if (!fs.existsSync(file)) return 1.0;
+  if (!fs.existsSync(file)) return 0;
   const r = spawnSync('ffprobe', ['-v','quiet','-show_entries','format=duration','-of','csv=p=0', file], { encoding: 'utf8' });
-  return parseFloat(r.stdout) || 1.0;
+  return parseFloat(r.stdout) || 0;
 }
 
 const ALL_CLIP_IDS = editorial.clipOrder ? clipSequence(editorial) : plan.groups.flatMap(g => g.clipIds);

@@ -74,9 +74,6 @@
 
 ## Pipeline
 
-Паралельно з INGEST (не блокує pipeline): `node scripts/pull-analytics.js` — той
-самий фідбек-луп що й у `/run` (деталі: `analytics/README.md`).
-
 Той самий що `/run` і `/run special`:
 1. INGEST — Twitch API з `started_at` / `ended_at` за попередній місяць
 2. FILTER — ті самі правила

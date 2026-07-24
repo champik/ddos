@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { updateState } = require('./lib/state');
+const { getDuration, hasAudioStream, analyzeSilence } = require('./lib/media-probe');
 
 const projectDir = process.argv[2];
 const epNum = String(process.argv[3] || '001').padStart(3, '0');
@@ -52,7 +53,36 @@ if (r.status !== 0) {
   updateState(base, s => { s.stages = s.stages || {}; s.stages.renderLong = 'failed'; });
   process.exit(1);
 } else {
-  console.log('[OK]', output);
+  // Перевірка результату, а не лише коду виходу: concat -c copy може віддати
+  // епізод без звуку і при цьому завершитись успішно.
+  const problems = [];
+  const dur = getDuration(output);
+  if (dur <= 0) problems.push('не читається тривалість');
+  if (!hasAudioStream(output)) {
+    problems.push('в епізоді немає аудіо-доріжки');
+  } else {
+    const sil = analyzeSilence(output);
+    if (sil && sil.silentRatio >= 0.98) {
+      problems.push(`епізод повністю німий (max RMS ${sil.maxRms.toFixed(1)} dB)`);
+    } else if (sil && sil.longestMuteSec >= 5) {
+      problems.push(`${sil.longestMuteSec.toFixed(1)}s суцільної тиші в епізоді`);
+    }
+  }
+
+  if (problems.length > 0) {
+    console.error('[AUDIO] ' + problems.join('; '));
+    updateState(base, s => {
+      s.stages = s.stages || {};
+      s.stages.renderLong = 'done_with_errors';
+      s.outputs = s.outputs || {};
+      s.outputs.longformPath = output;
+      s.warnings = s.warnings || [];
+      s.warnings.push(...problems.map(p => `renderLong: ${p}`));
+    });
+    process.exit(1);
+  }
+
+  console.log('[OK]', output, `(${dur.toFixed(1)}s)`);
   updateState(base, s => {
     s.stages = s.stages || {};
     s.stages.renderLong = 'done';
