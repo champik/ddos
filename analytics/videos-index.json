@@ -1046,5 +1046,79 @@
     "game": "Streamer University",
     "uploadedAt": "2026-07-22T14:31:49.522Z",
     "publishAt": "2026-07-24T01:00:00.000Z"
+  },
+  {
+    "videoId": "dP7lLILFqRw",
+    "type": "episode",
+    "runId": "Episode_49_2026_07_24",
+    "title": "cockroach in the Asmongold fridge | ExtraEmily got tricked into a TikTok | Best Twitch Moments",
+    "streamers": [],
+    "uploadedAt": "2026-07-24T11:44:24.618Z"
+  },
+  {
+    "videoId": "VDodFdrjWYI",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "VastResolutePigeonSwiftRage-WRM5IRQPuWhm3Fko",
+    "title": "Jakenbakelive Farted in the Car and Cleared It Out",
+    "streamer": "CookSux",
+    "game": "IRL",
+    "uploadedAt": "2026-07-24T11:45:00.685Z",
+    "publishAt": "2026-07-24T17:00:00.000Z"
+  },
+  {
+    "videoId": "4hJz-h6hTew",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "PiercingEagerBearDancingBaby-2Ga7XDLJF8AWHvnZ",
+    "title": "CookSux Can't Get the Follow Button to Work",
+    "streamer": "CookSux",
+    "game": "Just Chatting",
+    "uploadedAt": "2026-07-24T11:45:12.165Z",
+    "publishAt": "2026-07-24T23:00:00.000Z"
+  },
+  {
+    "videoId": "yzzyhr8RUaY",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "RelentlessAnimatedMosquitoPeoplesChamp-R4Xtwk-i5SG_D7ZK",
+    "title": "caseoh_ Has a Full Meltdown Playing Wordle",
+    "streamer": "caseoh_",
+    "game": "Just Chatting",
+    "uploadedAt": "2026-07-24T11:45:21.617Z",
+    "publishAt": "2026-07-25T17:00:00.000Z"
+  },
+  {
+    "videoId": "IIdec6T2b1Q",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "WrongGiftedAniseSoBayed-JaonHGdCzZPqKS-F",
+    "title": "Kaise Found a Cockroach in the Asmongold Fridge",
+    "streamer": "Kaise",
+    "game": "Just Chatting",
+    "uploadedAt": "2026-07-24T11:45:33.195Z",
+    "publishAt": "2026-07-25T23:00:00.000Z"
+  },
+  {
+    "videoId": "s5wKRWuQwMc",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "CheerfulBadRaccoonDBstyle-VkGwud__wGujJrcB",
+    "title": "taaitus Won't Admit This Molotov Was His",
+    "streamer": "taaitus",
+    "game": "Counter-Strike 2",
+    "uploadedAt": "2026-07-24T11:45:43.321Z",
+    "publishAt": "2026-07-26T17:00:00.000Z"
+  },
+  {
+    "videoId": "ubH7ADNkTn8",
+    "type": "short",
+    "runId": "Episode_49_2026_07_24",
+    "clipId": "TemperedChillyTaroWTRuck-XmmTc4_g6rl2Qpod",
+    "title": "angie Grabs the Round MVP in Counter-Strike 2",
+    "streamer": "angie",
+    "game": "Counter-Strike 2",
+    "uploadedAt": "2026-07-24T11:45:58.347Z",
+    "publishAt": "2026-07-26T23:00:00.000Z"
   }
 ]
