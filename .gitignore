@@ -14,7 +14,3 @@ __pycache__/
 .worktrees/
 tmp/
 logs/
-# analytics: генеровані дані (README, videos-index і manual-ctr — трекаються)
-analytics/data/
-analytics/performance.json
-analytics/index.html
