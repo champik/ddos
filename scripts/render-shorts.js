@@ -169,17 +169,6 @@ function buildPunchFilter(input, short) {
 }
 
 const LOGO_OUT  = path.join(__dirname, '../assets/shorts-logo.png');
-// const ARROW_PNG = path.join(__dirname, '../assets/arrow.png');
-// function generateArrowPng() {
-//   if (fs.existsSync(ARROW_PNG)) return;
-//   const r = spawnSync('node', [
-//     path.join(__dirname, 'lib/svg-to-png.js'),
-//     path.join(__dirname, '../assets/arrow.svg'),
-//     ARROW_PNG, '140', '195'
-//   ], { encoding: 'utf8', timeout: 30000 });
-//   if (r.status !== 0) throw new Error('arrow.png generation failed:\n' + (r.stderr || r.stdout));
-//   console.log('[ARROW] arrow.png generated');
-// }
 
 function generateShortsLogo() {
   if (fs.existsSync(LOGO_OUT)) return;
@@ -310,12 +299,6 @@ async function renderSegmentVertical(clipId, tmpOut, maxCapSec = null) {
 async function renderCombinedShort(primaryId, allClipIds, outPath, introText) {
   const tmpDir = path.join(base, 'processed', primaryId);
   const tmpFiles = [];
-
-  const segDurs = allClipIds.map(cid => {
-    const f = path.join(base, 'processed', cid, 'clean.mp4');
-    return fs.existsSync(f) ? getClipDuration(f) : 0;
-  });
-  const totalDur = segDurs.reduce((a, b) => a + b, 0);
 
   for (let si = 0; si < allClipIds.length; si++) {
     const cid = allClipIds[si];
@@ -499,7 +482,6 @@ async function processClip(clipId) {
 // currentRevealRank: 1-indexed rank being revealed NOW (N=worst first reveal, 1=last reveal).
 function buildRankingPanelFilters(N, currentRevealRank, clipStreamerNames, inputPad) {
   const ROW_H    = Math.min(52, Math.max(32, Math.floor(900 / Math.max(N, 1))));
-  const _fontRef = Math.min(88, Math.max(52, Math.floor(1700 / Math.max(N, 1))));
   const PAN_H  = N * ROW_H;
   const PAN_Y  = Math.floor((1920 - PAN_H) / 2);
   const PAN_W  = 295;
@@ -556,7 +538,6 @@ async function renderRankingShort(primaryId, rankingClips, outPath, introText, l
     const f = path.join(base, 'processed', id, 'clean.mp4');
     return fs.existsSync(f) ? getClipDuration(f) : 0;
   });
-  const totalDur = segDurs.reduce((a, b) => a + b, 0);
 
   // Render segments in reverse order: worst (clips[N-1]) first, best (clips[0]) last
   for (let k = 0; k < N; k++) {

@@ -24,7 +24,8 @@
 2. FILTER (ddos-ingest skill)
 3. SELECT (ddos-ingest skill)
 4. DOWNLOAD (ddos-ingest skill)
-5. GENERATE_EDITORIAL (ddos-score skill) ← зупинка тут
+5. GAMING_SCREEN (ddos-ingest skill)
+6. GENERATE_EDITORIAL (ddos-score skill) ← зупинка тут
 
 > TRANSCRIBE відбувається в Stage 2 (resume skill, крок 2) — після editorial рішень, на clean.mp4.
 

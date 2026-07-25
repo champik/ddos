@@ -38,16 +38,25 @@
 
 ### Відмінності від звичайного запуску:
 
+**Немає окремого скрипта для Special INGEST/SELECT** — на відміну від `/run` (`ingest.js`)
+і `/run month` (`ingest-month.js`), тут немає готового `ingest-special.js`. Це ad-hoc
+Claude-driven виклик: писати невеликий Node-скрипт під конкретний критерій (за зразком
+`ingest.js`/`ingest-month.js`), обов'язково імпортуючи `lib/filter.js` (FILTER-правила),
+`lib/twitch-api.js` (Twitch клієнт з retry/backoff) і `lib/select.js`'s `pickByPopularity`
+— не копіювати ці правила вручну (звідси й був баг у `ingest-month.js`: ручна копія
+блоклістів відстала від `lib/filter.js`).
+
 **INGEST**: Twitch API з кастомними параметрами залежно від критерію:
-- Часовий діапазон → `started_at` / `ended_at` в API запиті
+- Часовий діапазон → `started_at` / `ended_at` в API запиті (як `ingest-month.js`,
+  але без recency-вікон — просто весь діапазон одним запитом)
 - Тема/keyword → пошук у title кліпів або фільтрація post-fetch
 - Дефолт: ті самі категорії що в звичайному run
 
-**SELECT**: 
-- **Без diversity floor** — чистий popularity (view_count)
+**SELECT**:
+- **Без diversity floor, без recency-компенсації** — чистий `pickByPopularity()` з `lib/select.js`
 - Якщо тема → додаткова фільтрація по релевантності title/category
 
-**Решта стадій**: ідентичні звичайному run
+**Решта стадій**: ідентичні звичайному run (`download-clips.js`, `gaming-screen.js`, ...)
 
 ### Зупинка після GENERATE_EDITORIAL
 

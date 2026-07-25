@@ -74,11 +74,19 @@
 
 ## Pipeline
 
-Той самий що `/run` і `/run special`:
+Той самий що `/run` і `/run special`, але INGEST+FILTER+SELECT виконує окремий
+скрипт (не `ingest.js` — той не приймає закритий діапазон дат):
+
+```bash
+node scripts/ingest-month.js "<runId>" --started-at "<ISO>" --ended-at "<ISO>"
+```
+
 1. INGEST — Twitch API з `started_at` / `ended_at` за попередній місяць
-2. FILTER — ті самі правила
+2. FILTER — ті самі правила (імпортує `lib/filter.js` — не окрема копія)
 3. SELECT — recency-алгоритм вище замість стандартного
-4. DOWNLOAD — yt-dlp, ті самі правила
+4. DOWNLOAD — `scripts/download-clips.js` (той самий скрипт що в `/run` — читає
+   `prescore-candidates.json`, формат якого однаковий незалежно від того, який
+   ingest-скрипт його написав)
 5. GAMING_SCREEN — ті самі правила
 6. GENERATE_EDITORIAL — edit.html, зупинка
 

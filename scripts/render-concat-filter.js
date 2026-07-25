@@ -44,7 +44,11 @@ const filters = [];
 const concatInputs = [];
 for (let i = 0; i < files.length; i++) {
   filters.push(`[${i}:v]fps=30,format=yuv420p,setpts=PTS-STARTPTS[v${i}]`);
-  filters.push(`[${i}:a]aresample=48000,asetpts=PTS-STARTPTS[a${i}]`);
+  // aformat forces stereo so a mono segment concatenated with stereo ones
+  // doesn't break channel-layout matching in the concat filter below (the
+  // exact incompatibility — mono vs stereo segments — this fallback exists
+  // to survive); async=1 corrects audio/video duration drift per segment.
+  filters.push(`[${i}:a]aresample=48000:async=1,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[a${i}]`);
   concatInputs.push(`[v${i}][a${i}]`);
 }
 filters.push(`${concatInputs.join('')}concat=n=${files.length}:v=1:a=1[v][a]`);

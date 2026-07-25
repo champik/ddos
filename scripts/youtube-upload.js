@@ -175,7 +175,8 @@ async function publishVideo(videoId) {
 // publish-all: publish main video now + schedule shorts at +Xhr, +2Xhr, ...
 // publishNowISO — optional, when to make main video public (default: now)
 // selectedTitle — optional, overrides metadata.json title
-// shortIntervalMinutes — optional, minutes between shorts (default: 60)
+// shortIntervalMinutes — optional, minutes between shorts (default: 120; caller
+// typically tightens this when there are many shorts to fit into a day)
 // selectedThumbnail — optional, 'v1'/'v2'/'v3', saved to metadata for review display
 async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinutes, selectedThumbnail) {
   const intervalMs = (parseFloat(shortIntervalMinutes) || 120) * 60 * 1000;
@@ -271,7 +272,8 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
 
   console.log(`\n✅ Done. Main video published + ${scheduled} shorts scheduled.`);
   console.log(`   Main:   https://youtu.be/${mainVideoId}`);
-  console.log(`   Shorts: published every 1hr starting ${new Date(mainPublishTime.getTime() + 3600000).toLocaleTimeString()}`);
+  const intervalMin = intervalMs / 60000;
+  console.log(`   Shorts: published every ${intervalMin}min starting ${new Date(mainPublishTime.getTime() + intervalMs).toLocaleTimeString()}`);
 
   const finalState = updateState(projectDir, s => {
     s.stages.publish = 'done';

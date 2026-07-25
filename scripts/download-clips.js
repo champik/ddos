@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // DDOS Pipeline — DOWNLOAD
-// Usage: node scripts/run-download.js <runId>
+// Usage: node scripts/download-clips.js <runId>
 
 const fs = require('fs');
 const path = require('path');

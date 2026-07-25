@@ -191,7 +191,12 @@ async function processClip(clipId) {
   const outT = clipEdits.trim?.out ?? fullDur;
   const keeps = clipEdits.keeps || [];
   const hasAudio = await hasAudioStream(src);
-  const measured = hasAudio ? await measureLoudness(src) : null;
+  // Той самий набір відрізків, що piде в buildPlan — міряємо лише те, що
+  // реально опиниться у відео, а не весь файл разом з вирізаними шматками.
+  const measureSegments = (keeps.length > 0
+    ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
+    : [[inT, outT]]);
+  const measured = hasAudio ? await measureLoudness(src, { segments: measureSegments }) : null;
   const audioFilter = hasAudio ? buildLoudnormFilter(measured) : null;
   if (!hasAudio) console.warn(`  [NO AUDIO] ${clipId} — додаю тишу (anullsrc)`);
 

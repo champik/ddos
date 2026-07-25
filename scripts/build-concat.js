@@ -5,13 +5,21 @@ const path = require('path');
 const { readJson } = require('./lib/state');
 const { getProjectDir } = require('./lib/project-path');
 const { getDuration, hasAudioStream, hasVideoStream, analyzeSilence, hasMuteGap } = require('./lib/media-probe');
+const { clipSequence, reconnectAfterSet } = require('./lib/timeline');
 
 const runId = process.argv[2];
 if (!runId) { console.error('Usage: node scripts/build-concat.js <runId>'); process.exit(1); }
 const projectDir = path.resolve(getProjectDir(runId));
 const editorial  = readJson(path.join(projectDir, 'edit/editorial.json'));
 
-const reconnectSet  = new Set(editorial.reconnectPositions || []);
+// reconnectAfterSet unions reconnectPositions with '__recon' markers in
+// clipOrder into one clipId-keyed Set — so a seam recorded both ways (e.g. a
+// reconnectPositions entry AND an adjacent '__recon' token for the same clip)
+// still only inserts reconnecting.mp4 once. Walking clipOrder's raw '__recon'
+// tokens as a second, independent insertion trigger (as this used to do) let
+// the same seam double-insert.
+const reconnectSet = reconnectAfterSet(editorial);
+const clipOrder = clipSequence(editorial);
 const introPath     = path.resolve('assets/intro/intro_30fps.mp4').replace(/\\/g, '/');
 const outroPath     = path.resolve('assets/outro/outro_30fps.mp4').replace(/\\/g, '/');
 const reconnectFile = path.resolve(projectDir, 'edit/reconnecting.mp4');
@@ -57,11 +65,7 @@ function checkSegmentAudio(file, label) {
 const lines = [];
 lines.push("file '" + introPath + "'");
 
-for (const clipId of editorial.clipOrder) {
-  if (clipId.startsWith('__recon')) {
-    if (reconnectUsable) lines.push("file '" + reconnectPath + "'");
-    continue;
-  }
+for (const clipId of clipOrder) {
   const overlayed = path.resolve(projectDir, 'processed', clipId, 'overlayed.mp4');
   const clean     = path.resolve(projectDir, 'processed', clipId, 'clean.mp4');
   const src = fs.existsSync(overlayed) ? overlayed : clean;

@@ -1,5 +1,6 @@
 'use strict';
 const { streamerTag } = require('./display-name');
+const { NON_GAMING_IDS } = require('./categories');
 
 function fmt(secs) {
   const h = Math.floor(secs / 3600);
@@ -23,7 +24,10 @@ const SPECIALTY = {
   '116747788': ['HotTubStream'],
   '417752':    ['TwitchPodcast'],
 };
-const CORE_IDS = new Set(['509658', '509672', ...Object.keys(SPECIALTY)]);
+// Non-gaming ids come from lib/categories.js (single source of truth) so a
+// new dynamic specialty category added there doesn't silently get tagged as
+// Gaming here just because SPECIALTY/CORE_IDS weren't updated in lockstep.
+const CORE_IDS = NON_GAMING_IDS;
 
 function buildVideoTags(allClipIds, byId) {
   const base = [

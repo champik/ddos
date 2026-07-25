@@ -92,49 +92,27 @@ Zoom punch та color punch effects вимкнені — реалізація в
 
 ## RENDER LONG-FORM
 
-### Крок 1: Валідація episode-plan.json
+Longform відео рендериться БЕЗ субтитрів. Обидва скрипти запускаються автоматично
+в `stage2.js` (chain: `fetch-avatars.js` → `apply-overlays.js` → `build-concat.js` →
+`render-final.js`), окремо руками треба лише при resume/дебазі.
+
+### Крок 1: Побудова concat-list.txt
 
 ```bash
-TOTAL_DUR=$(node -e "
-const fs=require('fs'),path=require('path'),{spawnSync}=require('child_process');
-const plan=JSON.parse(fs.readFileSync('edit/episode-plan.json','utf8'));
-let t=0;
-plan.clipOrder.forEach(id=>{
-  const r=spawnSync('ffprobe',['-v','quiet','-show_entries','format=duration','-of','csv=p=0',
-    path.join('processed',id,'clean.mp4')],{encoding:'utf8'});
-  t+=parseFloat(r.stdout)||0;
-});
-console.log(Math.round(t));
-")
+node scripts/build-concat.js "<runId>"
 ```
 
-Якщо `TOTAL_DUR < 600` (менше 10 хв) — попередження в консоль, але **не зупинятись**.
-Якщо `TOTAL_DUR > 1200` (більше 20 хв) — попередження, але **не зупинятись**.
+Скрипт (не пише список руками — читає `edit/editorial.json`):
+- Порядок кліпів — `clipSequence(editorial)` з `lib/timeline.js` (`clipOrder` без службових `__recon` маркерів)
+- Позиції reconnect — `reconnectAfterSet(editorial)` з `lib/timeline.js`: об'єднує `reconnectPositions` і `__recon`-маркери в один Set, тому та сама позиція, записана обома способами, вставляє `reconnecting.mp4` рівно один раз
+- Для кожного кліпу: `overlayed.mp4`, якщо є, інакше `clean.mp4`
+- Інтро/аутро: **`intro_30fps.mp4`/`outro_30fps.mp4`** (re-encoded 30fps версії з `assets/intro/`, `assets/outro/`) — НЕ оригінальні 60fps-файли, ті обрізаються у склеєному відео
+- **Аудіо-перевірки на кожному сегменті** (`lib/media-probe.js`): немає аудіо-доріжки → **стоп, exit 1** (concat `-c copy` в render-final.js мовчки зламав би звук усього епізоду); повністю німий або провал тиші ≥3с → попередження, рендер продовжується
+- Перебивка (`reconnecting.mp4`) перевіряється окремо: відсутня/закоротка/без відео- чи аудіо-доріжки → пропускається з попередженням, епізод іде без неї
 
-### Крок 2: Побудова concat-list.txt
+Пише `edit/concat-list.txt`.
 
-Порядок (абсолютні шляхи, форвард-слеші):
-```
-file '/abs/path/assets/intro/intro_30fps.mp4'
-[кліпи GROUP 1: overlayed.mp4, або clean.mp4 якщо overlay не існує]
-file '/abs/path/edit/reconnecting.mp4'
-[кліпи GROUP 2]
-file '/abs/path/edit/reconnecting.mp4'
-...
-[кліпи GROUP N]
-file '/abs/path/assets/outro/outro_30fps.mp4'
-```
-
-**ВАЖЛИВО:** Використовувати `intro_30fps.mp4` і `outro_30fps.mp4` (re-encoded 30fps версії), НЕ оригінальні. Оригінали (60fps, без SAR) викликають обрізання у склеєному відео.
-
-Групи беремо з `episode-plan.json.groups[].clipIds`, в порядку груп.
-Reconnecting.mp4 вставляємо після кожної групи КРІМ останньої (до outro).
-
-Всі файли в concat-list МАЮТЬ бути у форматі: H.264, 30fps, 1920×1080, AAC 48kHz — гарантується TRIM стадією. Якщо файл відсутній → skip з попередженням.
-
-### Крок 3: Фінальний рендер (concat → exports, без проміжного raw-episode.mp4)
-
-Longform відео рендериться БЕЗ субтитрів.
+### Крок 2: Фінальний рендер (concat → exports, без проміжного raw-episode.mp4)
 
 ```bash
 node scripts/render-final.js "<projectDir>" <episodeNumber>
@@ -143,6 +121,7 @@ node scripts/render-final.js "<projectDir>" <episodeNumber>
 Скрипт:
 - Перевіряє що всі сегменти з `edit/concat-list.txt` існують
 - `ffmpeg -f concat -c copy -movflags +faststart` → одразу `exports/episode-NNN.mp4`
+- Пост-перевірка готового епізоду (тривалість, наявність і чутність звуку) — проблема → `state.stages.renderLong = "done_with_errors"` + запис у `state.warnings`, а не мовчазний "успіх"
 - Оновлює `state.outputs.longformPath` і `state.stages.renderLong` сам
 
 Якщо concat падає через несумісні сегменти — fallback з re-encode:

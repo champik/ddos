@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
-const { readJson, updateState } = require('./lib/state');
+const { readJson } = require('./lib/state');
 const { pythonBin } = require('./lib/sys');
 const { getProjectDir } = require('./lib/project-path');
 const { measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
@@ -317,7 +317,7 @@ async function processClip(clipId, results) {
       ...fallbackInputs,
       '-t', duration.toFixed(3),
       '-map', '0:v', '-map', `${audioInput}:a`,
-      ...(!hasAudio && !useOrigAudio ? ['-shortest'] : []),
+      ...(!vodAudioOk && !useOrigAudio ? ['-shortest'] : []),
       '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
       '-af', `asetpts=PTS-STARTPTS${audioFilterChain}`,
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',

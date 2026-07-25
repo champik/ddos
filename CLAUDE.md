@@ -171,11 +171,9 @@ projects/<YYYY_MM_Month>/<runId>/
 ├── downloads/{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4  # ім'я кліпу
 ├── processed/<clipId>/
 │   ├── transcript.json
-│   ├── score.json
 │   ├── clean.mp4                      # trimmed + re-encoded (CRF 18, 30fps) + loudnorm
 │   ├── edit-hash.txt                  # хеш editorial-рішень для інвалідації кешу
 │   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
-│   ├── captions-longform.ass
 │   └── captions-vertical.ass
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
@@ -183,7 +181,6 @@ projects/<YYYY_MM_Month>/<runId>/
 │   ├── episode-plan.json              # Генерується з editorial.json при resume
 │   ├── shorts-selection.json
 │   ├── captions-segments.json
-│   ├── episode.ass                    # merged episode captions
 │   ├── reconnecting.mp4               # ~2s glitch moment (тривалість залежить від кліпу)
 │   └── concat-list.txt
 ├── exports/
@@ -205,8 +202,8 @@ cache/overlays/reconnecting-panel.mkv
 ## Assets (вже існують)
 
 ```
-assets/intro/intro.mp4              1920×1080, 1.25s — завжди на початку
-assets/outro/outro.mp4              1920×1080, 1.25s — завжди в кінці
+assets/intro/intro_30fps.mp4        1920×1080, 1.25s, 30fps — завжди на початку (build-concat.js вимагає 30fps, бо решта епізоду теж 30fps)
+assets/outro/outro_30fps.mp4        1920×1080, 1.25s, 30fps — завжди в кінці
 assets/overlays/reconnecting.html   RECONNECTING transition overlay
 assets/streamer-overlay/streamer_name.html  ім'я стрімера overlay
 assets/thumbnail-template/thumbnail.html   шаблон thumbnail

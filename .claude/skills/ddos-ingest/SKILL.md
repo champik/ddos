@@ -103,7 +103,7 @@ GET /helix/channels?broadcaster_id=id1&broadcaster_id=id2...
 | `language != "en"` | non_english |
 | title містить: русский/россия/russian/путін/рф | ru_keyword |
 | `broadcaster_name` в org-списку | official_broadcaster |
-| `broadcaster_name` в blacklist: lyasyaa, qoqsik, vedal987, miladeva, winningbikini, panterochka_ | streamer_blacklist |
+| `broadcaster_name` в blacklist: lyasyaa, qoqsik, vedal987, miladeva, winningbikini, panterochka_, lily_off_valley | streamer_blacklist |
 | `broadcaster_id` в vtuberBroadcasterIds | vtuber |
 | title містить: " major"/" grand final"/"championship"/" tournament"/"qualifier" | tournament_event |
 | game_name містить: slots/casino/gambling/betting/poker/tarkov/overwatch/marvel rivals/sports betting/dark and darker/path of exile | banned_game |

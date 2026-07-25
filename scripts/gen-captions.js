@@ -16,7 +16,12 @@ const { analyzeRms, loudThreshold, isLoudAt, isProminentAt } = require('./lib/au
 const plan = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 
 let editorialClips = {};
-try { editorialClips = readJson(path.join(projectDir, 'edit/editorial.json')).clips || {}; } catch {}
+let editorialShortsArray = null;
+try {
+  const ed = readJson(path.join(projectDir, 'edit/editorial.json'));
+  editorialClips = ed.clips || {};
+  if (ed.shorts && ed.shorts.length > 0) editorialShortsArray = ed.shorts;
+} catch {}
 
 
 const HOT = new Set(['no','what','wait','stop','wtf','omg','insane','crazy',
@@ -178,10 +183,21 @@ console.log(`\n=== gen-captions.js ===\n`);
 
 const clipIds = plan.shortClipIds || [];
 
+// New format (editorial.shorts array): merge/ranking items list all member
+// clip ids directly. Old format: combineWith on the primary clip's editorial
+// entry. render-shorts.js branches on the same editorialShortsArray presence
+// check — keep both in sync.
 const combineWithIds = [];
-for (const clipId of clipIds) {
-  const secondary = editorialClips[clipId]?.short?.combineWith || [];
-  combineWithIds.push(...secondary);
+if (editorialShortsArray) {
+  for (const item of editorialShortsArray) {
+    const ids = item.type === 'solo' ? [item.clipId] : (item.clips || []);
+    combineWithIds.push(...ids);
+  }
+} else {
+  for (const clipId of clipIds) {
+    const secondary = editorialClips[clipId]?.short?.combineWith || [];
+    combineWithIds.push(...secondary);
+  }
 }
 const allCaptionIds = [...new Set([...clipIds, ...combineWithIds])];
 
