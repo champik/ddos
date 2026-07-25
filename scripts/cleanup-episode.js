@@ -5,7 +5,6 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const { getProjectDir } = require('./lib/project-path');
 
@@ -66,6 +65,5 @@ console.log('\n[edit intermediates]');
 const editDir = path.join(projectDir, 'edit');
 totalFreed += deleteFile(path.join(editDir, 'raw-episode.mp4'));
 totalFreed += deleteFile(path.join(editDir, 'reconnecting.mp4'));
-totalFreed += deleteGlob(editDir, /^reconnecting-panel\.webm$/i);
 
 console.log(`\nFreed: ${fmtMB(totalFreed)} total`);

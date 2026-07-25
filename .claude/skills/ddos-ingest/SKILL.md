@@ -222,6 +222,10 @@ clip.localPath = `<projectDir>/downloads/${filename}`;
 
 ## GAMING_SCREEN — перевірка вебка/VTuber/турнірний HUD
 
+```bash
+node scripts/progress.js "<projectDir>" 5 "Перевірка gaming-кліпів (вебка/VTuber/HUD)"
+```
+
 Gaming-кліпи неможливо оцінити на якість з метаданих Twitch API — тільки з кадру.
 `scripts/gaming-screen.js` витягує 1 кадр на кліп і будує contact sheet; рішення приймає
 Claude в розмові (без API-викликів зі скрипта), так само як editorial-оцінки.

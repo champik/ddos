@@ -1,18 +1,17 @@
 'use strict';
-// Usage: node scripts/render-thumbnail.js <framePath> <headlineText> <outPath> [--size <px>]
+// Usage: node scripts/render-thumbnail.js <framePath> <headlineText> <outPath>
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-async function render(framePath, headline, outPath, fontSize, crop) {
+async function render(framePath, headline, outPath) {
   let html = fs.readFileSync('assets/thumbnail-template/thumbnail.html', 'utf8');
 
   const frameB64 = fs.readFileSync(framePath).toString('base64');
   const frameDataUrl = 'data:image/png;base64,' + frameB64;
 
-  const cropStr = crop ? ', crop: ' + JSON.stringify(crop) : '';
   // JSON.stringify коректно екранує і лапки, і бекслеші в headline
-  const config = `var THUMB_CONFIG = { headline: ${JSON.stringify(headline)}, img: '${frameDataUrl}'${fontSize ? ', fontSize: ' + fontSize : ''}${cropStr} }`;
+  const config = `var THUMB_CONFIG = { headline: ${JSON.stringify(headline)}, img: '${frameDataUrl}' }`;
   html = html.replace(/var THUMB_CONFIG = \{[\s\S]*?\};/, config + ';');
 
   const tmpHtml = outPath.replace('.png', '_tmp.html');
@@ -33,32 +32,13 @@ async function render(framePath, headline, outPath, fontSize, crop) {
   console.log('Thumbnail:', outPath);
 }
 
-const rawArgs = process.argv.slice(2);
-
-function popFlag(arr, flag) {
-  const idx = arr.indexOf(flag);
-  if (idx === -1) return null;
-  const val = arr[idx + 1];
-  arr.splice(idx, 2);
-  return val;
-}
-
-const sizeRaw = popFlag(rawArgs, '--size');
-const fontSize = sizeRaw ? parseInt(sizeRaw) : null;
-const cropRaw = popFlag(rawArgs, '--crop');
-const crop = cropRaw ? JSON.parse(cropRaw) : null;
-const noTextIdx = rawArgs.indexOf('--no-text');
-const noText = noTextIdx !== -1;
-if (noText) rawArgs.splice(noTextIdx, 1);
-const [framePath, headlineOrOut, outPathOrUndef] = rawArgs;
-const headline = noText ? '' : headlineOrOut;
-const outPath = noText ? headlineOrOut : outPathOrUndef;
+const [framePath, headline, outPath] = process.argv.slice(2);
 
 if (!framePath || !outPath) {
-  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath> [--size <px>] [--crop <json>] [--no-text]');
+  console.error('Usage: node render-thumbnail.js <framePath> <headline> <outPath>');
   process.exit(1);
 }
-render(framePath, headline, outPath, fontSize, crop).catch(e => {
+render(framePath, headline, outPath).catch(e => {
   console.error('ERROR:', e.message);
   process.exit(1);
 });

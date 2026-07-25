@@ -174,13 +174,13 @@ projects/<YYYY_MM_Month>/<runId>/
 │   ├── clean.mp4                      # trimmed + re-encoded (CRF 18, 30fps) + loudnorm
 │   ├── edit-hash.txt                  # хеш editorial-рішень для інвалідації кешу
 │   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
-│   └── captions-vertical.ass
+│   ├── captions-vertical.ass
+│   └── frames/                        # 3 JPEG кадри (frame-1/2/3.jpg) + frames-hash.txt
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
 │   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
 │   ├── episode-plan.json              # Генерується з editorial.json при resume
 │   ├── shorts-selection.json
-│   ├── captions-segments.json
 │   ├── reconnecting.mp4               # ~2s glitch moment (тривалість залежить від кліпу)
 │   └── concat-list.txt
 ├── exports/
@@ -239,13 +239,14 @@ assets/thumbnail-template/logo.svg         DDOS лого
 
 ## Skills
 
-- `ddos-ingest`    — Twitch API + filter + yt-dlp download
-- `ddos-score`     — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE — в Stage 2 через transcribe-batch.js
-- `ddos-render`    — FFmpeg trim + overlays + long-form render
-- `ddos-shorts`    — vertical crop + captions + shorts render
-- `ddos-thumbnail` — Puppeteer thumbnail + metadata generation
-- `ddos-review`    — review.html генерація
-- `ddos-publish`   — YouTube upload + OAuth2 publish flow
+- `ddos-ingest`           — Twitch API + filter + yt-dlp download
+- `ddos-score`            — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE — в Stage 2 через transcribe-batch.js
+- `ddos-render`           — FFmpeg trim + overlays + long-form render
+- `ddos-shorts`           — vertical crop + captions + shorts render
+- `ddos-youtube-creatives`— METADATA: title/description/tags/shortIntros → exports/metadata.json
+- `ddos-thumbnail`        — Puppeteer thumbnail (читає metadata.json, сам його не генерує)
+- `ddos-review`           — review.html генерація
+- `ddos-publish`          — YouTube upload + OAuth2 publish flow
 
 ---
 

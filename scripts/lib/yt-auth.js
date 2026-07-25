@@ -37,6 +37,18 @@ async function getAuth() {
   const url = oauth2.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
   console.log('\n=== YouTube Authorization ===');
   console.log('Open in browser:\n' + url);
+
+  // Re-auth needs a human at a real terminal to paste the code back. Without
+  // this check, a background/unattended invocation (no TTY on stdin) would
+  // hang on rl.question() forever with no error and no signal of why.
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'YouTube re-authorization required but stdin is not a TTY (no interactive ' +
+      'terminal). Re-run this command in a foreground/interactive shell so the ' +
+      'authorization code can be pasted in.'
+    );
+  }
+
   console.log('\nPaste the authorization code:');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const code = await new Promise(r => rl.question('> ', a => { rl.close(); r(a.trim()); }));

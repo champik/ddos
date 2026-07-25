@@ -11,7 +11,7 @@ const os = require('os');
 const { readJson, updateState, stageStatus } = require('./lib/state');
 const { getProjectDir } = require('./lib/project-path');
 const { LOUDNORM_TARGET, measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
-const { SILENCE_DB } = require('./lib/media-probe');
+const { SILENCE_DB, hasAudioStreamAsync, getDurationAsync } = require('./lib/media-probe');
 
 const runId = process.argv[2];
 if (!runId) { console.error('Usage: node scripts/apply-editorial.js <runId>'); process.exit(1); }
@@ -46,30 +46,11 @@ function editsHash(clipEdits) {
   return crypto.createHash('md5').update(src).digest('hex');
 }
 
-function ffprobeAsync(args) {
-  return new Promise((resolve) => {
-    const proc = spawn('ffprobe', args, { stdio: 'pipe' });
-    let out = '';
-    proc.stdout.on('data', d => { out += d.toString(); });
-    proc.stderr.on('data', () => {});
-    proc.on('close', () => resolve(out.trim()));
-    proc.on('error', () => resolve(''));
-  });
-}
-
-async function hasAudioStream(src) {
-  const out = await ffprobeAsync([
-    '-v', 'error', '-select_streams', 'a',
-    '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', src
-  ]);
-  return out.length > 0;
-}
-
+// 999 fallback (not media-probe.js's 0) keeps outT permissive when a probe
+// fails, rather than truncating every segment to zero length.
 async function getVideoDuration(src) {
-  const out = await ffprobeAsync([
-    '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', src
-  ]);
-  return parseFloat(out) || 999;
+  const dur = await getDurationAsync(src);
+  return dur || 999;
 }
 
 function buildPlan(inT, outT, keeps, audioInput, audioFilter) {
@@ -190,12 +171,16 @@ async function processClip(clipId) {
   const fullDur = await getVideoDuration(src);
   const outT = clipEdits.trim?.out ?? fullDur;
   const keeps = clipEdits.keeps || [];
-  const hasAudio = await hasAudioStream(src);
+  const hasAudio = await hasAudioStreamAsync(src);
   // Той самий набір відрізків, що piде в buildPlan — міряємо лише те, що
   // реально опиниться у відео, а не весь файл разом з вирізаними шматками.
   const measureSegments = (keeps.length > 0
     ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
     : [[inT, outT]]);
+  // Same empty-fallback as buildPlan: if every keep filters out (e.g. stale
+  // keeps left over after re-trimming), measure [inT, outT] rather than
+  // falling through to an unbounded whole-file measurement.
+  if (measureSegments.length === 0) measureSegments.push([inT, outT]);
   const measured = hasAudio ? await measureLoudness(src, { segments: measureSegments }) : null;
   const audioFilter = hasAudio ? buildLoudnormFilter(measured) : null;
   if (!hasAudio) console.warn(`  [NO AUDIO] ${clipId} — додаю тишу (anullsrc)`);

@@ -16,15 +16,12 @@ function monthFolderFromRunId(runId) {
 }
 
 function getProjectDir(runId) {
-  if (/^Special_/.test(runId)) return path.join('projects', 'Special', runId);
-  const specialPath = path.join('projects', 'Special', runId);
-  if (fs.existsSync(specialPath)) return specialPath;
-  // Multi-day Special series ("<SeriesName>/Day_N"): the series folder may
-  // already exist even when this particular day's folder doesn't yet.
-  const topSegment = runId.split('/')[0];
-  if (topSegment !== runId && fs.existsSync(path.join('projects', 'Special', topSegment))) {
-    return specialPath;
-  }
+  // Multi-day Special series use "<SeriesName>/Day_N" — a '/' never appears
+  // in any other runId shape (Episode_/Test_/Special_/Manual_ are all flat),
+  // so this check doesn't need the series folder to already exist on disk
+  // (unlike the old existsSync-based check, which broke on day 1 of a brand
+  // new series before any folder existed yet).
+  if (/^Special_/.test(runId) || runId.includes('/')) return path.join('projects', 'Special', runId);
   const month = monthFolderFromRunId(runId);
   return month ? path.join('projects', month, runId) : path.join('projects', runId);
 }
@@ -39,8 +36,20 @@ function findAllProjects() {
     if (/^\d{4}_\d{2}_[A-Za-z]+$/.test(entry) || entry === 'Special') {
       for (const sub of fs.readdirSync(fullPath)) {
         const subPath = path.join(fullPath, sub);
-        if (fs.statSync(subPath).isDirectory()) {
-          results.push({ runId: sub, projectDir: subPath, monthFolder: entry });
+        if (!fs.statSync(subPath).isDirectory()) continue;
+        // Multi-day Special series: subPath is the series folder (no
+        // state.json of its own) — the real per-day projects are one level
+        // deeper, at Special/<Series>/<Day_N>/. Recurse only in that case;
+        // a normal Special_N_YYYY_MM_DD project has state.json directly here.
+        if (entry === 'Special' && !fs.existsSync(path.join(subPath, 'state.json'))) {
+          for (const day of fs.readdirSync(subPath)) {
+            const dayPath = path.join(subPath, day);
+            if (fs.statSync(dayPath).isDirectory()) {
+              results.push({ runId: `${sub}/${day}`, projectDir: dayPath, monthFolder: null });
+            }
+          }
+        } else {
+          results.push({ runId: sub, projectDir: subPath, monthFolder: entry === 'Special' ? null : entry });
         }
       }
     } else if (/^(Episode|Test|Special|Manual)_/.test(entry)) {

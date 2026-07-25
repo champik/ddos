@@ -9,6 +9,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { readJson, updateState } = require('./lib/state');
 const { analyzeRms, findPeak } = require('./lib/audio-peaks');
+const { getDuration } = require('./lib/media-probe');
 
 const projectDir = process.argv[2];
 if (!projectDir) { console.error('Usage: node extract-frames.js <projectDir>'); process.exit(1); }
@@ -19,15 +20,6 @@ const plan    = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 const clipIds = (plan.clipOrder || []).filter(id => !String(id).startsWith('__'));
 
 const CONCURRENCY = 4;
-
-function getDuration(filePath) {
-  // Sync — fast probe, runs between async FFmpeg tasks
-  const { spawnSync } = require('child_process');
-  const r = spawnSync('ffprobe', [
-    '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath
-  ], { encoding: 'utf8' });
-  return parseFloat(r.stdout) || 0;
-}
 
 function extractFrameAsync(input, timestamp, output) {
   return new Promise((resolve) => {

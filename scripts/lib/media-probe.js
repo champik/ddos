@@ -6,7 +6,7 @@
 // Тут вони зведені разом, плюс детекція РЕАЛЬНОЇ тиші — бо наявність аудіо-стріму
 // нічого не гарантує: DMCA-заглушений VOD має доріжку, вона просто німа.
 
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const { analyzeRms, WINDOW_SEC } = require('./audio-peaks');
 
 // Поріг «доріжка є, але звуку в ній немає». Цифровий нуль ffmpeg віддає як -inf
@@ -39,6 +39,33 @@ function hasStream(filePath, kind) {
 
 function hasAudioStream(filePath) { return hasStream(filePath, 'a'); }
 function hasVideoStream(filePath) { return hasStream(filePath, 'v'); }
+
+// Async (non-blocking) variants, for callers that process many clips
+// concurrently (e.g. apply-editorial.js's worker pool) — the spawnSync
+// versions above would serialize the whole event loop at every probe call.
+function ffprobeAsync(args) {
+  return new Promise((resolve) => {
+    const proc = spawn('ffprobe', args, { stdio: 'pipe' });
+    let out = '';
+    proc.stdout.on('data', d => { out += d.toString(); });
+    proc.stderr.on('data', () => {});
+    proc.on('close', () => resolve(out.trim()));
+    proc.on('error', () => resolve(''));
+  });
+}
+
+async function getDurationAsync(filePath) {
+  const out = await ffprobeAsync(['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath]);
+  return parseFloat(out) || 0;
+}
+
+async function hasAudioStreamAsync(filePath) {
+  const out = await ffprobeAsync([
+    '-v', 'error', '-select_streams', 'a',
+    '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', filePath,
+  ]);
+  return out.length > 0;
+}
 
 // Аналіз гучності діапазону ss..ss+dur (або всього файлу).
 // → { maxRms, silentRatio, longestMuteSec, windowCount } або null, якщо
@@ -93,6 +120,8 @@ module.exports = {
   getDuration,
   hasAudioStream,
   hasVideoStream,
+  getDurationAsync,
+  hasAudioStreamAsync,
   analyzeSilence,
   isSilent,
   hasMuteGap,

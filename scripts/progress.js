@@ -5,7 +5,7 @@
 
 const { readState, updateState } = require('./lib/state');
 
-const TOTAL = 16;
+const TOTAL = 15; // матчить 15-крокову нумерацію Pipeline в CLAUDE.md
 
 function fmt(ms) {
   const totalSecs = Math.round(ms / 1000);

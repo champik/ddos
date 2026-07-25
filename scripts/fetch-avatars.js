@@ -12,16 +12,7 @@ const { readJson, readJsonSafe } = require('./lib/state');
 const projectDir = process.argv[2];
 if (!projectDir) { console.error('Usage: node scripts/fetch-avatars.js <projectDir>'); process.exit(1); }
 
-function loadEnv() {
-  try {
-    const env = fs.readFileSync('.env', 'utf8');
-    for (const line of env.split('\n')) {
-      const idx = line.indexOf('=');
-      if (idx > 0) process.env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-    }
-  } catch {}
-}
-loadEnv();
+require('./lib/env').loadEnv();
 
 const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;

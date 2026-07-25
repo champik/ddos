@@ -17,6 +17,7 @@ const { downloadClip, runParallel } = require('./lib/download');
 const { pickByPopularity } = require('./lib/select');
 const { JCIRL_IDS, SPECIALTY_IDS } = require('./lib/categories');
 const { getProjectDir } = require('./lib/project-path');
+const { getDuration } = require('./lib/media-probe');
 
 const [,, runId, mode] = process.argv;
 if (!runId || !['--prepare', '--apply'].includes(mode)) {
@@ -43,11 +44,6 @@ function decideNextRound({ passedCount, round }) {
     return { done: true, need: 0 };
   }
   return { done: false, need: (MIN_PASS - passedCount) * 2 };
-}
-
-function getDuration(filePath) {
-  const r = spawnSync('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath], { encoding: 'utf8' });
-  return parseFloat(r.stdout) || 0;
 }
 
 function extractFrame(input, timestamp, output) {

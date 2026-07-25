@@ -16,7 +16,11 @@ function analyzeRms(filePath, { ss = null, dur = null } = {}) {
   args.push('-i', filePath, '-vn');
   if (dur != null) args.push('-t', String(dur));
   args.push(
-    '-af', `asetnsamples=n=${WINDOW_SAMPLES},astats=metadata=1:reset=1,` +
+    // aresample=48000 first: WINDOW_SAMPLES/WINDOW_SEC assume 48kHz — without
+    // forcing it, a source at a different rate (e.g. 44.1kHz) would make each
+    // asetnsamples window cover a different real duration than WINDOW_SEC,
+    // silently skewing every downstream mute-gap/loud-moment timing calc.
+    '-af', `aresample=48000,asetnsamples=n=${WINDOW_SAMPLES},astats=metadata=1:reset=1,` +
            'ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-',
     '-f', 'null', '-',
   );

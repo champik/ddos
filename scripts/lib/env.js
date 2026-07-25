@@ -14,6 +14,8 @@ function loadEnv(file = '.env') {
     return false;
   }
   for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
     const idx = line.indexOf('=');
     if (idx > 0) process.env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
   }

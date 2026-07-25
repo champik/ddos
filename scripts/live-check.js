@@ -7,19 +7,12 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { readJsonSafe } = require('./lib/state');
 
 require('./lib/env').loadEnv();
 
 const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-
-function stripBom(s) {
-  return s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
-}
-
-function readJsonSafe(p) {
-  try { return JSON.parse(stripBom(fs.readFileSync(p, 'utf8'))); } catch { return null; }
-}
 
 async function httpsRequest(options, body) {
   return new Promise((resolve, reject) => {

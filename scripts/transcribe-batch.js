@@ -26,34 +26,47 @@ const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
 const broadcasterMap = {};
 downloaded.forEach(c => { broadcasterMap[c.id] = c.broadcaster_name || c.broadcaster_login || c.id; });
 
-// Build jobs list — skip already-done transcripts
+// Build jobs list — skip already-done transcripts. A missing clean.mp4 is a
+// separate case from a cached skip: it means APPLY_EDITORIAL failed for that
+// clip upstream, and must count as an error, not a silent "done" transcribe.
 const jobs = [];
-let preSkipped = 0;
+let cachedSkipped = 0;
+const missingClips = [];
 for (const clipId of clipOrder) {
   const videoPath      = path.join(RUN_DIR, 'processed', clipId, 'clean.mp4');
   const transcriptPath = path.join(RUN_DIR, 'processed', clipId, 'transcript.json');
 
   if (!fs.existsSync(videoPath)) {
-    console.log(`[SKIP] ${clipId}: clean.mp4 not found`);
-    preSkipped++;
+    console.warn(`[MISSING] ${clipId}: clean.mp4 not found — APPLY_EDITORIAL likely failed for this clip`);
+    missingClips.push(clipId);
     continue;
   }
 
   if (fs.existsSync(transcriptPath)) {
     try {
       const existing = JSON.parse(fs.readFileSync(transcriptPath, 'utf8'));
-      if (!existing.error) { preSkipped++; continue; }
+      if (!existing.error) { cachedSkipped++; continue; }
     } catch {}
   }
 
   jobs.push({ video_path: videoPath, output_path: transcriptPath, clip_id: clipId });
 }
 
-console.log(`[TRANSCRIBE] ${jobs.length} to process, ${preSkipped} already cached`);
+console.log(`[TRANSCRIBE] ${jobs.length} to process, ${cachedSkipped} already cached, ${missingClips.length} missing clean.mp4`);
+
+function recordMissing(s) {
+  if (missingClips.length === 0) return;
+  s.warnings = s.warnings || [];
+  s.warnings.push(...missingClips.map(id => `transcribe: clean.mp4 missing for ${id} (APPLY_EDITORIAL failed)`));
+}
 
 if (jobs.length === 0) {
   console.log('[TRANSCRIBE] Nothing to do');
-  updateState(RUN_DIR, s => { s.stages = s.stages || {}; s.stages.transcribe = 'done'; });
+  updateState(RUN_DIR, s => {
+    s.stages = s.stages || {};
+    s.stages.transcribe = stageStatus(cachedSkipped, missingClips.length);
+    recordMissing(s);
+  });
   process.exit(0);
 }
 
@@ -92,11 +105,12 @@ async function main() {
       try { fs.unlinkSync(jobsFile); } catch {}
 
       if (code !== 0) errors++;
-      console.log(`\n[TRANSCRIBE] Done: ${done} transcribed, ${preSkipped} cached, ${errors} errors`);
+      console.log(`\n[TRANSCRIBE] Done: ${done} transcribed, ${cachedSkipped} cached, ${errors} errors, ${missingClips.length} missing clean.mp4`);
 
       updateState(RUN_DIR, s => {
         s.stages = s.stages || {};
-        s.stages.transcribe = stageStatus(done + preSkipped, errors);
+        s.stages.transcribe = stageStatus(done + cachedSkipped, errors + missingClips.length);
+        recordMissing(s);
       });
       resolve();
     });
