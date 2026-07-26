@@ -88,7 +88,7 @@ streamer: <ім'я>
 
 Вивести в чат:
 ```
-[6–11/16] APPLY_EDITORIAL + TRANSCRIBE + OVERLAYS + EXTRACT_FRAMES (паралельно)...
+[6–11/16] APPLY_EDITORIAL + TRANSCRIBE + CENSOR + OVERLAYS + EXTRACT_FRAMES...
 ```
 
 Запустити **у фоні** (`run_in_background: true`):
@@ -112,8 +112,9 @@ ScheduleWakeup(
 Стадії:
 - APPLY_EDITORIAL (X/26 clips — шукай "OK:" рядки)
 - VOD_REPLACE (шукай "replaced, N skipped")
-- EXTRACT_FRAMES (шукай "Done. N ok")
 - TRANSCRIBE (шукай "[N/26]")
+- CENSOR (шукай "Done: N censored" в apply-censor секції; done_with_errors/warnings — не зупиняє pipeline, дивись "state.warnings")
+- EXTRACT_FRAMES (шукай "Done. N ok")
 - OVERLAYS (шукай "[OK]" в apply-overlays секції)
 - BUILD_CONCAT (шукай "build-concat" або "concat-list")
 - RENDER_FINAL (шукай "render-final" або "episode-")
@@ -142,11 +143,13 @@ ScheduleWakeup(
 ```
 
 Виконує послідовно потім паралельно:
-1. `apply-editorial.js` — trim + cuts → `clean.mp4` per clip
-2. Паралельно:
-   - A: `transcribe-batch.js` → `gen-captions.js`
+1. `apply-editorial.js` — trim + cuts → `clean.mp4` per clip (+ VOD replace)
+2. `transcribe-batch.js` → `apply-censor.js` (серіально — CENSOR мьютить матюки/слюри
+   в `clean.mp4`, тому все нижче має чекати його завершення)
+3. Паралельно:
+   - A: `gen-captions.js`
    - B: `apply-overlays.js` → `build-concat.js` → `render-final.js`
-   - C: `extract-frames.js`
+   - C: `extract-frames.js` (не залежить від CENSOR — тільки відео-кадри)
 
 ### Кроки 7–10 (Claude + скрипти)
 
