@@ -129,7 +129,7 @@ function buildKaraokeText(phraseWords, currentIdx, pop, phraseLoud) {
 }
 
 // Generate karaoke ASS: one dialogue line per word, whole phrase visible,
-// current word yellow, others white. Hot/loud words get a brief scale-pop.
+// current word yellow, others white. Loud words get a brief scale-pop.
 function genKaraokeAss(words, header, offset = 0, isLoudWord = null) {
   if (!words || words.length === 0) return header;
   const phrases = groupIntoPhrases(words);
