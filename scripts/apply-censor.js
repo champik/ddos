@@ -48,7 +48,9 @@ function ffmpegAsync(args) {
 
 // Builds the list of [start,end] mute windows for one clip: auto-detected
 // profane words (padded, clamped so they never bleed into a neighboring
-// word) plus any editor-added manual marks (fixed length = glitch duration).
+// word) plus any editor-added manual marks (centered on the click timestamp,
+// width = glitch duration — matches edit.html's browser-preview window exactly,
+// so the segment the editor heard muted is the same one that gets cut here).
 function buildMuteWindows(words, manualMutes, clipDuration, glitchDuration) {
   const hits = [];
   (words || []).forEach((w, i) => {
@@ -61,8 +63,9 @@ function buildMuteWindows(words, manualMutes, clipDuration, glitchDuration) {
     hits.push({ word: w.word, masked: maskWord(w.word), start, end, source: 'auto' });
   });
   (manualMutes || []).forEach(m => {
-    const start = Math.max(0, m.at);
-    const end = Math.min(clipDuration, m.at + glitchDuration);
+    const half = glitchDuration / 2;
+    const start = Math.max(0, m.at - half);
+    const end = Math.min(clipDuration, m.at + half);
     if (end <= start) return;
     hits.push({ word: null, masked: null, start, end, source: 'manual' });
   });

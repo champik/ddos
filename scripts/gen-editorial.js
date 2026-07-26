@@ -91,12 +91,20 @@ console.log(
 
 // Build editorial data
 const existingEditorial = readJsonSafe(path.join(RUN_DIR, 'edit/editorial.json'), null);
+// Embedded as a data URI (not a relative path) so the browser-preview mute in
+// edit.html works regardless of how deep this episode's folder is nested
+// (projects/<Month>/<runId>/edit/ vs projects/Special/<Series>/<Day>/edit/...).
+const GLITCH_PATH = 'assets/sounds/glitch.wav';
+const glitchAudio = fs.existsSync(GLITCH_PATH)
+  ? 'data:audio/wav;base64,' + fs.readFileSync(GLITCH_PATH).toString('base64')
+  : null;
 const editorialData = {
   runId,
   episodeNumber,
   selected,
   bench: [],
   vodClipIds: existingEditorial?.vodClipIds || [],
+  glitchAudio,
 };
 
 // Read template from projects/Edit — source of truth for edit UI
@@ -110,7 +118,16 @@ const sEnd    = template.indexOf(S_END);
 if (sStart === -1 || sEnd === -1) throw new Error('DDOS_CLIPS sentinels not found in projects/Edit/edit/edit.html');
 
 const dataJson = JSON.stringify(editorialData, null, 2);
-const html = template.slice(0, sStart) + S_START + dataJson + S_END + template.slice(sEnd + S_END.length);
+let html = template.slice(0, sStart) + S_START + dataJson + S_END + template.slice(sEnd + S_END.length);
+
+// edit.html lives at <RUN_DIR>/edit/edit.html. RUN_DIR's own depth from repo root
+// varies (standard: projects/<Month>/<runId> = 3 segments; multi-day Special:
+// projects/Special/<Series>/<Day> = 4 segments) — compute the ../ chain instead
+// of trusting the template's hardcoded one, so nested Special series don't end
+// up with a broken logo/index link (same bug already fixed in gen-review.js).
+const runDepth = RUN_DIR.split(/[\\/]/).filter(Boolean).length;
+const toProjectsDir = '../'.repeat(runDepth);
+html = html.replace('href="../../index.html"', `href="${toProjectsDir}index.html"`);
 
 fs.writeFileSync(path.join(RUN_DIR, 'edit/edit.html'), html);
 
