@@ -3,11 +3,12 @@
 // stage2.js — Stage 2 orchestrator: runs scripts in parallel where dependencies allow.
 //
 // Dependency graph after APPLY_EDITORIAL (clean.mp4 ready):
-//   A: TRANSCRIBE → CAPTIONS               (CPU/GPU, then CPU)
-//   B: OVERLAYS → BUILD_CONCAT → RENDER_LONG  (CPU, then I/O, then I/O)
-//   C: EXTRACT_FRAMES                       (CPU, fully independent)
+//   TRANSCRIBE → CENSOR → A: CAPTIONS                         (CPU/GPU, then CPU, then CPU)
+//                       → B: OVERLAYS → BUILD_CONCAT → RENDER_LONG  (CPU, then I/O, then I/O)
+//   C: EXTRACT_FRAMES  — independent of all the above (video-only, doesn't need CENSOR),
+//                        runs concurrently with TRANSCRIBE→CENSOR→{A,B}
 //
-// A, B, C run in parallel. METADATA and beyond (RENDER_SHORTS, THUMBNAIL, REVIEW)
+// A, B, C all settle together via Promise.allSettled. METADATA and beyond (RENDER_SHORTS, THUMBNAIL, REVIEW)
 // are left to Claude — they require API calls and depend on METADATA output.
 //
 // Usage: node scripts/stage2.js <runId> [episodeNumber]
@@ -55,11 +56,19 @@ async function main() {
     }
   } catch {}
 
-  // ── PARALLEL: three independent chains ────────────────────────────────────
-  const chainA = run('scripts/transcribe-batch.js', [runId])
+  // ── TRANSCRIBE → CENSOR (CAPTIONS and OVERLAYS both depend on censored
+  // clean.mp4 / masked transcript) → { CAPTIONS, OVERLAYS→BUILD_CONCAT→RENDER_LONG }
+  // EXTRACT_FRAMES is video-only and independent of all of the above — it
+  // starts immediately and stays in the same Promise.allSettled so a
+  // transcribe/censor failure still lets it run and report.
+  const chainTranscribeCensor = run('scripts/transcribe-batch.js', [runId])
+    .then(() => run('scripts/apply-censor.js', [projectDir]));
+
+  const chainA = chainTranscribeCensor
     .then(() => run('scripts/gen-captions.js', [projectDir]));
 
-  const chainB = run('scripts/fetch-avatars.js', [projectDir])
+  const chainB = chainTranscribeCensor
+    .then(() => run('scripts/fetch-avatars.js', [projectDir]))
     .then(() => run('scripts/apply-overlays.js', [projectDir]))
     .then(() => run('scripts/build-concat.js', [runId]))
     .then(() => run('scripts/render-final.js', [projectDir, epNum]));
@@ -68,7 +77,7 @@ async function main() {
 
   const results = await Promise.allSettled([chainA, chainB, chainC]);
 
-  const labels = ['TRANSCRIBE→CAPTIONS', 'FETCH_AVATARS→OVERLAYS→RENDER_LONG', 'EXTRACT_FRAMES'];
+  const labels = ['TRANSCRIBE→CENSOR→CAPTIONS', 'TRANSCRIBE→CENSOR→OVERLAYS→RENDER_LONG', 'EXTRACT_FRAMES'];
   results.forEach((r, i) => {
     if (r.status === 'rejected') console.error(`[FAIL] ${labels[i]}: ${r.reason.message}`);
     else console.log(`[DONE] ${labels[i]}`);
