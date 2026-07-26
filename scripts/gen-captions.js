@@ -13,6 +13,7 @@ require('./progress').step(projectDir, 11, 'Субтитри для шортсі
 
 const { readJson, updateState } = require('./lib/state');
 const { analyzeRms, loudThreshold, isLoudAt, isProminentAt } = require('./lib/audio-peaks');
+const { normalizeWord, isProfane, maskWord } = require('./lib/profanity');
 const plan = readJson(path.join(projectDir, 'edit/episode-plan.json'));
 
 let editorialClips = {};
@@ -22,11 +23,6 @@ try {
   editorialClips = ed.clips || {};
   if (ed.shorts && ed.shorts.length > 0) editorialShortsArray = ed.shorts;
 } catch {}
-
-
-const HOT = new Set(['no','what','wait','stop','wtf','omg','insane','crazy',
-  'holy','hell','wow','damn','bruh','nah',
-  'fuck','fucking','fucked','shit','bitch','ass','crap','goddamn']);
 
 // Words that should not end a phrase chunk (soft break only — forced breaks still apply)
 const FUNCTION_WORDS = new Set([
@@ -40,7 +36,6 @@ const FUNCTION_WORDS = new Set([
   'that','this','just','up','out','then','also',
 ]);
 
-function isHot(word) { return HOT.has(word.replace(/[^a-z]/g, '').toLowerCase()); }
 function isFn(word)  { return FUNCTION_WORDS.has(word.replace(/[^a-z]/g, '').toLowerCase()); }
 
 function toAssTime(secs) {
@@ -113,9 +108,10 @@ function buildKaraokeText(phraseWords, currentIdx, pop, phraseLoud) {
 
   for (let j = 0; j < phraseWords.length; j++) {
     const loud = phraseLoud && phraseLoud[j];
-    const text = loud
-      ? phraseWords[j].word.trim().toUpperCase()
-      : phraseWords[j].word.trim().toLowerCase();
+    const raw = phraseWords[j].word.trim();
+    const text = isProfane(normalizeWord(raw))
+      ? maskWord(raw)
+      : (loud ? raw.toUpperCase() : raw.toLowerCase());
 
     if (j === currentIdx) {
       if (j > 0) parts.push(`{\\c${YELLOW}&}`); // reset to yellow after white stretch
