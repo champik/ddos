@@ -24,6 +24,7 @@ if (!projectDir) { console.error('Usage: node scripts/apply-censor.js <projectDi
 require('./progress').step(projectDir, '8b', 'Цензура матюків');
 
 const GLITCH_PATH = path.resolve('assets/sounds/glitch.wav');
+const GLITCH_VOLUME = 0.5; // glitch overlay mixed in at half volume
 const PAD = 0.04; // secs of extra mute on each side of a detected word, clamped to neighbors
 
 const editorialPath = path.join(projectDir, 'edit', 'editorial.json');
@@ -113,7 +114,7 @@ async function censorAudio(cleanPath, tmpPath, windows) {
   filterParts.push(`[1:a]asplit=${windows.length}${asplitLabels}`);
   windows.forEach((w, i) => {
     const delayMs = (w.start * 1000).toFixed(0);
-    filterParts.push(`[gin${i}]atrim=0:${(w.end - w.start).toFixed(3)},adelay=${delayMs}|${delayMs}[g${i}]`);
+    filterParts.push(`[gin${i}]atrim=0:${(w.end - w.start).toFixed(3)},adelay=${delayMs}|${delayMs},volume=${GLITCH_VOLUME}[g${i}]`);
   });
   const mixInputs = ['[muted]', ...windows.map((_, i) => `[g${i}]`)].join('');
   filterParts.push(`${mixInputs}amix=inputs=${windows.length + 1}:duration=first:dropout_transition=0:normalize=0[outa]`);
