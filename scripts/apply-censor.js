@@ -217,8 +217,6 @@ async function main() {
       s.warnings.push(...failures.map(f => `censor: ${f.reason} (${f.clipId})`));
     }
   });
-
-  if (failed > 0) process.exit(1);
 }
 
 main().catch(e => { console.error('[FATAL]', e.message); process.exit(1); });
