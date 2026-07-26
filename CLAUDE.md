@@ -75,6 +75,9 @@
                      + VOD replace: якщо editorial.vodClipIds не порожній → vod-segment.js замінює clean.mp4
 7b. EXTRACT_FRAMES   extract-frames.js → 3 JPEG кадри per кліп (serial, до оверлеїв)
 8.  TRANSCRIBE       WhisperX large-v3 → transcript.json (тільки вибрані кліпи, з clean.mp4)
+8b. CENSOR           apply-censor.js → мьютить Tier 1/2 матюки/слюри в clean.mp4
+                     (за word-level таймстемпами з transcript.json + ручні
+                     позначки 🔇 Mute з edit.html), підставляє glitch.wav
 9.  OVERLAYS         Puppeteer → streamer overlay + reconnecting panel
 10. RENDER LONG      FFmpeg concat → episode-NNN.mp4
 11. CAPTIONS         WhisperX ASS субтитри для shorts
@@ -171,8 +174,10 @@ projects/<YYYY_MM_Month>/<runId>/
 ├── downloads/{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4  # ім'я кліпу
 ├── processed/<clipId>/
 │   ├── transcript.json
-│   ├── clean.mp4                      # trimmed + re-encoded (CRF 18, 30fps) + loudnorm
+│   ├── clean.mp4                      # trimmed + re-encoded (CRF 18, 30fps) + loudnorm + censored
 │   ├── edit-hash.txt                  # хеш editorial-рішень для інвалідації кешу
+│   ├── censor-log.json                # список замьючених слів/міток (слово, час, source: auto/manual)
+│   ├── censor-hash.txt                # хеш mute-вікон для інвалідації кешу цензури
 │   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
 │   ├── captions-vertical.ass
 │   └── frames/                        # 3 JPEG кадри (frame-1/2/3.jpg) + frames-hash.txt
@@ -223,6 +228,12 @@ assets/thumbnail-template/logo.svg         DDOS лого
   аудіо-стрім на місці, тому перевірки наявності доріжки не досить. При муті —
   звук береться з оригінального кліпу; якщо й це неможливо, VOD-заміна
   скасовується і лишається оригінальний `clean.mp4`
+- **CENSOR** — `apply-censor.js` мьютить Tier 1/2 матюки/слюри (word-level
+  таймстемпи з `transcript.json`) + ручні позначки 🔇 Mute з `edit.html`,
+  підставляючи `assets/sounds/glitch.wav` у вирізаний проміжок. Працює
+  ДО OVERLAYS — тому `apply-overlays.js` в `stage2.js` більше не стартує
+  паралельно з TRANSCRIBE, а чекає завершення CENSOR (інакше overlays
+  прочитав би ще нецензурований `clean.mp4`).
 - **Реконект** — `apply-overlays.js` перевіряє межі кліпу перед нарізкою і
   верифікує результат (тривалість, обидва стріми, не чорний кадр). Якщо
   `reconnectSource.from` потрапляє у вирізане — помилка, а не мовчазний зсув
