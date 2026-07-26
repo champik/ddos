@@ -26,6 +26,36 @@ node scripts/apply-editorial.js "<runId>"
 
 ---
 
+## CENSOR — Мьют матюків/слюрів + glitch.wav
+
+Виконується автоматично в `stage2.js` між TRANSCRIBE і OVERLAYS (серіально — OVERLAYS
+читає `clean.mp4`, тож має чекати, поки CENSOR допише в нього цензуроване аудіо).
+
+```bash
+node scripts/apply-censor.js "<projectDir>"
+```
+
+Скрипт:
+- Для кожного кліпу читає `processed/<clipId>/transcript.json` (word-level таймстемпи)
+  і `edit/editorial.json → clips[id].manualMutes` (ручні позначки 🔇 Mute з edit.html)
+- Список слів для мьюту — `scripts/lib/profanity.js` (Tier 1 матюки + Tier 2 слюри,
+  без м'яких слів типу damn/hell/crap)
+- Кожне знайдене слово: мьютить оригінальне аудіо в межах `[word.start-40ms, word.end+40ms]`
+  (clamp щоб не зайти в сусіднє слово) і підмішує `assets/sounds/glitch.wav`, обрізаний
+  точно під це вікно — не вилазить у сусіднє слово
+- Ручні позначки: вікно `[at, at + тривалість glitch.wav]`
+- Перезаписує `clean.mp4` на місці (відео — `-c:v copy`, без перекодування;
+  лише аудіо-фільтр) — тому `apply-overlays.js`, `build-concat.js`, `render-shorts.js`
+  нічого не треба міняти, вони й так читають `clean.mp4`/`overlayed.mp4`
+- Кешування: `processed/<clipId>/censor-hash.txt` — пропускає кліп, якщо набір
+  mute-вікон не змінився з минулого запуску
+- Пише `processed/<clipId>/censor-log.json` (слово/маска/час/джерело auto|manual)
+  для аудиту — показується в review.html Tags column
+
+Оновити `state.stages.censor` (`done` / `done_with_errors` / `failed` — скрипт ставить сам).
+
+---
+
 ## OVERLAYS — Puppeteer frame-by-frame → FFV1 MKV
 
 > VP9/VP8 WebM alpha is broken on Windows FFmpeg — FFV1 in MKV correctly preserves alpha.
