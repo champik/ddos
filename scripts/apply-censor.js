@@ -126,7 +126,7 @@ async function censorAudio(cleanPath, tmpPath, windows) {
   ];
   const result = await ffmpegAsync(args);
   if (result.status !== 0) {
-    const lines = (result.stderr || '').split('\n').filter(l => /error/i.test(l));
+    const lines = (result.stderr || '').split('\n').map(l => l.trim()).filter(l => /error/i.test(l));
     if (lines.length) console.error('  FFmpeg:\n  ' + lines.slice(0, 3).join('\n  '));
     return { ok: false, error: lines[0] || `ffmpeg exited with code ${result.status}` };
   }
