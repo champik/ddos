@@ -113,6 +113,10 @@ function makeClipRow(id, num) {
   if (cuts > 0) tags.push(`<span style="color:#f5ff3d;font-size:10px;font-family:monospace">✂${cuts}</span>`);
   if ((editorial.vodClipIds || []).includes(id))
     tags.push(`<span style="color:#38bdf8;font-size:10px;font-weight:700">VOD</span>`);
+  const censorLog = readJsonSafe(path.join(projectDir, 'processed', id, 'censor-log.json'), []);
+  for (const c of censorLog) {
+    tags.push(`<span style="color:#fb923c;font-size:10px;font-family:monospace">🔇 ${esc(c.word || 'manual')}@${c.start}s</span>`);
+  }
   const tagsStr = tags.join(' ') || '—';
 
   return `  <tr>
