@@ -63,6 +63,7 @@ async function uploadVideo(runId, metadataPath, videoPath, thumbnailPath) {
     const thumbMime = finalThumbPath.endsWith('.jpg') || finalThumbPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
     await yt.thumbnails.set({ videoId, media: { mimeType: thumbMime, body: fs.createReadStream(finalThumbPath) } });
     console.log('Thumbnail set.');
+    syncCanonicalThumbnail(thumbnailPath);
   }
 
   updateState(getProjectDir(runId), s => {
@@ -162,14 +163,14 @@ async function uploadShort(runId, clipId, shortPath, mainVideoId, hookText, publ
   return shortId;
 }
 
-async function publishVideo(videoId) {
+// publishAt — optional ISO string. If provided, video is scheduled (private until that time).
+async function publishVideo(videoId, publishAt) {
   const auth = await getAuth();
   const yt = google.youtube({ version: 'v3', auth });
-  await yt.videos.update({
-    part: ['status'],
-    requestBody: { id: videoId, status: { privacyStatus: 'public' } }
-  });
-  console.log(`Published: https://youtu.be/${videoId}`);
+  const status = publishAt ? { privacyStatus: 'private', publishAt } : { privacyStatus: 'public' };
+  await yt.videos.update({ part: ['status'], requestBody: { id: videoId, status } });
+  if (publishAt) console.log(`Scheduled: https://youtu.be/${videoId} at ${publishAt}`);
+  else console.log(`Published: https://youtu.be/${videoId}`);
 }
 
 // publish-all: publish main video now + schedule shorts at +Xhr, +2Xhr, ...
@@ -214,15 +215,7 @@ async function publishAll(runId, publishNowISO, selectedTitle, shortIntervalMinu
   const mainPublishTime = (publishNowISO && publishNowISO.trim()) ? new Date(publishNowISO) : new Date();
   // If scheduled in the future, use publishAt; otherwise publish now
   if (mainPublishTime > new Date(Date.now() + 60000)) {
-    const auth = await getAuth();
-    const yt = google.youtube({ version: 'v3', auth });
-    await yt.videos.update({
-      part: ['status'],
-      requestBody: {
-        id: mainVideoId,
-        status: { privacyStatus: 'private', publishAt: mainPublishTime.toISOString() }
-      }
-    });
+    await publishVideo(mainVideoId, mainPublishTime.toISOString());
     console.log(`Main video scheduled: https://youtu.be/${mainVideoId} at ${mainPublishTime.toISOString()}`);
   } else {
     await publishVideo(mainVideoId);
@@ -299,13 +292,26 @@ async function updateThumbnail(videoId, thumbnailPath) {
   const mimeType = thumbnailPath.endsWith('.jpg') || thumbnailPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
   await yt.thumbnails.set({ videoId, media: { mimeType, body: fs.createReadStream(thumbnailPath) } });
   console.log(`Thumbnail updated: https://youtu.be/${videoId}`);
+  syncCanonicalThumbnail(thumbnailPath);
+}
+
+// projects/index.html hardcodes each episode card's <img> to exports/thumbnail.png,
+// but the file actually published to YouTube is whichever thumb-candidate-*.png was
+// chosen in review.html — keep them in sync so the index card isn't stuck showing
+// the unselected default candidate.
+function syncCanonicalThumbnail(publishedThumbPath) {
+  const canonicalPath = path.join(path.dirname(publishedThumbPath), 'thumbnail.png');
+  if (path.resolve(publishedThumbPath) === path.resolve(canonicalPath)) return;
+  if (!publishedThumbPath.endsWith('.png')) return;
+  fs.copyFileSync(publishedThumbPath, canonicalPath);
+  console.log(`Canonical thumbnail.png synced from ${path.basename(publishedThumbPath)}`);
 }
 
 const [,, cmd, ...args] = process.argv;
 const cmds = {
   'upload-video':     () => uploadVideo(...args),
   'upload-short':     () => uploadShort(...args),
-  'publish-video':    () => publishVideo(args[0]),
+  'publish-video':    () => publishVideo(args[0], args[1]),
   'publish-all':      () => publishAll(args[0], args[1], args[2], args[3], args[4]),
   'update-thumbnail': () => updateThumbnail(args[0], args[1]),
 };
