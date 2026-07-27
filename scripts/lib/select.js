@@ -118,6 +118,18 @@ function hourRecencyWindows(pool, alreadySelected, nowMs, windows, slotsKey) {
   return result;
 }
 
+// Resolves broadcastedAt for one clip from VOD data (video_id + vod_offset),
+// falling back to clip.created_at when no VOD is available. Shared by
+// SELECT's enrichBroadcastTimes and add-clip.js so both paths compute it
+// the same way.
+function computeBroadcastedAt(clip, vodCreatedAt) {
+  if (vodCreatedAt && clip.vod_offset != null) {
+    const candidateMs = new Date(vodCreatedAt).getTime() + clip.vod_offset * 1000;
+    return { broadcastedAt: new Date(candidateMs).toISOString(), broadcastedAtSource: 'vod' };
+  }
+  return { broadcastedAt: clip.created_at, broadcastedAtSource: 'clip' };
+}
+
 // Enriches clips in-place with actual broadcast time from VOD data
 // (video_id + vod_offset), falling back to clip.created_at when no VOD is
 // available. Every code path that produces downloadable candidates (main
@@ -136,18 +148,55 @@ async function enrichBroadcastTimes(clips, twitchClient) {
   let vodHits = 0;
   for (const clip of clips) {
     if (clip.broadcastedAt) continue; // already enriched (e.g. re-running on a mixed set)
-    if (clip.video_id && vodMap.has(clip.video_id) && clip.vod_offset != null) {
-      const vodStartMs = new Date(vodMap.get(clip.video_id)).getTime();
-      clip.broadcastedAt = new Date(vodStartMs + clip.vod_offset * 1000).toISOString();
-      clip.broadcastedAtSource = 'vod';
-      vodHits++;
-    } else {
-      clip.broadcastedAt = clip.created_at;
-      clip.broadcastedAtSource = 'clip';
-    }
+    const { broadcastedAt, broadcastedAtSource } = computeBroadcastedAt(clip, vodMap.get(clip.video_id));
+    clip.broadcastedAt = broadcastedAt;
+    clip.broadcastedAtSource = broadcastedAtSource;
+    if (broadcastedAtSource === 'vod') vodHits++;
   }
   console.log(`[SELECT] Broadcast times: ${vodHits} from VOD, ${clips.length - vodHits} from clip created_at`);
   return { vodHits, total: clips.length };
 }
 
-module.exports = { pickByPopularity, diversityFloor, buildHourWindows, hourRecencyWindows, enrichBroadcastTimes };
+// created_at alone doesn't guarantee the clipped moment happened inside the
+// requested ingest window — Twitch only guarantees created_at (when the clip
+// resource was made) is inside it, not broadcastedAt (when the highlighted
+// moment actually aired). A clip can be cut from a long-running broadcast
+// that started before the window, or re-clipped later from an old VOD.
+// This rejects any clip whose real broadcast time predates windowStartMs and
+// backfills replacements from `pool` by popularity so bucket counts don't
+// silently shrink. Safety-capped like GAMING_SCREEN's backfill rounds.
+async function selectWithinBroadcastWindow(picked, pool, windowStartMs, twitchClient, maxRounds = 3) {
+  let current = [...picked];
+  const excludedIds = new Set();
+
+  for (let round = 0; round < maxRounds; round++) {
+    await enrichBroadcastTimes(current, twitchClient);
+
+    const withinWindow = [];
+    for (const c of current) {
+      if (new Date(c.broadcastedAt).getTime() >= windowStartMs) withinWindow.push(c);
+      else excludedIds.add(c.id);
+    }
+    const rejectedCount = current.length - withinWindow.length;
+    if (rejectedCount === 0) return withinWindow;
+
+    const usedIds = new Set([...withinWindow.map(c => c.id), ...excludedIds]);
+    const replacements = [...pool]
+      .filter(c => !usedIds.has(c.id))
+      .sort((a, b) => b.view_count - a.view_count)
+      .slice(0, rejectedCount);
+
+    if (replacements.length === 0) return withinWindow; // pool exhausted, nothing left to backfill with
+    current = [...withinWindow, ...replacements]; // replacements get enriched+checked next round
+  }
+
+  // maxRounds exhausted with still-unchecked replacements from the last round —
+  // one final enrich+filter pass so we never return a clip that wasn't verified.
+  await enrichBroadcastTimes(current, twitchClient);
+  return current.filter(c => new Date(c.broadcastedAt).getTime() >= windowStartMs);
+}
+
+module.exports = {
+  pickByPopularity, diversityFloor, buildHourWindows, hourRecencyWindows,
+  enrichBroadcastTimes, computeBroadcastedAt, selectWithinBroadcastWindow,
+};

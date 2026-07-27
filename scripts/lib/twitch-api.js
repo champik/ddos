@@ -8,6 +8,32 @@ const https = require('https');
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// App access token via client_credentials — needed by any script that talks
+// to Twitch outside the main ingest.js run (e.g. gaming-screen.js's backfill
+// rounds), since createTwitchClient() takes a token, it doesn't fetch one.
+function fetchAppAccessToken(clientId, clientSecret) {
+  return new Promise((resolve, reject) => {
+    const body = `client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`;
+    const req = https.request({
+      hostname: 'id.twitch.tv', path: '/oauth2/token', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (!parsed.access_token) return reject(new Error('No access_token: ' + data));
+          resolve(parsed.access_token);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 function createTwitchClient(clientId, token) {
   function httpsGetOnce(url) {
     return new Promise((resolve, reject) => {
@@ -125,4 +151,4 @@ function createTwitchClient(clientId, token) {
   return { httpsGet, getTopGames, fetchClipsPage, fetchClipsForCategory, fetchVtuberBroadcasterIds, fetchVodCreatedTimes };
 }
 
-module.exports = { createTwitchClient, sleep };
+module.exports = { createTwitchClient, sleep, fetchAppAccessToken };

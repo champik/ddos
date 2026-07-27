@@ -1,10 +1,14 @@
 'use strict';
 const assert = require('assert');
-const { buildHourWindows, hourRecencyWindows } = require('./select');
+const { buildHourWindows, hourRecencyWindows, selectWithinBroadcastWindow } = require('./select');
 
 let failed = false;
 function test(name, fn) {
   try { fn(); console.log(`  ok - ${name}`); }
+  catch (e) { failed = true; console.error(`  FAIL - ${name}\n    ${e.message}`); }
+}
+async function testAsync(name, fn) {
+  try { await fn(); console.log(`  ok - ${name}`); }
   catch (e) { failed = true; console.error(`  FAIL - ${name}\n    ${e.message}`); }
 }
 
@@ -140,9 +144,58 @@ test('clip at exactly hoursAgo=72 lands in the old window slot budget, not mid (
   assert.strictEqual(picked.length, 7); // 4 mid fillers + y2 + x2 + z2
 });
 
-if (failed) {
-  console.error('\nSELECT TESTS FAILED');
-  process.exit(1);
-} else {
-  console.log('\nAll select.test.js checks passed.');
+async function runAsyncTests() {
+  console.log('selectWithinBroadcastWindow');
+
+  await testAsync('rejects a clip whose VOD-derived broadcast predates the window and backfills from pool', async () => {
+    const windowStart = Date.parse('2026-07-24T00:00:00Z');
+    const fakeClient = {
+      fetchVodCreatedTimes: async (videoIds) => {
+        const map = new Map();
+        for (const id of videoIds) {
+          if (id === 'vod-old') map.set(id, '2026-07-19T00:00:00Z'); // long-running/old broadcast
+          if (id === 'vod-new') map.set(id, '2026-07-25T00:00:00Z');
+        }
+        return map;
+      },
+    };
+    const picked = [
+      { id: 'a', created_at: '2026-07-25T01:00:00Z', video_id: 'vod-old', vod_offset: 3600, view_count: 10 },
+      { id: 'b', created_at: '2026-07-25T02:00:00Z', video_id: 'vod-new', vod_offset: 3600, view_count: 10 },
+    ];
+    const pool = [
+      ...picked,
+      { id: 'c', created_at: '2026-07-25T03:00:00Z', video_id: 'vod-new', vod_offset: 7200, view_count: 500 },
+    ];
+    const result = await selectWithinBroadcastWindow(picked, pool, windowStart, fakeClient);
+    assert.deepStrictEqual(result.map(c => c.id).sort(), ['b', 'c']);
+  });
+
+  await testAsync('leaves picks untouched when every broadcast is already inside the window', async () => {
+    const windowStart = Date.parse('2026-07-24T00:00:00Z');
+    const fakeClient = { fetchVodCreatedTimes: async () => new Map() };
+    const picked = [{ id: 'x', created_at: '2026-07-25T00:00:00Z', view_count: 1 }];
+    const result = await selectWithinBroadcastWindow(picked, picked, windowStart, fakeClient);
+    assert.deepStrictEqual(result.map(c => c.id), ['x']);
+  });
+
+  await testAsync('returns fewer than requested (not a crash) when the pool has no replacement left', async () => {
+    const windowStart = Date.parse('2026-07-24T00:00:00Z');
+    const fakeClient = { fetchVodCreatedTimes: async () => new Map([['vod-old', '2026-07-19T00:00:00Z']]) };
+    const picked = [{ id: 'a', created_at: '2026-07-25T00:00:00Z', video_id: 'vod-old', vod_offset: 0, view_count: 1 }];
+    const result = await selectWithinBroadcastWindow(picked, picked, windowStart, fakeClient);
+    assert.deepStrictEqual(result, []);
+  });
 }
+
+runAsyncTests().then(() => {
+  if (failed) {
+    console.error('\nSELECT TESTS FAILED');
+    process.exit(1);
+  } else {
+    console.log('\nAll select.test.js checks passed.');
+  }
+}).catch(e => {
+  console.error('Async test runner crashed:', e);
+  process.exit(1);
+});

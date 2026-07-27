@@ -14,10 +14,12 @@ const { spawnSync } = require('child_process');
 const puppeteer = require('puppeteer');
 const { readJson, readJsonSafe, updateState } = require('./lib/state');
 const { downloadClip, runParallel } = require('./lib/download');
-const { pickByPopularity } = require('./lib/select');
+const { pickByPopularity, selectWithinBroadcastWindow } = require('./lib/select');
+const { createTwitchClient, fetchAppAccessToken } = require('./lib/twitch-api');
 const { JCIRL_IDS, SPECIALTY_IDS } = require('./lib/categories');
 const { getProjectDir } = require('./lib/project-path');
 const { getDuration } = require('./lib/media-probe');
+require('./lib/env').loadEnv();
 
 const [,, runId, mode] = process.argv;
 if (!runId || !['--prepare', '--apply'].includes(mode)) {
@@ -194,12 +196,30 @@ async function apply() {
   const everDecidedIds = new Set(Object.keys(results));
   const everAttempted = gamingPool.filter(c => everDecidedIds.has(c.id));
 
-  const backfill = pickByPopularity(gamingPool, {
+  let backfill = pickByPopularity(gamingPool, {
     limit: decision.need,
     maxPerStreamer: 5,
     maxPerGame: 5,
     alreadySelected: everAttempted,
   });
+
+  // Same broadcast-window check SELECT applies — without it, backfill rounds
+  // could reintroduce clips whose real broadcast predates the ingest window
+  // (created_at alone doesn't guarantee that; see scripts/lib/select.js).
+  if (state.ingestWindowStart) {
+    const windowStartMs = new Date(state.ingestWindowStart).getTime();
+    const beforeCount = backfill.length;
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const token = process.env.TWITCH_TOKEN || await fetchAppAccessToken(clientId, process.env.TWITCH_CLIENT_SECRET);
+    const twitch = createTwitchClient(clientId, token);
+    backfill = await selectWithinBroadcastWindow(backfill, gamingPool.filter(c => !everAttempted.some(a => a.id === c.id)), windowStartMs, twitch);
+    const dropped = beforeCount - backfill.length;
+    if (dropped > 0) {
+      console.log(`[GAMING_SCREEN] Broadcast-window check: dropped ${dropped} clip(s) whose real broadcast predates the window`);
+    }
+  } else {
+    console.warn('[GAMING_SCREEN] state.ingestWindowStart відсутній (старий run) — broadcast-window перевірка пропущена для backfill.');
+  }
 
   if (backfill.length === 0) {
     updateState(RUN_DIR, s => { s.stages.gaming_screen = 'done'; s.gamingScreenRounds = round; });

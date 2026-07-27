@@ -10,6 +10,7 @@ const https = require('https');
 const { readJsonSafe, writeJsonAtomic, updateState } = require('./lib/state');
 const { downloadClip } = require('./lib/download');
 const { getProjectDir, findAllProjects, monthFolderFromRunId } = require('./lib/project-path');
+const { computeBroadcastedAt } = require('./lib/select');
 
 // ── env ────────────────────────────────────────────────────────────────────
 require('./lib/env').loadEnv();
@@ -261,13 +262,9 @@ async function main() {
       const res = await twitchGet(`/helix/videos?${params}`, token);
       const vodMap = new Map((res.data || []).map(v => [v.id, v.created_at]));
       for (const c of clips) {
-        if (c.video_id && vodMap.has(c.video_id) && c.vod_offset != null) {
-          c.broadcastedAt = new Date(new Date(vodMap.get(c.video_id)).getTime() + c.vod_offset * 1000).toISOString();
-          c.broadcastedAtSource = 'vod';
-        } else {
-          c.broadcastedAt = c.created_at;
-          c.broadcastedAtSource = 'clip';
-        }
+        const { broadcastedAt, broadcastedAtSource } = computeBroadcastedAt(c, vodMap.get(c.video_id));
+        c.broadcastedAt = broadcastedAt;
+        c.broadcastedAtSource = broadcastedAtSource;
       }
     } catch (e) {
       console.warn(`  [WARN] VOD time fetch failed: ${e.message}`);

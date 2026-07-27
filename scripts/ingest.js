@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { updateState } = require('./lib/state');
 const { CORE_CATEGORIES, JCIRL_IDS, SPECIALTY_IDS } = require('./lib/categories');
-const { pickByPopularity, diversityFloor, buildHourWindows, hourRecencyWindows, enrichBroadcastTimes } = require('./lib/select');
+const { pickByPopularity, diversityFloor, buildHourWindows, hourRecencyWindows, selectWithinBroadcastWindow } = require('./lib/select');
 const { getProjectDir, monthFolderFromRunId } = require('./lib/project-path');
 const { getRejectReason, filterClips } = require('./lib/filter');
 const { createTwitchClient, sleep } = require('./lib/twitch-api');
@@ -196,7 +196,7 @@ async function main() {
 
   // Gaming: 50 кліпів одразу — GAMING_SCREEN перевіряє всі за один прохід.
   // ~50% відсіву очікується, тому беремо вдвічі більше від мінімуму (20).
-  const gamingPick = pickByPopularity(gamingPool, { limit: 50, maxPerStreamer: 5, maxPerGame: 5 });
+  let gamingPick = pickByPopularity(gamingPool, { limit: 50, maxPerStreamer: 5, maxPerGame: 5 });
 
   // Recency compensation for custom --hours N > 24: adds clips on top of the
   // base+diversity-floor pick, favoring windows closer to "now" that haven't
@@ -212,6 +212,21 @@ async function main() {
     console.log(`[SELECT] Recency compensation (--hours ${HOURS}): +${jcIrlRecency.length} JC/IRL, +${gamingRecency.length} Gaming`);
   }
 
+  // created_at guarantees the clip resource was made inside the window, but
+  // not that the highlighted moment actually aired inside it (long-running
+  // broadcast that started earlier, or a clip cut later from an old VOD).
+  // Reject those by real broadcast time and backfill from the same pool.
+  const windowStartMs = new Date(startedAt).getTime();
+  const jcIrlBefore = jcIrlPick.length;
+  const gamingBefore = gamingPick.length;
+  jcIrlPick = await selectWithinBroadcastWindow(jcIrlPick, jcIrlPool, windowStartMs, twitch);
+  gamingPick = await selectWithinBroadcastWindow(gamingPick, gamingPool, windowStartMs, twitch);
+  const jcIrlDropped = jcIrlBefore - jcIrlPick.length;
+  const gamingDropped = gamingBefore - gamingPick.length;
+  if (jcIrlDropped > 0 || gamingDropped > 0) {
+    console.log(`[SELECT] Broadcast-window check: dropped ${jcIrlDropped} JC/IRL + ${gamingDropped} Gaming clips whose real broadcast predates the window (backfilled where the pool allowed)`);
+  }
+
   const downloadedIds = new Set();
   let toDownload = [];
   for (const c of [...jcIrlPick, ...gamingPick]) {
@@ -224,14 +239,15 @@ async function main() {
   const gamingTarget = HOURS === 24 ? '50' : '50+recency';
   console.log(`[SELECT] ${toDownload.length} candidates — JC/IRL=${jcIrlCount2} (target ${jcIrlTarget}), Gaming=${gamingCount2} (target ${gamingTarget}; GAMING_SCREEN відсіює ~50%)`);
 
-  // Enrich clips with actual broadcast time from VOD data (video_id + vod_offset)
-  await enrichBroadcastTimes(toDownload, twitch);
-
   fs.writeFileSync(path.join(CLIPS_DIR, 'prescore-candidates.json'), JSON.stringify(toDownload, null, 2));
 
   updateState(RUN_DIR, s => {
     s.stages.select = 'done';
     s.stages.download = 'running';
+    // Persisted so any later stage that pulls in more candidates from the
+    // filtered pool (e.g. gaming-screen.js backfill rounds) can re-run the
+    // same broadcast-window check instead of silently skipping it.
+    s.ingestWindowStart = new Date(windowStartMs).toISOString();
   });
 
   console.log('[SELECT] Done. prescore-candidates.json saved.');
