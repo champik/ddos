@@ -175,6 +175,70 @@ function extractFrameSync(input, timestamp, output) {
   return r.status === 0;
 }
 
+// Overwrites the raw downloaded clip (downloads/…) with the same [0, fullDur]
+// span extracted from the VOD, so it becomes the new source of truth for any
+// future apply-editorial.js run — not just the current clean.mp4. rawPath is
+// already downloaded (it covers vodClipStart±margin, which spans the whole
+// clip by construction), so this reuses it instead of a second download.
+// Best-effort: any failure here just leaves the raw file as-is and logs a
+// warning — it must never take down the VOD replace that already succeeded.
+async function replaceRawSource(clipId, dlClip, rawPath, srcPath, fullDur, xcorrOffset, fallbackBuffer) {
+  try {
+    const ssOffsetFull = (xcorrOffset !== null ? xcorrOffset : fallbackBuffer);
+    if (ssOffsetFull < 0) { console.warn(`  [RAW] пропущено: ssOffset<0`); return false; }
+
+    const vodHasStream = hasAudioStream(rawPath);
+    const mute = vodHasStream ? detectVodMute(rawPath, ssOffsetFull, fullDur, srcPath, 0) : { muted: false, detail: null };
+    const vodAudioOk = vodHasStream && !mute.muted;
+    const useOrigAudio = !vodAudioOk && fs.existsSync(srcPath) && hasAudioStream(srcPath);
+    if (mute.muted && !useOrigAudio) {
+      console.warn(`  [RAW] пропущено заміну сирого файлу: VOD німий і оригінал теж (${mute.detail})`);
+      return false;
+    }
+
+    const audioInput = vodAudioOk ? 0 : 1;
+    const fallbackInputs = vodAudioOk
+      ? []
+      : useOrigAudio
+        ? ['-ss', '0', '-i', srcPath]
+        : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
+
+    const loudnessSrc = vodAudioOk ? rawPath : (useOrigAudio ? srcPath : null);
+    const measured = loudnessSrc ? await measureLoudness(loudnessSrc, vodAudioOk ? { ss: ssOffsetFull, dur: fullDur } : { ss: 0, dur: fullDur }) : null;
+    const loudnormFilter = loudnessSrc ? buildLoudnormFilter(measured) : null;
+    const audioFilterChain = loudnormFilter ? `,${loudnormFilter}` : '';
+
+    const tmpOut = srcPath + '.vodraw-tmp.mp4';
+    const result = await ffmpegAsync([
+      '-ss', ssOffsetFull.toFixed(3),
+      '-i', rawPath,
+      ...fallbackInputs,
+      '-t', fullDur.toFixed(3),
+      '-map', '0:v', '-map', `${audioInput}:a`,
+      ...(!vodAudioOk && !useOrigAudio ? ['-shortest'] : []),
+      '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
+      '-af', `asetpts=PTS-STARTPTS${audioFilterChain}`,
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-r', '30',
+      '-y', tmpOut
+    ], 'raw-replace');
+
+    if (!result.ok) {
+      console.warn(`  [RAW] заміна сирого файлу не вдалась: ${result.stderr.slice(-150).trim()}`);
+      fs.rmSync(tmpOut, { force: true });
+      return false;
+    }
+
+    fs.renameSync(tmpOut, srcPath);
+    dlClip.sourceReplacedWithVod = true;
+    console.log(`  [RAW] downloads/${path.basename(srcPath)} замінено на VOD-версію (той самий діапазон 0-${fullDur.toFixed(1)}s)`);
+    return true;
+  } catch (e) {
+    console.warn(`  [RAW] заміна сирого файлу впала: ${e.message}`);
+    return false;
+  }
+}
+
 async function processClip(clipId, results) {
   console.log(`\n[VOD] ${clipId}`);
 
@@ -380,6 +444,22 @@ async function processClip(clipId, results) {
 
   if (fs.existsSync(cleanBak)) fs.unlinkSync(cleanBak);
 
+  // clean.mp4 щойно перезаписано свіжим (нецензурованим) відео з VOD.
+  // apply-censor.js кешує за хешем СПИСКУ вікон мьюту, не за вмістом
+  // clean.mp4 — якщо editorial.json не змінився з минулого разу, хеш
+  // збігається і censor мовчки пропускає вже нецензурований файл. Стираємо
+  // кеш, щоб наступний запуск apply-censor.js завжди обробив цю VOD-версію.
+  fs.rmSync(path.join(outDir, 'censor-hash.txt'), { force: true });
+  fs.rmSync(path.join(outDir, 'censor-log.json'), { force: true });
+
+  // Замінити сирий завантажений файл (downloads/…) на VOD-якість, тим самим
+  // діапазоном [0, fullDur] що й оригінал — щоб будь-який майбутній
+  // apply-editorial.js (інша обрізка, виправлення мьюту тощо) читав VOD-версію
+  // за замовчуванням, а не сирий Twitch-кліп. Без цього регенерація clean.mp4
+  // без ручного повторного запуску vod-segment.js мовчки відкочує кліп назад
+  // на сирий — це вже двічі ставалось.
+  const rawReplaced = await replaceRawSource(clipId, dlClip, rawPath, srcPath, fullDur, xcorrOffset, fallbackBuffer);
+
   // Прибрати tmp
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
@@ -409,6 +489,7 @@ async function processClip(clipId, results) {
     streamer: dlClip.broadcaster_name,
     reason: null,
     warnings: warnings.length ? warnings : undefined,
+    rawReplaced,
   };
   return true;
 }
@@ -423,6 +504,12 @@ async function main() {
   for (const clipId of clipIds) {
     const success = await processClip(clipId, results);
     if (success) ok++;
+  }
+
+  // Персистимо sourceReplacedWithVod — без цього наступний regen (apply-editorial.js
+  // читає dlClip.localPath заново) не дізнається, що файл на диску вже VOD-якості.
+  if (downloaded.some(c => c.sourceReplacedWithVod)) {
+    fs.writeFileSync(downloadedPath, JSON.stringify(downloaded, null, 2));
   }
 
   // Persist results for resume-skill summary
