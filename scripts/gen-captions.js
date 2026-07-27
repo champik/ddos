@@ -156,13 +156,99 @@ function genKaraokeAss(words, header, offset = 0, isLoudWord = null) {
       const pop  = phraseLoud[i] ? '{\\fscx100\\fscy100\\t(0,90,\\fscx107\\fscy107)}' : '';
       const text = buildKaraokeText(phraseWords, i, pop, phraseLoud);
 
-      events.push({ startT, endT, text });
+      events.push({ startT, endT, text, seg: w.seg, retimed: w.retimed === true });
     }
   }
 
-  events.sort((a, b) => a.startT - b.startT);
-  for (let i = 0; i < events.length - 1; i++) {
-    if (events[i].endT > events[i + 1].startT) events[i].endT = events[i + 1].startT;
+  // Deliberately NOT sorted by startT: some transcripts contain overlapping
+  // segments (two transcription passes over the same rough timespan whose
+  // absolute timestamps collide, even though the content is sequential, not
+  // simultaneous speech — e.g. a "retimed" segment shifted into the next
+  // segment's original timing). `events` is already in phrase/array order
+  // (= correct reading order) from the loop above; sorting by raw time would
+  // interleave the two segments' words and scramble the sentence.
+  //
+  // When a segment's tail overlaps the next segment's start, COMPRESS the
+  // earlier segment's own internal timing to fit in the gap before the next
+  // one begins — never push the next segment later. An earlier attempt did
+  // the opposite (push the later segment forward whenever it collided) and
+  // that made captions for otherwise-correctly-timed words drift later and
+  // later, i.e. visibly lag behind the audio. Compressing loses a bit of the
+  // earlier segment's natural pacing, but never delays anything downstream.
+  const segGroups = [];
+  for (const ev of events) {
+    const last = segGroups[segGroups.length - 1];
+    if (!last || last.seg !== ev.seg) segGroups.push({ seg: ev.seg, items: [ev] });
+    else last.items.push(ev);
+  }
+  // A "retimed" segment's own absolute start timestamp can be untrustworthy — a
+  // re-alignment step shifted the whole block later than where it's actually
+  // spoken, leaving a false silent gap after the previous segment ends and
+  // captions that then look "delayed" once they finally appear. If a whole
+  // group's words are all retimed, re-anchor the group to start right after
+  // the previous group ends (shift, not scale — its own internal pacing/rhythm
+  // is trustworthy, only the absolute position isn't). The overlap-compression
+  // step right below still applies afterward in case the re-anchored group now
+  // runs into the next one.
+  for (let g = 1; g < segGroups.length; g++) {
+    const group = segGroups[g].items;
+    if (!group.every(ev => ev.retimed)) continue;
+    const prevGroup = segGroups[g - 1].items;
+    const prevEnd = prevGroup[prevGroup.length - 1].endT;
+    const naturalStart = group[0].startT;
+    const shift = (prevEnd + 0.08) - naturalStart;
+    if (Math.abs(shift) > 0.001) {
+      for (const ev of group) { ev.startT += shift; ev.endT += shift; }
+    }
+  }
+  for (let g = 0; g < segGroups.length - 1; g++) {
+    const group = segGroups[g].items;
+    const nextStart = segGroups[g + 1].items[0].startT;
+    const naturalStart = group[0].startT;
+    const naturalEnd = group[group.length - 1].endT;
+    if (naturalEnd > nextStart) {
+      const naturalSpan = Math.max(naturalEnd - naturalStart, 0.001);
+      const availableSpan = Math.max(nextStart - naturalStart, 0.1);
+      const scale = availableSpan / naturalSpan;
+      for (const ev of group) {
+        ev.startT = naturalStart + (ev.startT - naturalStart) * scale;
+        ev.endT   = naturalStart + (ev.endT   - naturalStart) * scale;
+      }
+    }
+  }
+  // Compression above only resolves a clean two-segment handoff (adjacent
+  // pair, checked against each other's start/end directly). If a clip has a
+  // messier conflict — 3+ overlapping segments, or an overlap between
+  // non-adjacent events — that can still leave a real overlap at this point,
+  // which a simple adjacent-pair trim can't detect (event i and i+2 can
+  // overlap with i+1 sitting fine in between). Detect that with a running-max
+  // scan (same check a linter would use), and if anything remains unresolved,
+  // fall back entirely to this function's original behavior — global sort by
+  // time + adjacent trim, which always guarantees zero overlap (at the cost
+  // of possibly reordering words on THIS clip only). That fallback is exactly
+  // what every clip got before the compression step was added, so it never
+  // regresses a clip that looked fine before.
+  let runningEnd = -Infinity, stillOverlapping = false;
+  for (const ev of events) {
+    if (ev.startT < runningEnd - 0.01) { stillOverlapping = true; break; }
+    runningEnd = Math.max(runningEnd, ev.endT);
+  }
+
+  if (stillOverlapping) {
+    events.sort((a, b) => a.startT - b.startT);
+    for (let i = 0; i < events.length - 1; i++) {
+      if (events[i].endT > events[i + 1].startT) events[i].endT = events[i + 1].startT;
+    }
+  } else {
+    // Clean case: still trim (never push) any tiny leftover overlap — e.g. a
+    // phrase's trailing 0.15s hold-buffer poking past the next phrase's
+    // natural start. Must shorten the earlier event, not delay the later
+    // one: pushing here compounds across every phrase boundary inside a
+    // compressed segment and drifts the rest of the clip's captions later
+    // and later.
+    for (let i = 0; i < events.length - 1; i++) {
+      if (events[i].endT > events[i + 1].startT) events[i].endT = events[i + 1].startT;
+    }
   }
 
   const lines = [header];
