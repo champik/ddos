@@ -50,8 +50,12 @@ function ffmpegAsync(args) {
 // Builds the list of [start,end] mute windows for one clip: auto-detected
 // profane words (padded, clamped so they never bleed into a neighboring
 // word) plus any editor-added manual marks (centered on the click timestamp,
-// width = glitch duration — matches edit.html's browser-preview window exactly,
-// so the segment the editor heard muted is the same one that gets cut here).
+// width = glitch duration by default — matches edit.html's browser-preview
+// window exactly, so the segment the editor heard muted is the same one that
+// gets cut here. A mark can override this with its own `dur` (seconds) when
+// it wasn't placed against that preview — e.g. a timestamp given without
+// having heard the exact word length — and the default 0.28s risks leaving
+// part of a longer word audible at the edges.
 function buildMuteWindows(words, manualMutes, clipDuration, glitchDuration) {
   const hits = [];
   (words || []).forEach((w, i) => {
@@ -64,7 +68,7 @@ function buildMuteWindows(words, manualMutes, clipDuration, glitchDuration) {
     hits.push({ word: w.word, masked: maskWord(w.word), start, end, source: 'auto' });
   });
   (manualMutes || []).forEach(m => {
-    const half = glitchDuration / 2;
+    const half = (m.dur != null ? m.dur : glitchDuration) / 2;
     const start = Math.max(0, m.at - half);
     const end = Math.min(clipDuration, m.at + half);
     if (end <= start) return;
@@ -148,10 +152,15 @@ async function censorClip(clipId, glitchDuration) {
 
   if (!fs.existsSync(cleanPath)) { console.warn('SKIP (no clean.mp4):', clipId); skipped++; return; }
 
+  const clipEdits = editorialClips[clipId] || {};
   const transcriptPath = path.join(outDir, 'transcript.json');
   const transcript = readJsonSafe(transcriptPath, null);
-  const words = transcript?.words || [];
-  const manualMutes = editorialClips[clipId]?.manualMutes || [];
+  // manualMutesOnly: transcript word-level auto-detection can be too noisy on some
+  // clips (e.g. overlapping/duplicate segments producing repeat false triggers) —
+  // editor can opt a clip out of auto-detection entirely and rely only on their
+  // own 🔇 marks from edit.html.
+  const words = clipEdits.manualMutesOnly ? [] : (transcript?.words || []);
+  const manualMutes = clipEdits.manualMutes || [];
 
   const clipDuration = await getDurationAsync(cleanPath);
 
