@@ -99,13 +99,18 @@ async function applyStreamerOverlay(clipId, broadcasterName, skipBanner) {
   return ok;
 }
 
+// `-vf signalstats` alone never prints YAVG to stderr — it only attaches YAVG
+// as per-frame metadata, which stays invisible unless piped through a
+// `metadata=print` stage. Without it, this always returned 0 (regex never
+// matched), so verifyReconnecting() below always read every reconnect frame
+// as pitch black and silently deleted a fine reconnecting.mp4 every time.
 function frameBrightness(filePath, timestamp) {
   const r = spawnSync('ffmpeg', [
     '-ss', String(timestamp), '-i', filePath,
-    '-vf', 'signalstats',
+    '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG',
     '-frames:v', '1', '-f', 'null', '-'
   ], { stdio: 'pipe', encoding: 'utf8' });
-  const m = (r.stderr || '').match(/YAVG:(\d+(?:\.\d+)?)/);
+  const m = (r.stderr || '').match(/YAVG=(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : 0;
 }
 
