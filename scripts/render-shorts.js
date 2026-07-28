@@ -702,9 +702,15 @@ async function main() {
     s.stages = s.stages || {};
     s.stages.renderShorts = stageStatus(ok, fail);
     s.outputs = s.outputs || {};
-    s.outputs.shortsPaths = shortItems
+    const renderedPaths = shortItems
       .map(item => path.join(outDir, `${item.primaryId}.mp4`))
       .filter(p => fs.existsSync(p));
+    // --clip only re-renders one short — merge into the existing list instead
+    // of replacing it wholesale, or a single-clip re-render would wipe out
+    // every other short's recorded path.
+    s.outputs.shortsPaths = clipArg
+      ? [...new Set([...(s.outputs.shortsPaths || []), ...renderedPaths])].filter(p => fs.existsSync(p))
+      : renderedPaths;
   });
 }
 
