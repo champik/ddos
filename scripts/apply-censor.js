@@ -7,6 +7,12 @@
 // every downstream stage (overlays, build-concat, render-shorts) inherits the
 // censored audio without any changes on their end.
 //
+// Every mute pass re-derives clean.mp4 from a preserved clean.precensor.mp4
+// (the pristine, never-muted copy) rather than from clean.mp4 itself, so
+// removing/moving a mute across runs (excludeMutes, manualMutesOnly, edited
+// manualMutes) always produces a correct result instead of layering on top
+// of whatever a previous run already baked in.
+//
 // See docs/superpowers/specs/2026-07-26-profanity-censorship-design.md
 
 const fs = require('fs');
@@ -56,10 +62,16 @@ function ffmpegAsync(args) {
 // it wasn't placed against that preview — e.g. a timestamp given without
 // having heard the exact word length — and the default 0.28s risks leaving
 // part of a longer word audible at the edges.
-function buildMuteWindows(words, manualMutes, clipDuration, glitchDuration) {
+// excludeMutes: editor-flagged false positives ({ at }) — a word that matched
+// isProfane() but isn't actually profanity in context (e.g. transcript noise,
+// a name). Dropping the whole clip to manualMutesOnly would also lose every
+// *real* curse word in it, so this excludes just the one hit near `at`
+// instead of disabling auto-detection for the clip.
+function buildMuteWindows(words, manualMutes, excludeMutes, clipDuration, glitchDuration) {
   const hits = [];
   (words || []).forEach((w, i) => {
     if (!isProfane(normalizeWord(w.word))) return;
+    if ((excludeMutes || []).some(ex => ex.at >= w.start - 0.5 && ex.at <= w.end + 0.5)) return;
     const prevEnd = i > 0 ? words[i - 1].end : 0;
     const nextStart = i < words.length - 1 ? words[i + 1].start : clipDuration;
     const start = Math.max(prevEnd, w.start - PAD);
@@ -147,10 +159,21 @@ const failures = []; // { clipId, reason } — surfaced into state.warnings so A
 async function censorClip(clipId, glitchDuration) {
   const outDir = path.join(projectDir, 'processed', clipId);
   const cleanPath = path.join(outDir, 'clean.mp4');
+  const precensorPath = path.join(outDir, 'clean.precensor.mp4');
   const hashPath = path.join(outDir, 'censor-hash.txt');
   const logPath = path.join(outDir, 'censor-log.json');
 
   if (!fs.existsSync(cleanPath)) { console.warn('SKIP (no clean.mp4):', clipId); skipped++; return; }
+
+  // clean.mp4 is mutated in place across runs, so it can no longer serve as
+  // the source once it's been censored once — re-deriving mute windows from
+  // an already-muted file would leave a removed/moved mute's original bleep
+  // permanently baked in (silence+glitch from a prior pass, un-recoverable
+  // from clean.mp4 alone) while stacking a second glitch on top for anything
+  // still muted. Keep one untouched copy and always re-censor FROM it, never
+  // from clean.mp4 itself. apply-editorial.js deletes this backup whenever
+  // it regenerates clean.mp4 fresh, so a stale backup never lingers.
+  if (!fs.existsSync(precensorPath)) fs.copyFileSync(cleanPath, precensorPath);
 
   const clipEdits = editorialClips[clipId] || {};
   const transcriptPath = path.join(outDir, 'transcript.json');
@@ -161,10 +184,11 @@ async function censorClip(clipId, glitchDuration) {
   // own 🔇 marks from edit.html.
   const words = clipEdits.manualMutesOnly ? [] : (transcript?.words || []);
   const manualMutes = clipEdits.manualMutes || [];
+  const excludeMutes = clipEdits.excludeMutes || [];
 
   const clipDuration = await getDurationAsync(cleanPath);
 
-  const windows = buildMuteWindows(words, manualMutes, clipDuration, glitchDuration);
+  const windows = buildMuteWindows(words, manualMutes, excludeMutes, clipDuration, glitchDuration);
   const currentHash = windowsHash(windows);
   const cachedHash = fs.existsSync(hashPath) ? fs.readFileSync(hashPath, 'utf8').trim() : null;
 
@@ -175,6 +199,9 @@ async function censorClip(clipId, glitchDuration) {
   }
 
   if (windows.length === 0) {
+    // Restore the untouched original — a previous run may have baked mutes
+    // into clean.mp4 that no longer apply (removed/excluded since).
+    fs.copyFileSync(precensorPath, cleanPath);
     fs.writeFileSync(logPath, JSON.stringify([], null, 2));
     fs.writeFileSync(hashPath, currentHash, 'utf8');
     console.log('CLEAN (no profanity):', clipId);
@@ -184,7 +211,7 @@ async function censorClip(clipId, glitchDuration) {
 
   const tmpPath = path.join(outDir, 'clean.censor-tmp.mp4');
   console.log(`CENSOR: ${clipId} — ${windows.length} window(s): ${windows.map(w => w.word || 'manual').join(', ')}`);
-  const result = await censorAudio(cleanPath, tmpPath, windows);
+  const result = await censorAudio(precensorPath, tmpPath, windows);
 
   if (!result.ok) {
     fs.rmSync(tmpPath, { force: true });

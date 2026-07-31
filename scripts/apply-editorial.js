@@ -42,7 +42,7 @@ function editsHash(clipEdits) {
   // loudness scan) isn't invalidated. The actual filter applied at encode
   // time is decided dynamically per-clip by buildLoudnormFilter() regardless
   // of this string — it's a cache key, not the real filter.
-  const src = JSON.stringify({ trim: clipEdits.trim || null, keeps: clipEdits.keeps || [], audio: `loudnorm=${LOUDNORM_TARGET}` });
+  const src = JSON.stringify({ trim: clipEdits.trim || null, keeps: clipEdits.keeps || [], audio: clipEdits.skipLoudnorm ? 'skip' : `loudnorm=${LOUDNORM_TARGET}` });
   return crypto.createHash('md5').update(src).digest('hex');
 }
 
@@ -182,7 +182,10 @@ async function processClip(clipId) {
   // falling through to an unbounded whole-file measurement.
   if (measureSegments.length === 0) measureSegments.push([inT, outT]);
   const measured = hasAudio ? await measureLoudness(src, { segments: measureSegments }) : null;
-  const audioFilter = hasAudio ? buildLoudnormFilter(measured) : null;
+  // skipLoudnorm: editor override to keep this clip's original volume even
+  // if it measured louder than target (e.g. a live-vocal clip where the
+  // attenuate-only pass made it sound duller than intended).
+  const audioFilter = (hasAudio && !clipEdits.skipLoudnorm) ? buildLoudnormFilter(measured) : null;
   if (!hasAudio) console.warn(`  [NO AUDIO] ${clipId} — додаю тишу (anullsrc)`);
 
   // Німа доріжка ≠ відсутня доріжка: заглушений або битий кліп має аудіо-стрім,
@@ -202,6 +205,12 @@ async function processClip(clipId) {
   const ok = await encodeVariant({ src, outPath, plan, hasAudio, forceFps: true, audioFilter });
 
   if (!ok) { console.error('FAILED:', clipId); failed++; return; }
+
+  // clean.mp4 just got fully regenerated (fresh, uncensored) — any censor
+  // pristine-source backup from a previous censor pass now points at stale
+  // (differently trimmed/normalized) audio. Drop it so apply-censor.js
+  // recreates the backup from THIS version on its next run.
+  fs.rmSync(path.join(outDir, 'clean.precensor.mp4'), { force: true });
 
   fs.writeFileSync(hashPath, currentHash, 'utf8');
   console.log('OK:', clipId);
