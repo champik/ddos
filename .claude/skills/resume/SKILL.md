@@ -88,7 +88,7 @@ streamer: <ім'я>
 
 Вивести в чат:
 ```
-[6–11/16] APPLY_EDITORIAL + TRANSCRIBE + CENSOR + OVERLAYS + EXTRACT_FRAMES...
+[6–9/16] APPLY_EDITORIAL + TRANSCRIBE + CENSOR + OVERLAYS...
 ```
 
 Запустити **у фоні** (`run_in_background: true`):
@@ -114,10 +114,7 @@ ScheduleWakeup(
 - VOD_REPLACE (шукай "replaced, N skipped")
 - TRANSCRIBE (шукай "[N/26]")
 - CENSOR (шукай "Done: N censored" в apply-censor секції; done_with_errors/warnings — не зупиняє pipeline, дивись "state.warnings")
-- EXTRACT_FRAMES (шукай "Done. N ok")
 - OVERLAYS (шукай "[OK]" в apply-overlays секції)
-- BUILD_CONCAT (шукай "build-concat" або "concat-list")
-- RENDER_FINAL (шукай "render-final" або "episode-")
 - stage2 загалом (шукай "=== stage2.js done")
 
 Якщо "=== stage2.js done" знайдено → НЕ плануй наступний wakeup, продовж pipeline:
@@ -136,43 +133,40 @@ ScheduleWakeup(
 
 Якщо всі ok — написати одним рядком "📼 VOD заміни: N/N успішно" і продовжити.
 
-Далі → METADATA → SHORTS+THUMBNAIL паралельно → REVIEW.
-Якщо ще йде → заплануй ще один ScheduleWakeup(60s) з цим самим prompt.
+**ОДРАЗУ після цього — вивести список готових кліпів для CapCut** (не чекати METADATA/THUMBNAIL/REVIEW):
+```
+🎬 Готові кліпи для CapCut (processed/overlayed/):
+01_<streamer>.mp4
+02_<streamer>.mp4
+...
+```
+(`ls processed/overlayed/` в projectDir, у порядку файлів — вони вже NN-префіксовані).
+
+Далі → METADATA → THUMBNAIL → REVIEW, все **у фоні**, без очікування від користувача.
+Якщо ще йде stage2.js → заплануй ще один ScheduleWakeup(60s) з цим самим prompt.
 """
 )
 ```
 
-Виконує послідовно потім паралельно:
-1. `apply-editorial.js` — trim + cuts → `clean.mp4` per clip (+ VOD replace)
+`stage2.js` виконує один серійний ланцюг (детальніше — `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`):
+1. `apply-editorial.js` — trim + cuts → `processed/clean/<basename>.mp4` per clip (+ VOD replace)
 2. `transcribe-batch.js` → `apply-censor.js` (серіально — CENSOR мьютить матюки/слюри
-   в `clean.mp4`, тому все нижче має чекати його завершення)
-3. Паралельно:
-   - A: `gen-captions.js`
-   - B: `apply-overlays.js` → `build-concat.js` → `render-final.js`
-   - C: `extract-frames.js` (не залежить від CENSOR — тільки відео-кадри)
+   в `clean.mp4`, тому OVERLAYS має чекати його завершення)
+3. `fetch-avatars.js` → `apply-overlays.js` → `processed/overlayed/<basename>.mp4` — ГОТОВО ДЛЯ CAPCUT
+
+CAPTIONS, EXTRACT_FRAMES, BUILD_CONCAT, RENDER_FINAL більше не виконуються тут (файли
+лишились, виклики прибрані зі `stage2.js`).
 
 ### Кроки 7–10 (Claude + скрипти)
 
-Після завершення `stage2.js`:
+Після завершення `stage2.js` і виводу списку готових кліпів (вище):
 
-7. Вивести `[12/16] METADATA — генерую YouTube метадані...` → METADATA (ddos-youtube-creatives skill)
+7. Вивести `[10/13] METADATA — генерую YouTube метадані...` → METADATA (ddos-youtube-creatives skill)
+   — БЕЗ опису і shortIntros, лише title/tags/visibleTags/chapters/shortsMetadata
 
-8+9. **RENDER SHORTS + THUMBNAIL — паралельно** (обидва залежать тільки від metadata.json):
+8. THUMBNAIL (ddos-thumbnail skill, Higgsfield) — залежить тільки від metadata.json,
+   запустити одразу після METADATA. RENDER SHORTS тут більше нема — Shorts ріже сам
+   користувач у CapCut.
 
-   **Крок A — captions (sync, ~5s):**
-   ```bash
-   node scripts/gen-captions.js "<projectDir>" --shorts-only
-   ```
-
-   **Крок B — render-shorts у фоні** (`run_in_background: true`):
-   ```bash
-   node scripts/render-shorts.js "<projectDir>"
-   ```
-
-   **Крок C — thumbnail pipeline одразу після запуску B** (ddos-thumbnail skill):
-   Не чекати завершення render-shorts — виконати весь thumbnail pipeline паралельно.
-
-   **Крок D — дочекатись render-shorts:**
-   Фоновий процес надішле нотифікацію. Оновити `state.stages.renderShorts = "done"`.
-
-10. Вивести `[15/16] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill)
+9. Вивести `[13/13] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill,
+   мінімальна версія — без embed фінального відео/shorts)

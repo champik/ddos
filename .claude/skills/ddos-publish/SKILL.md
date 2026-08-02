@@ -1,13 +1,15 @@
 ﻿# Skill: ddos-publish
 
-Завантаж відео і шортси на YouTube.
+Завантаж відео і шортси на YouTube. **Selection-only pipeline:** фінальний монтаж відбувається
+в CapCut — `exports/episode.mp4` і `exports/shorts/*.mp4` система сама не створює, користувач
+кладе туди готовий експорт із CapCut ПЕРЕД тим як запускати approve.
 
 ---
 
 ## Перевірки перед upload
 
 1. `state.stages.review == "done"` — інакше СТОП
-2. `exports/episode-NNN.mp4` існує — інакше СТОП
+2. `exports/episode.mp4` існує — інакше СТОП з підказкою "експортуй з CapCut у exports/episode.mp4"
 3. `exports/thumbnail.png` існує — інакше СТОП
 4. `auth/client_secret.json` існує — інакше вивести інструкцію:
    ```
@@ -26,7 +28,7 @@
 node scripts/youtube-upload.js upload-video \
   "<runId>" \
   "<projectDir>/exports/metadata.json" \
-  "<projectDir>/exports/episode-<N>.mp4" \
+  "<projectDir>/exports/episode.mp4" \
   "<projectDir>/exports/thumbnail.png"
 ```
 

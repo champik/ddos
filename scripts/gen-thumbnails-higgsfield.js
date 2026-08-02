@@ -33,6 +33,11 @@ const downloaded = fs.existsSync(downloadedPath)
   : [];
 const localPaths = Object.fromEntries(downloaded.map(c => [c.id, c.localPath]));
 
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+const TRANSCRIPTS_DIR = processedTypeDir(projectDir, 'transcripts');
+
 const scoredPath = path.join(projectDir, 'clips', 'scored-clips.json');
 const scoredClips = fs.existsSync(scoredPath)
   ? JSON.parse(fs.readFileSync(scoredPath, 'utf8'))
@@ -50,7 +55,9 @@ const thumbnailHooksMap = Object.fromEntries(
 );
 
 function getTranscriptSnippet(clipId) {
-  const p = path.join(projectDir, 'processed', clipId, 'transcript.json');
+  const basename = basenames[clipId];
+  if (!basename) return '';
+  const p = path.join(TRANSCRIPTS_DIR, `${basename}.json`);
   if (!fs.existsSync(p)) return '';
   try {
     const t = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -74,7 +81,8 @@ function getVideoDimensions(filePath) {
 }
 
 function extractFrame(clipId, atSec, outPath, crop) {
-  const srcMp4 = localPaths[clipId] || path.join(projectDir, 'processed', clipId, 'clean.mp4');
+  const basename = basenames[clipId];
+  const srcMp4 = localPaths[clipId] || (basename && path.join(CLEAN_DIR, `${basename}.mp4`));
   if (!fs.existsSync(srcMp4)) {
     throw new Error(`source video not found for clip ${clipId}: ${srcMp4}`);
   }

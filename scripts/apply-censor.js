@@ -41,6 +41,15 @@ if (!fs.existsSync(editorialPath)) {
 const editorial = readJson(editorialPath);
 const editorialClips = editorial.clips || {};
 
+const dlPath = path.join(projectDir, 'clips', 'downloaded-clips.json');
+const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+const TRANSCRIPTS_DIR = processedTypeDir(projectDir, 'transcripts');
+const CENSOR_DIR = processedTypeDir(projectDir, 'censor');
+fs.mkdirSync(CENSOR_DIR, { recursive: true });
+
 const CONCURRENCY = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 2)));
 
 function ffmpegAsync(args) {
@@ -157,11 +166,12 @@ let processed = 0, skipped = 0, failed = 0;
 const failures = []; // { clipId, reason } — surfaced into state.warnings so AUTONOMOUS MODE keeps going but the failure isn't silent
 
 async function censorClip(clipId, glitchDuration) {
-  const outDir = path.join(projectDir, 'processed', clipId);
-  const cleanPath = path.join(outDir, 'clean.mp4');
-  const precensorPath = path.join(outDir, 'clean.precensor.mp4');
-  const hashPath = path.join(outDir, 'censor-hash.txt');
-  const logPath = path.join(outDir, 'censor-log.json');
+  const basename = basenames[clipId];
+  if (!basename) { console.warn('SKIP (not in clipOrder):', clipId); skipped++; return; }
+  const cleanPath = path.join(CLEAN_DIR, `${basename}.mp4`);
+  const precensorPath = path.join(CLEAN_DIR, `${basename}.precensor.mp4`);
+  const hashPath = path.join(CENSOR_DIR, `${basename}.censor-hash.txt`);
+  const logPath = path.join(CENSOR_DIR, `${basename}.censor-log.json`);
 
   if (!fs.existsSync(cleanPath)) { console.warn('SKIP (no clean.mp4):', clipId); skipped++; return; }
 
@@ -176,7 +186,7 @@ async function censorClip(clipId, glitchDuration) {
   if (!fs.existsSync(precensorPath)) fs.copyFileSync(cleanPath, precensorPath);
 
   const clipEdits = editorialClips[clipId] || {};
-  const transcriptPath = path.join(outDir, 'transcript.json');
+  const transcriptPath = path.join(TRANSCRIPTS_DIR, `${basename}.json`);
   const transcript = readJsonSafe(transcriptPath, null);
   // manualMutesOnly: transcript word-level auto-detection can be too noisy on some
   // clips (e.g. overlapping/duplicate segments producing repeat false triggers) —

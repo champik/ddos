@@ -20,6 +20,10 @@ let meta = readJsonSafe(metaPath, {});
 
 const { fmt, buildVideoTags, buildDescriptionHashtags } = require('./lib/metadata-utils');
 const { streamerDisplayName } = require('./lib/display-name');
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+
+const basenames = buildBasenameMap(editorial.clipOrder, dl);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,8 +31,9 @@ function getDur(clipId) {
   // score.json кешує тривалість — clean.mp4 може бути видалений cleanup-ом
   const sc = readJsonSafe(path.join(projectDir, 'processed', clipId, 'score.json'));
   if (sc?.trimmedDuration) return sc.trimmedDuration;
-  const p = path.join(projectDir, 'processed', clipId, 'clean.mp4');
-  if (!fs.existsSync(p)) return 0;
+  const basename = basenames[clipId];
+  const p = basename && path.join(CLEAN_DIR, `${basename}.mp4`);
+  if (!p || !fs.existsSync(p)) return 0;
   try {
     return parseFloat(execFileSync('ffprobe',
       ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', p],
@@ -78,18 +83,20 @@ const eventTags = meta.eventTags || [];
 const BASE_COUNT = 15;
 meta.tags = [...new Set([...autoTags.slice(0, BASE_COUNT), ...eventTags, ...autoTags.slice(BASE_COUNT)])].slice(0, 30);
 
-// Replace timecodes + hashtags (strip old ones first, then append fresh)
-if (meta.description) {
-  const cutAt = meta.description.indexOf('\n\n00:00');
-  const base = cutAt !== -1 ? meta.description.slice(0, cutAt) : meta.description;
-  meta.description = base + '\n\n' + chaptersStr + '\n\n' + buildDescriptionHashtags(ALL_CLIP_IDS, byId);
-}
+// No auto-generated description anymore (final montage happens in CapCut —
+// user writes their own description in YouTube Studio). visibleTags is what
+// used to be appended to the description as hashtags; chapters is the
+// timecode list — both kept as separate reference fields, shown on review.
+meta.visibleTags = buildDescriptionHashtags(ALL_CLIP_IDS, byId);
+meta.chapters = chaptersStr;
+delete meta.description;
 
 fs.mkdirSync(path.join(projectDir, 'exports'), { recursive: true });
 writeJsonAtomic(metaPath, meta);
 
 console.log('[OK] metadata.json written');
 console.log(`\nTags (${meta.tags.length}): ${meta.tags.join(', ')}`);
+console.log(`\nVisible tags: ${meta.visibleTags}`);
 console.log('\nChapters:\n' + chaptersStr);
 if (Array.isArray(meta.titleOptions) && meta.titleOptions.length > 0) {
   console.log('\nThumbnail captions (pipe-style):');

@@ -31,6 +31,12 @@ const downloaded = readJson(downloadedPath);
 const dlMap = {};
 downloaded.forEach(c => { dlMap[c.id] = c; });
 
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+const CENSOR_DIR = processedTypeDir(projectDir, 'censor');
+fs.mkdirSync(CLEAN_DIR, { recursive: true });
+
 function fmtSec(sec) { return parseFloat(sec).toFixed(3); }
 
 function ffmpegAsync(args, label) {
@@ -271,9 +277,13 @@ async function processClip(clipId, results) {
     ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
     : [[inT, outT]];
 
-  const outDir = path.join(projectDir, 'processed', clipId);
-  fs.mkdirSync(outDir, { recursive: true });
-  const tmpDir = path.join(outDir, '_vod_tmp');
+  const basename = basenames[clipId];
+  if (!basename) {
+    console.error(`  SKIP: not in editorial.clipOrder`);
+    results[clipId] = { status: 'skipped', streamer: dlClip.broadcaster_name, reason: 'not in editorial.clipOrder' };
+    return false;
+  }
+  const tmpDir = path.join(CLEAN_DIR, `_vod_tmp_${basename}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const rawPath = path.join(tmpDir, 'raw_vod.mp4');
@@ -318,8 +328,8 @@ async function processClip(clipId, results) {
   const { fallbackBuffer, xcorrOffset } = located;
   if (xcorrOffset === null) console.log(`  [xcorr] fallback: ssOffset = fallbackBuffer + segStart`);
 
-  const cleanPath = path.join(outDir, 'clean.mp4');
-  const cleanBak = path.join(outDir, 'clean.mp4.bak');
+  const cleanPath = path.join(CLEAN_DIR, `${basename}.mp4`);
+  const cleanBak = path.join(CLEAN_DIR, `${basename}.mp4.bak`);
 
   // Encode кожного keep-сегмента з raw_vod.mp4 (застосовуємо editorial поверх VOD-кліпу)
   const encodedPaths = [];
@@ -449,8 +459,8 @@ async function processClip(clipId, results) {
   // clean.mp4 — якщо editorial.json не змінився з минулого разу, хеш
   // збігається і censor мовчки пропускає вже нецензурований файл. Стираємо
   // кеш, щоб наступний запуск apply-censor.js завжди обробив цю VOD-версію.
-  fs.rmSync(path.join(outDir, 'censor-hash.txt'), { force: true });
-  fs.rmSync(path.join(outDir, 'censor-log.json'), { force: true });
+  fs.rmSync(path.join(CENSOR_DIR, `${basename}.censor-hash.txt`), { force: true });
+  fs.rmSync(path.join(CENSOR_DIR, `${basename}.censor-log.json`), { force: true });
 
   // Замінити сирий завантажений файл (downloads/…) на VOD-якість, тим самим
   // діапазоном [0, fullDur] що й оригінал — щоб будь-який майбутній
@@ -463,14 +473,9 @@ async function processClip(clipId, results) {
   // Прибрати tmp
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
-  // Re-extract frames для оновлених кадрів
+  // EXTRACT_FRAMES вимкнено (gen-thumbnails-higgsfield.js сам робить frame-grab,
+  // цей кеш кадрів більше нікому не потрібен) — re-extract тут теж пропускається.
   const dur = await getVideoDuration(cleanPath);
-  const framesDir = path.join(outDir, 'frames');
-  fs.mkdirSync(framesDir, { recursive: true });
-  const timestamps = [dur * 0.25, dur * 0.5, dur * 0.75];
-  for (let i = 0; i < 3; i++) {
-    extractFrameSync(cleanPath, timestamps[i], path.join(framesDir, `frame-${i + 1}.jpg`));
-  }
 
   // Фінальна перевірка результату — VOD-заміна не повинна лишати німий кліп.
   const warnings = mutedSegments
@@ -483,7 +488,7 @@ async function processClip(clipId, results) {
   }
   warnings.forEach(w => console.warn(`  ⚠ ${w}`));
 
-  console.log(`  ✓ clean.mp4 замінено з VOD, кадри оновлено (${dur.toFixed(1)}s)`);
+  console.log(`  ✓ clean.mp4 замінено з VOD (${dur.toFixed(1)}s)`);
   results[clipId] = {
     status: 'ok',
     streamer: dlClip.broadcaster_name,

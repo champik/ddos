@@ -31,6 +31,11 @@ const downloaded = readJson(downloadedPath);
 const dlMap = {};
 downloaded.forEach(c => { dlMap[c.id] = c; });
 
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+fs.mkdirSync(CLEAN_DIR, { recursive: true });
+
 const CONCURRENCY = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 2)));
 
 function fmtSec(sec) { return parseFloat(sec).toFixed(3); }
@@ -151,9 +156,10 @@ async function processClip(clipId) {
   const src = dlClip.localPath;
   if (!fs.existsSync(src)) { console.warn('SKIP (file missing):', src); skipped++; return; }
 
-  const outDir = path.join(projectDir, 'processed', clipId);
-  const outPath = path.join(outDir, 'clean.mp4');
-  const hashPath = path.join(outDir, 'edit-hash.txt');
+  const basename = basenames[clipId];
+  if (!basename) { console.warn('SKIP (not in clipOrder):', clipId); skipped++; return; }
+  const outPath = path.join(CLEAN_DIR, `${basename}.mp4`);
+  const hashPath = path.join(CLEAN_DIR, `${basename}.edit-hash.txt`);
 
   const clipEdits = editorial.clips?.[clipId] || {};
   const currentHash = editsHash(clipEdits);
@@ -164,8 +170,6 @@ async function processClip(clipId) {
     skipped++;
     return;
   }
-
-  fs.mkdirSync(outDir, { recursive: true });
 
   const inT = clipEdits.trim?.in ?? 0;
   const fullDur = await getVideoDuration(src);
@@ -210,7 +214,7 @@ async function processClip(clipId) {
   // pristine-source backup from a previous censor pass now points at stale
   // (differently trimmed/normalized) audio. Drop it so apply-censor.js
   // recreates the backup from THIS version on its next run.
-  fs.rmSync(path.join(outDir, 'clean.precensor.mp4'), { force: true });
+  fs.rmSync(path.join(CLEAN_DIR, `${basename}.precensor.mp4`), { force: true });
 
   fs.writeFileSync(hashPath, currentHash, 'utf8');
   console.log('OK:', clipId);

@@ -1,6 +1,8 @@
 ﻿# Skill: ddos-review
 
-Згенеруй локальну HTML сторінку для перегляду і апруву епізоду.
+Згенеруй локальну HTML сторінку для перегляду і апруву епізоду. **Selection-only pipeline:**
+запускається одразу після OVERLAYS/METADATA/THUMBNAIL, ДО монтажу в CapCut — фінального відео
+і Shorts ще нема, сторінка мінімальна (без video embed).
 
 ---
 
@@ -24,13 +26,14 @@ node scripts/gen-review.js "<projectDir>"
 1. Header (лого + "EPISODE #N")
 2. Subtitle: runId · дата · статус · кількість кліпів
 3. Якщо опубліковано — рядок з кнопками YouTube ↗ та Short 1 ↗ Short 2 ↗ ... одразу під subtitle
-4. Long-form video (episode-NNN.mp4)
+4. Таблиця кліпів — деталі нижче (порядок = clipOrder, це і є порядок для CapCut)
 5. Thumbnail — радіо-кнопки по кандидатах `thumb-candidate-{i}-{model}.png`; підпис `[streamerNickname] - [model]`
 6. Title — чекбокси з `clipHooks`; live textarea що конкатенує вибрані через ` | `
-7. Таблиця кліпів — деталі нижче
-8. Shorts grid (9:16 vertical відео + title + caption)
-9. Metadata block (description + tags)
-10. Approve box: команда `/ddos approve <runId>` якщо ще не опубліковано; порожньо якщо опубліковано
+7. Tags block: hidden tags (`meta.tags`), visible tags/hashtags (`meta.visibleTags`), chapters (`meta.chapters`) — для ручного копіювання в YouTube Studio при публікації
+8. Approve box: команда `/ddos approve <runId>` якщо ще не опубліковано; порожньо якщо опубліковано
+
+Long-form video і Shorts grid embed **прибрані** — система не рендерить фінальне відео/Shorts,
+монтаж робить користувач у CapCut з `processed/overlayed/*.mp4`.
 
 **Таблиця кліпів — колонки (7 шт, colspan=7 для reconnect row):**
 
@@ -89,13 +92,25 @@ node scripts/progress.js "<projectDir>" summary
 
 `<YYYY_Month>/<runId>` у шаблоні нижче — відносний шлях від `projects/`, напр. `2026_June/Episode_44_2026_06_28`.
 
-Перед вставкою — виміряй тривалість фінального відео:
+`exports/episode.mp4` на цьому етапі ще не існує (CapCut-монтаж попереду) — тривалість
+оціни сумою `processed/overlayed/*.mp4` (ffprobe кожного, + ~2.5s на intro/outro):
 ```bash
-DURATION_S=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "<projectDir>/exports/episode-<NNN>.mp4")
-# Форматувати як M:SS (наприклад 501s → "8:21")
+DURATION_S=$(node -e "
+  const fs = require('fs'), path = require('path'), { execFileSync } = require('child_process');
+  const dir = '<projectDir>/processed/overlayed';
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.mp4'));
+  let total = 2.5; // intro + outro (1.25s each)
+  for (const f of files) {
+    total += parseFloat(execFileSync('ffprobe', ['-v','quiet','-show_entries','format=duration','-of','csv=p=0', path.join(dir, f)], { encoding: 'utf8' }));
+  }
+  console.log(Math.round(total));
+")
+# Форматувати як M:SS (наприклад 501s → "8:21"). Це ОЦІНКА (кліпи вже обрізані TRIM'ом,
+# CapCut зазвичай лише додає динаміку/reconnect — не має різко змінити довжину).
 ```
 
-Стрімери — унікальні broadcaster_name з chapters опису metadata.json (порядок зліва направо).
+Стрімери — унікальні broadcaster_name з `meta.chapters` (порядок зліва направо; окреме поле,
+опису більше нема).
 
 ```html
 <!-- EPISODE N -->
@@ -121,6 +136,7 @@ DURATION_S=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "<projec
 ```
 
 - `status-pending` → замінюється на `status-published` при `/ddos approve`
-- `M:SS` — реальна тривалість episode-NNN.mp4 (ffprobe), не з Twitch API
+- `M:SS` — оцінка з суми `processed/overlayed/*.mp4` (ffprobe), не з Twitch API. Точну тривалість
+  `exports/episode.mp4` система не знає — фінальний монтаж робиться в CapCut поза системою
 - Стрімери беруться з chapters у metadata.json description (унікальні, через ` · `)
 - YouTube + shorts посилання додаються при `/ddos approve`

@@ -26,6 +26,12 @@ const downloaded = fs.existsSync(dlPath) ? readJson(dlPath) : [];
 const broadcasterMap = {};
 downloaded.forEach(c => { broadcasterMap[c.id] = c.broadcaster_name || c.broadcaster_login || c.id; });
 
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(RUN_DIR, 'clean');
+const TRANSCRIPTS_DIR = processedTypeDir(RUN_DIR, 'transcripts');
+fs.mkdirSync(TRANSCRIPTS_DIR, { recursive: true });
+
 // Build jobs list — skip already-done transcripts. A missing clean.mp4 is a
 // separate case from a cached skip: it means APPLY_EDITORIAL failed for that
 // clip upstream, and must count as an error, not a silent "done" transcribe.
@@ -33,8 +39,10 @@ const jobs = [];
 let cachedSkipped = 0;
 const missingClips = [];
 for (const clipId of clipOrder) {
-  const videoPath      = path.join(RUN_DIR, 'processed', clipId, 'clean.mp4');
-  const transcriptPath = path.join(RUN_DIR, 'processed', clipId, 'transcript.json');
+  const basename = basenames[clipId];
+  if (!basename) continue;
+  const videoPath      = path.join(CLEAN_DIR, `${basename}.mp4`);
+  const transcriptPath = path.join(TRANSCRIPTS_DIR, `${basename}.json`);
 
   if (!fs.existsSync(videoPath)) {
     console.warn(`[MISSING] ${clipId}: clean.mp4 not found — APPLY_EDITORIAL likely failed for this clip`);

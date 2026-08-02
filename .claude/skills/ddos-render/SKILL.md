@@ -1,6 +1,13 @@
 ﻿# Skill: ddos-render
 
-Обріж кліпи, накладе оверлеї, зберери long-form епізод.
+Обріж кліпи, зацензуруй, накладе streamer overlay → `processed/overlayed/*.mp4`, готові для
+монтажу в CapCut. **Selection-only pipeline** — RENDER LONG (склейка епізоду) і
+RECONNECTING-рендер більше НЕ виконуються тут (файли/секції нижче лишені як довідка, код не
+викликається) — див. `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
+
+Всі шляхи `processed/...` тепер групуються за типом, файл = `<basename>` з
+`scripts/lib/clip-naming.js` (`buildBasenameMap`), формат `<NN>_<streamer>_<idSuffix>` —
+НЕ `<clipId>` напряму.
 
 ---
 
@@ -14,7 +21,7 @@ node scripts/progress.js "<projectDir>" 6 "Обробка кліпів (editoria
 node scripts/apply-editorial.js "<runId>"
 ```
 
-Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує `processed/<clipId>/clean.mp4` з:
+Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує `processed/clean/<basename>.mp4` з:
 - `-ss trim.in -to trim.out` (якщо задано)
 - FFmpeg filter_complex з множинними сегментами (якщо є `keeps[]`)
 - Завжди: scale 1920×1080, loudnorm, libx264 CRF 18, 30fps, aac 192k, -ac 2
@@ -36,7 +43,7 @@ node scripts/apply-censor.js "<projectDir>"
 ```
 
 Скрипт:
-- Для кожного кліпу читає `processed/<clipId>/transcript.json` (word-level таймстемпи)
+- Для кожного кліпу читає `processed/transcripts/<basename>.json` (word-level таймстемпи)
   і `edit/editorial.json → clips[id].manualMutes` (ручні позначки 🔇 Mute з edit.html)
 - Список слів для мьюту — `scripts/lib/profanity.js` (Tier 1 матюки + Tier 2 слюри,
   без м'яких слів типу damn/hell/crap)
@@ -44,12 +51,12 @@ node scripts/apply-censor.js "<projectDir>"
   (clamp щоб не зайти в сусіднє слово) і підмішує `assets/sounds/glitch.wav`, обрізаний
   точно під це вікно — не вилазить у сусіднє слово
 - Ручні позначки: вікно `[at, at + тривалість glitch.wav]`
-- Перезаписує `clean.mp4` на місці (відео — `-c:v copy`, без перекодування;
-  лише аудіо-фільтр) — тому `apply-overlays.js`, `build-concat.js`, `render-shorts.js`
-  нічого не треба міняти, вони й так читають `clean.mp4`/`overlayed.mp4`
-- Кешування: `processed/<clipId>/censor-hash.txt` — пропускає кліп, якщо набір
+- Перезаписує `processed/clean/<basename>.mp4` на місці (відео — `-c:v copy`, без
+  перекодування; лише аудіо-фільтр) — тому `apply-overlays.js` нічого не треба міняти,
+  він і так читає вже зацензурований `clean.mp4`
+- Кешування: `processed/censor/<basename>.censor-hash.txt` — пропускає кліп, якщо набір
   mute-вікон не змінився з минулого запуску
-- Пише `processed/<clipId>/censor-log.json` (слово/маска/час/джерело auto|manual)
+- Пише `processed/censor/<basename>.censor-log.json` (слово/маска/час/джерело auto|manual)
   для аудиту — показується в review.html Tags column
 
 Оновити `state.stages.censor` (`done` / `done_with_errors` / `failed` — скрипт ставить сам).
@@ -67,11 +74,14 @@ node scripts/apply-overlays.js "<projectDir>"
 
 Скрипт:
 - Читає `edit/episode-plan.json` і `clips/scored-clips.json`
-- Для кожного кліпу: `clean.mp4` → `overlayed.mp4` з animated streamer name banner (перші 3с)
+- Для кожного кліпу: `processed/clean/<basename>.mp4` → `processed/overlayed/<basename>.mp4`
+  з animated streamer name banner (перші 3с) — це фінальний output для CapCut
 - Банер рендериться через `scripts/render-overlay.js streamer <name> <out.mkv>` (Puppeteer → FFV1 MKV)
 - Кешується в `cache/overlays/<slug>.mkv` (повторно використовується між епізодами)
 - Consecutивні кліпи від одного стрімера: банер не показується (лише `-c copy`)
-- Рендерить `edit/reconnecting.mp4` через render-overlay.js reconnecting → `cache/overlays/reconnecting-panel.mkv`
+- RECONNECTING **вимкнено** — `renderReconnecting()` лишається у файлі, але не викликається з
+  `main()`. Готовий прозорий actив для ручного накладання в CapCut —
+  `assets/overlays/reconnecting-panel.mov` (ProRes 4444, alpha)
 - FFmpeg overlay (ВАЖЛИВО — НЕ використовувати `eof_action=pass`, не працює на Windows FFmpeg):
   ```
   [0:v][1:v]overlay=0:0:enable='between(t,0,3)':format=auto[out]
@@ -80,30 +90,16 @@ node scripts/apply-overlays.js "<projectDir>"
 
 Якщо треба переробити overlay — видалити `cache/overlays/<slug>.mkv` вручну, потім запустити знову.
 
-**Reconnecting clip — B&W + colored panel + glitch:**
-
-`renderReconnecting()` в apply-overlays.js будує 3-ступеневий filter_complex:
-```javascript
-const bwFilter    = 'setpts=PTS-STARTPTS,eq=saturation=0:contrast=1.25:brightness=-0.05';
-const glitchFilter = "noise=alls=25:allf=t+u,hue=H='if(mod(floor(t*13),2), 1.57, 0)'";
-
-// filter_complex:
-'[0:v]' + bwFilter + '[bw]',           // сам кліп → чорно-білий
-'[bw][1:v]overlay=0:0:format=auto[composite]',  // colored RECONNECTING панель поверх
-'[composite]' + glitchFilter + '[out]'  // глітч (noise + hue-rotate) на все разом
-```
-Результат: відео B&W, панель з написом кольорова, поверх всього — глітч ефект.
-
-Оновити `state.stages.overlays = "done"`, `state.stages.reconnecting = "done"`.
+Оновити `state.stages.overlays = "done"`. `processed/overlayed/*.mp4` тепер готові —
+видати список у чат, далі METADATA/THUMBNAIL/REVIEW у фоні (див. AUTONOMOUS MODE в CLAUDE.md).
 
 **render-overlay.js modes:**
 ```bash
 node scripts/render-overlay.js streamer "<broadcaster_name>" "<out.mkv>"
-node scripts/render-overlay.js reconnecting "<out.mkv>"
+node scripts/render-overlay.js reconnecting "<out.mkv>"   # не викликається з apply-overlays.js більше
 ```
 
 Streamer overlay HTML: `assets/streamer-overlay/streamer_name.html`
-Reconnecting overlay HTML: `assets/overlays/reconnecting.html`
 
 ---
 
@@ -114,47 +110,23 @@ Zoom punch та color punch effects вимкнені — реалізація в
 
 ---
 
-## CAPTIONS
+## CAPTIONS, RECONNECTING, RENDER LONG-FORM — ВИМКНЕНО (CapCut)
 
-Субтитри генеруються в ddos-shorts skill (після RENDER LONG). Не пропускати — вони обов'язкові для шортсів.
+Ці кроки більше НЕ виконуються системою — фінальний монтаж (склейка епізоду,
+reconnecting-перебивка, субтитри) робить користувач вручну в CapCut з
+`processed/overlayed/*.mp4`. `gen-captions.js`, `build-concat.js`, `render-final.js`,
+`render-concat-filter.js` лишились на диску (не викликаються) — довідка нижче застаріла,
+не виконувати.
 
----
+<details>
+<summary>Стара довідка (не виконувати, лишена для контексту)</summary>
 
-## RENDER LONG-FORM
+`renderReconnecting()` в apply-overlays.js будує 3-ступеневий filter_complex (B&W кліп +
+colored RECONNECTING панель поверх + глітч noise/hue-rotate).
 
-Longform відео рендериться БЕЗ субтитрів. Обидва скрипти запускаються автоматично
-в `stage2.js` (chain: `fetch-avatars.js` → `apply-overlays.js` → `build-concat.js` →
-`render-final.js`), окремо руками треба лише при resume/дебазі.
+`build-concat.js` читав `editorial.json` (`clipSequence`/`reconnectAfterSet` з `lib/timeline.js`),
+писав `edit/concat-list.txt`; `render-final.js` робив `ffmpeg -f concat -c copy` →
+`exports/episode-NNN.mp4`; `render-concat-filter.js` — fallback з re-encode при несумісних
+сегментах. Інтро/аутро — `assets/intro/intro_30fps.mp4` / `assets/outro/outro_30fps.mp4`.
 
-### Крок 1: Побудова concat-list.txt
-
-```bash
-node scripts/build-concat.js "<runId>"
-```
-
-Скрипт (не пише список руками — читає `edit/editorial.json`):
-- Порядок кліпів — `clipSequence(editorial)` з `lib/timeline.js` (`clipOrder` без службових `__recon` маркерів)
-- Позиції reconnect — `reconnectAfterSet(editorial)` з `lib/timeline.js`: об'єднує `reconnectPositions` і `__recon`-маркери в один Set, тому та сама позиція, записана обома способами, вставляє `reconnecting.mp4` рівно один раз
-- Для кожного кліпу: `overlayed.mp4`, якщо є, інакше `clean.mp4`
-- Інтро/аутро: **`intro_30fps.mp4`/`outro_30fps.mp4`** (re-encoded 30fps версії з `assets/intro/`, `assets/outro/`) — НЕ оригінальні 60fps-файли, ті обрізаються у склеєному відео
-- **Аудіо-перевірки на кожному сегменті** (`lib/media-probe.js`): немає аудіо-доріжки → **стоп, exit 1** (concat `-c copy` в render-final.js мовчки зламав би звук усього епізоду); повністю німий або провал тиші ≥3с → попередження, рендер продовжується
-- Перебивка (`reconnecting.mp4`) перевіряється окремо: відсутня/закоротка/без відео- чи аудіо-доріжки → пропускається з попередженням, епізод іде без неї
-
-Пише `edit/concat-list.txt`.
-
-### Крок 2: Фінальний рендер (concat → exports, без проміжного raw-episode.mp4)
-
-```bash
-node scripts/render-final.js "<projectDir>" <episodeNumber>
-```
-
-Скрипт:
-- Перевіряє що всі сегменти з `edit/concat-list.txt` існують
-- `ffmpeg -f concat -c copy -movflags +faststart` → одразу `exports/episode-NNN.mp4`
-- Пост-перевірка готового епізоду (тривалість, наявність і чутність звуку) — проблема → `state.stages.renderLong = "done_with_errors"` + запис у `state.warnings`, а не мовчазний "успіх"
-- Оновлює `state.outputs.longformPath` і `state.stages.renderLong` сам
-
-Якщо concat падає через несумісні сегменти — fallback з re-encode:
-```bash
-node scripts/render-concat-filter.js "<projectDir>" "<projectDir>/exports/episode-NNN.mp4"
-```
+</details>

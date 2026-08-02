@@ -30,9 +30,13 @@ const projectDir = getProjectDir(runId); // напр. "projects/2026_June/Episod
 
 Прочитати `<projectDir>/state.json`.
 
+Якщо `<projectDir>/exports/episode.mp4` відсутній — СТОП: користувач ще не поклав фінальний
+експорт з CapCut. Не намагатись рендерити його самому — система більше не рендерить фінальне
+відео (selection-only pipeline, `processed/overlayed/*.mp4` монтується вручну).
+
 Якщо `state.outputs.youtubeVideoId` відсутній — **одразу завантажити відео** без зупинок:
 ```bash
-node scripts/youtube-upload.js upload-video "<runId>" "<projectDir>/exports/metadata.json" "<projectDir>/exports/episode-NNN.mp4" "<projectDir>/exports/<thumbnail>.png"
+node scripts/youtube-upload.js upload-video "<runId>" "<projectDir>/exports/metadata.json" "<projectDir>/exports/episode.mp4" "<projectDir>/exports/<thumbnail>.png"
 ```
 Це нормальний стан для нового епізоду. Після завантаження продовжити далі.
 

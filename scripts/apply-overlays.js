@@ -33,6 +33,12 @@ for (const clip of downloaded) {
 const CACHE_DIR = path.resolve('cache/overlays');
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(plan.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+const OVERLAYED_DIR = processedTypeDir(projectDir, 'overlayed');
+fs.mkdirSync(OVERLAYED_DIR, { recursive: true });
+
 const PUPPETEER_CONCURRENCY = 2; // Puppeteer launches are memory-heavy
 const FFMPEG_CONCURRENCY    = 4; // FFmpeg overlay applications
 
@@ -68,8 +74,10 @@ function renderBannerAsync(broadcasterName, outPath, avatarUrl) {
 }
 
 async function applyStreamerOverlay(clipId, broadcasterName, skipBanner) {
-  const clean = path.resolve(projectDir, 'processed', clipId, 'clean.mp4');
-  const out   = path.resolve(projectDir, 'processed', clipId, 'overlayed.mp4');
+  const basename = basenames[clipId];
+  if (!basename) { console.log(`[SKIP] Not in clipOrder: ${clipId}`); return false; }
+  const clean = path.join(CLEAN_DIR, `${basename}.mp4`);
+  const out   = path.join(OVERLAYED_DIR, `${basename}.mp4`);
 
   if (!fs.existsSync(clean)) { console.log(`[SKIP] No clean.mp4: ${clipId}`); return false; }
 
@@ -339,7 +347,10 @@ async function main() {
   }
   await Promise.all(Array.from({ length: Math.min(FFMPEG_CONCURRENCY, clipsWithFlags.length) }, overlayWorker));
 
-  const reconStatus = await renderReconnecting();
+  // RECONNECTING is now built manually in CapCut with
+  // assets/overlays/reconnecting-panel.mov — renderReconnecting() stays
+  // defined above (unused) rather than deleted, in case it's needed again.
+  const reconStatus = 'skipped';
 
   updateState(projectDir, s => {
     s.stages = s.stages || {};

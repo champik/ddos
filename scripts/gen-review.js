@@ -13,17 +13,12 @@ const editorial = readJsonSafe(path.join(projectDir, 'edit/editorial.json'), {})
 const meta = readJson(path.join(projectDir, 'exports/metadata.json'));
 const scored = readJson(path.join(projectDir, 'clips/scored-clips.json'));
 const state = readJson(path.join(projectDir, 'state.json'));
+const downloaded = readJsonSafe(path.join(projectDir, 'clips/downloaded-clips.json'), []);
 
-// Shorts can be renamed with a numeric publish-order prefix (e.g. "01_<clipId>.mp4")
-// after upload — resolve whichever filename actually exists on disk.
-const shortsDir = path.join(projectDir, 'exports/shorts');
-function resolveShortFilename(clipId) {
-  if (fs.existsSync(path.join(shortsDir, `${clipId}.mp4`))) return `${clipId}.mp4`;
-  const match = fs.existsSync(shortsDir)
-    ? fs.readdirSync(shortsDir).find(f => f.endsWith(`_${clipId}.mp4`))
-    : null;
-  return match || `${clipId}.mp4`;
-}
+const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
+const basenames = buildBasenameMap(plan.clipOrder, downloaded);
+const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
+const CENSOR_DIR = processedTypeDir(projectDir, 'censor');
 
 // review.html lives at <projectDir>/review/review.html. projectDir's own
 // depth from repo root varies (standard: projects/<Month>/<runId> = 3 segments;
@@ -37,7 +32,6 @@ const toRepoRoot = '../'.repeat(projectDepth + 1);
 const runId = path.basename(projectDir);
 const epFromRunId = runId.match(/^Episode_(\d+)_/)?.[1];
 const ep = plan.episodeNumber || state.episodeNumber || (epFromRunId ? Number(epFromRunId) : undefined);
-const epPad = String(ep).padStart(3, '0');
 const dateMatch = runId.match(/(\d{4})_(\d{2})_(\d{2})$/);
 const dateStr = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : '—';
 const isPublished = state.status === 'published' || state.stages?.publish === 'done';
@@ -77,8 +71,9 @@ function getCleanDuration(clipId) {
     if (sc.trimmedDuration) return sc.trimmedDuration;
   } catch {}
   // 2. Fallback: ffprobe on clean.mp4 if still exists
-  const cleanPath = path.join(projectDir, 'processed', clipId, 'clean.mp4');
-  if (fs.existsSync(cleanPath)) {
+  const basename = basenames[clipId];
+  const cleanPath = basename && path.join(CLEAN_DIR, `${basename}.mp4`);
+  if (cleanPath && fs.existsSync(cleanPath)) {
     const r = spawnSync('ffprobe', ['-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', cleanPath], { encoding: 'utf8' });
     const d = parseFloat(r.stdout);
     if (!isNaN(d)) return d;
@@ -113,7 +108,10 @@ function makeClipRow(id, num) {
   if (cuts > 0) tags.push(`<span style="color:#f5ff3d;font-size:10px;font-family:monospace">✂${cuts}</span>`);
   if ((editorial.vodClipIds || []).includes(id))
     tags.push(`<span style="color:#38bdf8;font-size:10px;font-weight:700">VOD</span>`);
-  const censorLog = readJsonSafe(path.join(projectDir, 'processed', id, 'censor-log.json'), []);
+  const censorBasename = basenames[id];
+  const censorLog = censorBasename
+    ? readJsonSafe(path.join(CENSOR_DIR, `${censorBasename}.censor-log.json`), [])
+    : [];
   for (const c of censorLog) {
     tags.push(`<span style="color:#fb923c;font-size:10px;font-family:monospace">🔇 ${esc(c.word || 'manual')}@${c.start}s</span>`);
   }
@@ -171,70 +169,11 @@ const defaultThumb = (thumbCandidates.find(c => c.isDefault) || thumbCandidates[
 const clipHooks = meta.clipHooks || [];
 const selectedTitle = meta.selectedTitle || '';
 
-const publishMap = Object.fromEntries(
-  (state.outputs?.youtubeShortsIds || []).map(s => [s.clipId, s.publishAt])
-);
-const shortIdMap = Object.fromEntries(
-  (state.outputs?.youtubeShortsIds || []).filter(s => s.shortId).map(s => [s.clipId, s.shortId])
-);
-
-// Build shorts grid: ranking groups → one card per group; solo → per-clip
-const shortsMetaMap = Object.fromEntries((meta.shortsMetadata || []).map(sm => [sm.clipId, sm]));
-
-function makeShortBadge(clipId) {
-  const publishAt = publishMap[clipId];
-  if (!publishAt) return '';
-  const d = new Date(publishAt);
-  const isLive = d <= new Date();
-  const t = d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kiev' });
-  return `<div class="short-badge${isLive ? ' live' : ''}">📅 ${isLive ? 'LIVE' : t}</div>`;
-}
-
-function makeShortCard(videoClipId, sm, rankingClips) {
-  if (!sm) return '';
-  const badge = makeShortBadge(videoClipId);
-  const ytShortId = shortIdMap[videoClipId];
-  const shortLink = ytShortId
-    ? `<a class="btn btn-yt" href="https://www.youtube.com/shorts/${ytShortId}" target="_blank">YouTube ↗</a>`
-    : '';
-  const hashtagsStr = (sm.hashtags || []).join(' ');
-  const rankingInfo = rankingClips
-    ? `<div style="font-size:10px;color:#555;margin-top:4px;font-family:monospace">RANKING · ${rankingClips} clips</div>`
-    : '';
-  return `  <div class="short-card">
-    <video src="../exports/shorts/${resolveShortFilename(videoClipId)}" controls preload="metadata"></video>
-    <div class="short-title">${esc(sm.title)}</div>
-    ${rankingInfo}
-    ${badge}
-    ${shortLink}
-    <div class="short-description">${esc(sm.description || '')}</div>
-    <textarea class="short-hashtags" data-clip-id="${esc(videoClipId)}">${esc(hashtagsStr)}</textarea>
-  </div>`;
-}
-
-let shortsGridItems = [];
-if (plan.shorts && plan.shorts.length > 0) {
-  for (const group of plan.shorts) {
-    if (group.type === 'ranking') {
-      const firstId = group.clips[0];
-      const sm = shortsMetaMap[firstId];
-      shortsGridItems.push(makeShortCard(firstId, sm, group.clips.length));
-    } else {
-      const id = group.clipId || group.clips?.[0];
-      if (id) shortsGridItems.push(makeShortCard(id, shortsMetaMap[id], null));
-    }
-  }
-} else {
-  // Fallback: per-clip (solo shorts only)
-  shortsGridItems = (meta.shortsMetadata || [])
-    .filter(sm => fs.existsSync(path.join(projectDir, 'exports', 'shorts', `${sm.clipId}.mp4`)))
-    .map(sm => makeShortCard(sm.clipId, sm, null));
-}
-const shortsGrid = shortsGridItems.join('\n');
-
-const descEscaped = esc(meta.description);
-const tagsStr = esc(meta.tags.join(' · '));
-const shortsCount = shortsGridItems.length;
+// Final montage (long-form + shorts) happens in CapCut now — no video files
+// to embed here. Review shows the clip order + reference metadata instead.
+const hiddenTagsStr = esc((meta.tags || []).join(' · '));
+const visibleTagsStr = esc(meta.visibleTags || '');
+const chaptersEscaped = esc(meta.chapters || '');
 
 const youtubeVideoId = state.outputs?.youtubeVideoId;
 const youtubeShortsIds = (state.outputs?.youtubeShortsIds || []).map(x => typeof x === 'string' ? x : x.shortId).filter(Boolean);
@@ -300,7 +239,8 @@ const html = `<!DOCTYPE html>
   .short-hashtags:focus { border-color: #f5ff3d55; outline: none; color: #f4f0e6; }
   .meta-block { background: #1a1a1e; border-radius: 10px; padding: 20px 24px; }
   .meta-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; white-space: pre-wrap; color: #f4f0e6; margin: 0 0 16px; }
-  .meta-tags { font-size: 11px; color: #555; line-height: 1.8; }
+  .meta-tags { font-size: 12px; color: #f4f0e6; line-height: 1.8; word-break: break-word; }
+  .meta-tags-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #f5ff3d; }
   .reconnect-row td { background: #1a0a0a; color: #c0392b; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1px; text-align: center; padding: 5px; border-bottom: 1px solid #2a0e0e; }
   .copy-btn { background: #2a2a2e; color: #f4f0e6; border: 1px solid #333; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-family: 'JetBrains Mono', monospace; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background 0.15s; }
   .copy-btn:hover { background: #f5ff3d; color: #0e0e10; border-color: #f5ff3d; }
@@ -333,13 +273,6 @@ ${isPublished && (youtubeVideoId || youtubeShortsIds.length) ? `<div class="link
   ${youtubeVideoId ? `<a class="btn btn-youtube" href="https://youtu.be/${youtubeVideoId}" target="_blank">YouTube ↗</a>` : ''}
   ${youtubeShortsIds.map((id, i) => `<a class="btn btn-shorts" href="https://youtube.com/shorts/${id}" target="_blank">Short ${i + 1} ↗</a>`).join('\n  ')}
 </div>` : ''}
-
-<div class="section">
-<h2>Long-form</h2>
-<div class="video-wrap">
-  <video src="../exports/episode-${epPad}.mp4" controls></video>
-</div>
-</div>
 
 <div class="section">
 <h2>Clips (${SEQ.length})</h2>
@@ -400,17 +333,14 @@ ${clipHooks.map((h, i) => {
 </div>
 
 <div class="section">
-<h2>Shorts (${shortsCount})</h2>
-<div class="shorts-grid">
-${shortsGrid}
-</div>
-</div>
-
-<div class="section">
-<h2>Metadata</h2>
+<h2>Tags</h2>
 <div class="meta-block">
-  <div class="meta-desc">${descEscaped}</div>
-  <div class="meta-tags">Tags: ${tagsStr}</div>
+  <div class="meta-tags-label">Hidden (video tags)</div>
+  <div class="meta-tags">${hiddenTagsStr || '—'}</div>
+  <div class="meta-tags-label" style="margin-top:16px">Visible (description hashtags)</div>
+  <div class="meta-tags">${visibleTagsStr || '—'}</div>
+  ${chaptersEscaped ? `<div class="meta-tags-label" style="margin-top:16px">Chapters</div>
+  <div class="meta-desc">${chaptersEscaped}</div>` : ''}
 </div>
 </div>
 
@@ -505,13 +435,6 @@ function copyApprove() {
 // initialize: show approve cmd if thumb already set (pre-selected default)
 updateTitleCount();
 updateCmd();
-
-// auto-expand hashtag textareas (fallback for browsers without field-sizing:content)
-document.querySelectorAll('.short-hashtags').forEach(el => {
-  const resize = () => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
-  resize();
-  el.addEventListener('input', resize);
-});
 </script>
 </body>
 </html>`;

@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 'use strict';
-// stage2.js — Stage 2 orchestrator: runs scripts in parallel where dependencies allow.
+// stage2.js — Stage 2 orchestrator.
 //
-// Dependency graph after APPLY_EDITORIAL (clean.mp4 ready):
-//   TRANSCRIBE → CENSOR → A: CAPTIONS                         (CPU/GPU, then CPU, then CPU)
-//                       → B: OVERLAYS → BUILD_CONCAT → RENDER_LONG  (CPU, then I/O, then I/O)
-//   C: EXTRACT_FRAMES  — independent of all the above (video-only, doesn't need CENSOR),
-//                        runs concurrently with TRANSCRIBE→CENSOR→{A,B}
+// Selection-only pipeline (final montage happens in CapCut, see
+// docs/superpowers/specs/2026-08-02-capcut-handoff-design.md): a single
+// serial chain after APPLY_EDITORIAL (clean.mp4 ready):
+//   TRANSCRIBE → CENSOR → fetch-avatars → OVERLAYS
+// When this finishes, processed/overlayed/*.mp4 are ready to import into
+// CapCut. CAPTIONS, EXTRACT_FRAMES, BUILD_CONCAT and RENDER_LONG are no
+// longer invoked here (their scripts still exist, just unused — CapCut does
+// captions/render now, and EXTRACT_FRAMES has no remaining consumer since
+// gen-thumbnails-higgsfield.js grabs its own frames).
 //
-// A, B, C all settle together via Promise.allSettled. METADATA and beyond (RENDER_SHORTS, THUMBNAIL, REVIEW)
-// are left to Claude — they require API calls and depend on METADATA output.
+// METADATA and beyond (THUMBNAIL, REVIEW) are left to Claude — they require
+// API calls and depend on METADATA output.
 //
 // Usage: node scripts/stage2.js <runId> [episodeNumber]
 
@@ -56,38 +60,23 @@ async function main() {
     }
   } catch {}
 
-  // ── TRANSCRIBE → CENSOR (CAPTIONS and OVERLAYS both depend on censored
-  // clean.mp4 / masked transcript) → { CAPTIONS, OVERLAYS→BUILD_CONCAT→RENDER_LONG }
-  // EXTRACT_FRAMES is video-only and independent of all of the above — it
-  // starts immediately and stays in the same Promise.allSettled so a
-  // transcribe/censor failure still lets it run and report.
-  const chainTranscribeCensor = run('scripts/transcribe-batch.js', [runId])
-    .then(() => run('scripts/apply-censor.js', [projectDir]));
+  // ── TRANSCRIBE → CENSOR → fetch-avatars → OVERLAYS (single serial chain —
+  // OVERLAYS is now the last stage this orchestrator runs; its output
+  // (processed/overlayed/*.mp4) is the CapCut handoff).
+  try {
+    await run('scripts/transcribe-batch.js', [runId]);
+    await run('scripts/apply-censor.js', [projectDir]);
+    await run('scripts/fetch-avatars.js', [projectDir]);
+    await run('scripts/apply-overlays.js', [projectDir]);
+  } catch (e) {
+    const elapsed = ((Date.now() - t0) / 60000).toFixed(1);
+    console.error(`[FAIL] ${e.message}`);
+    console.log(`\n=== stage2.js done in ${elapsed} min (with errors) ===\n`);
+    process.exit(1);
+  }
 
-  const chainA = chainTranscribeCensor
-    .then(() => run('scripts/gen-captions.js', [projectDir]));
-
-  const chainB = chainTranscribeCensor
-    .then(() => run('scripts/fetch-avatars.js', [projectDir]))
-    .then(() => run('scripts/apply-overlays.js', [projectDir]))
-    .then(() => run('scripts/build-concat.js', [runId]))
-    .then(() => run('scripts/render-final.js', [projectDir, epNum]));
-
-  const chainC = run('scripts/extract-frames.js', [projectDir]);
-
-  const results = await Promise.allSettled([chainA, chainB, chainC]);
-
-  const labels = ['TRANSCRIBE→CENSOR→CAPTIONS', 'TRANSCRIBE→CENSOR→OVERLAYS→RENDER_LONG', 'EXTRACT_FRAMES'];
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') console.error(`[FAIL] ${labels[i]}: ${r.reason.message}`);
-    else console.log(`[DONE] ${labels[i]}`);
-  });
-
-  const anyFailed = results.some(r => r.status === 'rejected');
   const elapsed = ((Date.now() - t0) / 60000).toFixed(1);
-  console.log(`\n=== stage2.js done in ${elapsed} min${anyFailed ? ' (with errors)' : ''} ===\n`);
-
-  if (anyFailed) process.exit(1);
+  console.log(`\n=== stage2.js done in ${elapsed} min — processed/overlayed/*.mp4 ready for CapCut ===\n`);
 }
 
 main().catch(e => { console.error('[FATAL]', e.message); process.exit(1); });

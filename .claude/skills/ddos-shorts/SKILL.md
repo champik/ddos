@@ -1,6 +1,15 @@
-﻿# Skill: ddos-shorts
+﻿# Skill: ddos-shorts — ВИМКНЕНО (CapCut)
 
-Згенеруй ASS субтитри і відрендери вертикальні Shorts.
+**Selection-only pipeline:** CAPTIONS і RENDER SHORTS більше не виконуються системою.
+Користувач сам ріже Shorts і додає субтитри в CapCut, з `processed/overlayed/*.mp4` —
+див. `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`. `gen-captions.js` і
+`render-shorts.js` лишились на диску (не викликаються).
+
+METADATA (`ddos-youtube-creatives`) досі генерує `shortsMetadata` (title/description/hashtags
+per short) для довідки при ручній публікації — тільки `shortIntros` (intro-хук для burned-in
+тексту, який раніше рендерив `render-shorts.js`) прибрано, він нікому вже не потрібен.
+
+Довідка нижче (як це працювало раніше) не виконується, лишена як контекст.
 
 ---
 

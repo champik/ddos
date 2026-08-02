@@ -3,10 +3,18 @@
 ## Що це
 
 Щоденна автоматична система для YouTube каналу "Daily Dose Of Stream" (DDOS).
-Твич кліпи → готовий YouTube епізод + Shorts + thumbnail + metadata.
+Твич кліпи → відібрані, обрізані, зацензурені й оверлеєні кліпи, готові для монтажу.
 
-**Output:** `projects/YYYY_MM_Month/Episode_N_YYYY_MM_DD/exports/episode-NNN.mp4` + shorts/ + thumbnail.png + metadata.json  
-**Публікація:** ручна через YouTube Studio або автоматична після `/ddos approve`.
+**Selection-only pipeline:** автоматизація закінчується на готових кліпах
+(`processed/overlayed/*.mp4`) — фінальний монтаж (склейка епізоду, reconnecting-перебивки,
+Shorts, субтитри) робиться вручну в CapCut. Деталі й межа система/CapCut —
+`docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
+
+**Output системи:** `processed/overlayed/<NN>_<streamer>_<idSuffix>.mp4` (кліпи для CapCut) +
+`exports/thumbnail.png` + `exports/metadata.json` (title/tags/visibleTags/chapters/shortsMetadata).  
+**Після CapCut:** користувач кладе фінальний експорт у `exports/episode.mp4` +
+`exports/shorts/*.mp4`, публікація — вручну через `/ddos approve` (YouTube upload,
+metadata.json вже готовий).
 
 ### Іменування папок проектів
 - Проекти групуються по місяцях: `projects/YYYY_MM_Month/Episode_N_YYYY_MM_DD/`
@@ -28,18 +36,35 @@
 - Зберігається у `downloads/` в папці проекту
 - Поле `localPath` у `downloaded-clips.json` вказує на фактичний файл
 
+### Іменування оброблених кліпів (processed/)
+
+- Формат: `{NN}_{streamer}_{idSuffix}` (без розширення — застосовується до всіх типів файлів)
+- NN = 2-значна позиція кліпу в `editorial.clipOrder` (1-based, `padStart(2,'0')`) — дає
+  порядок, зручний для перетягування в CapCut
+- streamer = broadcaster_name lowercase, idSuffix = той самий суфікс що й у downloads/
+- Приклад: `01_xqc_a7k2m9qx.mp4`
+- Будується через `scripts/lib/clip-naming.js` (`buildBasenameMap`) — єдине джерело правди,
+  використовується в усіх скриптах що читають/пишуть `processed/`
+- NN — не про унікальність (її вже дає позиція), а про людське сортування; idSuffix — стабільний
+  зв'язок з `clipId` для кешу. Зміна порядку в `edit.html` = перейменування файлів
+  (без переобробки, кеш keyed по clipId всередині файлу)
+
 ---
 
 ## AUTONOMOUS MODE
 
-**Від команди до готового відео без зупинок.**
+**Від команди до готових кліпів без зупинок.**
 
 Єдині дозволені паузи:
 1. Показ scored clips список перед рендером (швидкий огляд)
-2. Фінальний `/ddos approve <runId>` перед upload
+2. Фінальний `/ddos approve <runId>` перед upload (вже після монтажу в CapCut)
 
 Ніяких "продовжувати?", "дозволити bash?", "confirm?".  
 Якщо щось пішло не так — записати в state.json і продовжити далі.
+
+**Коли `stage2.js` завершується** (processed/overlayed/*.mp4 готові) — одразу вивести
+список файлів у чат, щоб користувач міг почати монтаж негайно; METADATA → THUMBNAIL → REVIEW
+запускати далі у фоні, не блокуючи чат очікуванням.
 
 ---
 
@@ -69,23 +94,31 @@
 
 Після GENERATE_EDITORIAL: відкрити `edit/edit.html` у браузері, зробити editorial рішення, "Copy Prompt" → вставити в чат.
 
-### Stage 2 (після editorial JSON)
+### Stage 2 (після editorial JSON) — selection-only, один серійний ланцюг
+
 ```
-7.  APPLY_EDITORIAL  apply-editorial.js → clean.mp4 (trim + cuts з editorial.json)
+7.  APPLY_EDITORIAL  apply-editorial.js → processed/clean/<basename>.mp4 (trim + cuts з editorial.json)
                      + VOD replace: якщо editorial.vodClipIds не порожній → vod-segment.js замінює clean.mp4
-7b. EXTRACT_FRAMES   extract-frames.js → 3 JPEG кадри per кліп (serial, до оверлеїв)
-8.  TRANSCRIBE       WhisperX large-v3 → transcript.json (тільки вибрані кліпи, з clean.mp4)
-8b. CENSOR           apply-censor.js → мьютить Tier 1/2 матюки/слюри в clean.mp4
+8.  TRANSCRIBE       WhisperX large-v3 → processed/transcripts/<basename>.json (тільки вибрані кліпи, з clean.mp4)
+8b. CENSOR           apply-censor.js → мьютить Tier 1/2 матюки/слюри в processed/clean/<basename>.mp4
                      (за word-level таймстемпами з transcript.json + ручні
                      позначки 🔇 Mute з edit.html), підставляє glitch.wav
-9.  OVERLAYS         Puppeteer → streamer overlay + reconnecting panel
-10. RENDER LONG      FFmpeg concat → episode-NNN.mp4
-11. CAPTIONS         WhisperX ASS субтитри для shorts
-12. METADATA         Claude → title/description/tags/shortIntros (на основі транскриптів)
-13. RENDER SHORTS    FFmpeg → 1080×1920 (desktop/mobile/split) — ОБОВ'ЯЗКОВО після METADATA, бере intro-хук з shortIntros
-14. THUMBNAIL        Puppeteer → thumbnail.png
-15. REVIEW           review.html + index.html
+9.  OVERLAYS         Puppeteer → streamer overlay → processed/overlayed/<basename>.mp4
+                     ← ГОТОВО ДЛЯ CAPCUT (список видається в чат одразу після stage2.js)
+12. METADATA         Claude → title/tags/visibleTags/chapters/shortsMetadata (на основі транскриптів,
+                     БЕЗ опису — користувач пише сам у YouTube Studio)
+14. THUMBNAIL        Higgsfield (nano_banana_pro + seedream_v4_5) → exports/thumbnail.png
+15. REVIEW           review.html (мінімальний — без embed фінального відео/shorts,
+                     секція Tags замість Metadata) + index.html
+     ↓ (користувач монтує processed/overlayed/*.mp4 в CapCut, експортує в exports/)
+16. PUBLISH          /ddos approve — вручну, читає exports/episode.mp4 + exports/shorts/*.mp4
 ```
+
+**Вимкнено (файли лишились, виклики прибрані з `stage2.js`/`apply-overlays.js`):**
+EXTRACT_FRAMES (нема споживача — thumbnail сам робить frame-grab), RECONNECTING-рендер
+(готовий прозорий actив — `assets/overlays/reconnecting-panel.mov`, накладається вручну в
+CapCut), CAPTIONS (`gen-captions.js`), RENDER LONG (`build-concat.js`, `render-final.js`,
+`render-concat-filter.js`), RENDER SHORTS (`render-shorts.js`).
 
 ---
 
@@ -172,34 +205,42 @@ projects/<YYYY_MM_Month>/<runId>/
 │   ├── gaming-frames/<clipId>.jpg # 1 кадр на gaming-кліп
 │   └── scored-clips.json
 ├── downloads/{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4  # ім'я кліпу
-├── processed/<clipId>/
-│   ├── transcript.json
-│   ├── clean.mp4                      # trimmed + re-encoded (CRF 18, 30fps) + loudnorm + censored
-│   ├── edit-hash.txt                  # хеш editorial-рішень для інвалідації кешу
-│   ├── censor-log.json                # список замьючених слів/міток (слово, час, source: auto/manual)
-│   ├── censor-hash.txt                # хеш mute-вікон для інвалідації кешу цензури
-│   ├── overlayed.mp4                  # clean.mp4 + animated MKV broadcaster overlay
-│   ├── captions-vertical.ass
-│   └── frames/                        # 3 JPEG кадри (frame-1/2/3.jpg) + frames-hash.txt
+├── processed/                         # групування за типом, файли = <NN>_<streamer>_<idSuffix>
+│   ├── clean/
+│   │   ├── <basename>.mp4             # trimmed + re-encoded (CRF 18, 30fps) + loudnorm + censored
+│   │   ├── <basename>.edit-hash.txt   # хеш editorial-рішень для інвалідації кешу
+│   │   └── <basename>.precensor.mp4   # untouched backup до CENSOR (для повторних mute-прогонів)
+│   ├── transcripts/<basename>.json
+│   ├── censor/
+│   │   ├── <basename>.censor-log.json # список замьючених слів/міток (слово, час, source: auto/manual)
+│   │   └── <basename>.censor-hash.txt # хеш mute-вікон для інвалідації кешу цензури
+│   └── overlayed/<basename>.mp4       # clean.mp4 + animated MKV broadcaster overlay ← для CapCut
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
 │   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
 │   ├── episode-plan.json              # Генерується з editorial.json при resume
-│   ├── shorts-selection.json
-│   ├── reconnecting.mp4               # ~2s glitch moment (тривалість залежить від кліпу)
-│   └── concat-list.txt
+│   └── shorts-selection.json
 ├── exports/
-│   ├── episode-NNN.mp4
+│   ├── episode.mp4                    # користувач кладе сюди фінальний експорт з CapCut
 │   ├── thumbnail.png
-│   ├── metadata.json
-│   └── shorts/<clipId>.mp4
+│   ├── metadata.json                  # title/tags/visibleTags/chapters/shortsMetadata (без description)
+│   └── shorts/*.mp4                   # користувач кладе сюди Shorts-експорт з CapCut
 └── review/review.html
 ```
+
+EXTRACT_FRAMES вимкнено → `processed/frames/` і `frames-hash.txt` більше не генеруються.
+RECONNECTING-рендер вимкнено → `edit/reconnecting.mp4` і `edit/concat-list.txt` більше не
+генеруються (`build-concat.js`/`render-final.js` не викликаються).
 
 **Глобальний кеш (поза папкою проекту):**
 ```
 cache/overlays/<broadcaster>.mkv    # кешовані streamer overlays (FFV1 MKV, перевикористовуються між епізодами)
-cache/overlays/reconnecting-panel.mkv
+```
+
+Прозорий reconnecting-actив (для ручного накладання в CapCut) — не кеш, статичний asset:
+```
+assets/overlays/reconnecting-panel.mkv   # джерело (FFV1 alpha)
+assets/overlays/reconnecting-panel.mov   # ProRes 4444 alpha, готовий для CapCut
 ```
 
 ---
@@ -207,11 +248,12 @@ cache/overlays/reconnecting-panel.mkv
 ## Assets (вже існують)
 
 ```
-assets/intro/intro_30fps.mp4        1920×1080, 1.25s, 30fps — завжди на початку (build-concat.js вимагає 30fps, бо решта епізоду теж 30fps)
-assets/outro/outro_30fps.mp4        1920×1080, 1.25s, 30fps — завжди в кінці
-assets/overlays/reconnecting.html   RECONNECTING transition overlay
-assets/streamer-overlay/streamer_name.html  ім'я стрімера overlay
-assets/thumbnail-template/thumbnail.html   шаблон thumbnail
+assets/intro/intro_30fps.mp4        1920×1080, 1.25s, 30fps — для монтажу в CapCut (початок епізоду)
+assets/outro/outro_30fps.mp4        1920×1080, 1.25s, 30fps — для монтажу в CapCut (кінець епізоду)
+assets/overlays/reconnecting.html   джерело для reconnecting-panel.mkv/.mov (Puppeteer render)
+assets/overlays/reconnecting-panel.mkv/.mov  готовий прозорий actив — накласти вручну в CapCut
+assets/streamer-overlay/streamer_name.html  ім'я стрімера overlay (досі автоматично, у STREAMER OVERLAY)
+assets/thumbnail-template/thumbnail.html   старий Puppeteer-шаблон thumbnail (fallback, не викликається — thumbnail йде через Higgsfield)
 assets/thumbnail-template/logo.svg         DDOS лого
 ```
 
@@ -238,17 +280,14 @@ assets/thumbnail-template/logo.svg         DDOS лого
   пам'ятати запускати повторно вручну щоразу. Тепер джерело правди на диску
   завжди VOD-якості, і жодного окремого кроку не треба.
 - **CENSOR** (stage 8b, деталі вище) — працює ДО OVERLAYS, тому
-  `apply-overlays.js` в `stage2.js` більше не стартує паралельно з
-  TRANSCRIBE, а чекає завершення CENSOR (інакше overlays прочитав би
-  ще нецензурований `clean.mp4`).
-- **Реконект** — `apply-overlays.js` перевіряє межі кліпу перед нарізкою і
-  верифікує результат (тривалість, обидва стріми, не чорний кадр). Якщо
-  `reconnectSource.from` потрапляє у вирізане — помилка, а не мовчазний зсув
-  у кінець файлу. Битий `reconnecting.mp4` видаляється, епізод іде без перебивки
-- **BUILD_CONCAT** — по кожному сегменту: немає аудіо-доріжки → стоп (concat
-  `-c copy` зламав би звук усього епізоду); німий або з провалом ≥3с → попередження
-- **RENDER LONG** — фінальний `episode-NNN.mp4` перевіряється на наявність і
-  чутність звуку; проблема → `renderLong: done_with_errors` + запис у `state.warnings`
+  `apply-overlays.js` в `stage2.js` чекає завершення CENSOR (інакше overlays
+  прочитав би ще нецензурований `clean.mp4`).
+
+**Вимкнено разом з рештою рендер-стадій** (файли лишились, не викликаються):
+`renderReconnecting()` у `apply-overlays.js` (перевірка меж/верифікація reconnecting.mp4),
+BUILD_CONCAT (`build-concat.js`) і RENDER LONG (`render-final.js`) перевірки звуку сегментів/
+фінального файлу. Ці ffmpeg-кроки тепер робить користувач у CapCut — перевіряти звук там
+доводиться на слух.
 
 Спільні probe-хелпери — `scripts/lib/media-probe.js`.
 Тести таймлайну — `npm test`.
@@ -259,12 +298,12 @@ assets/thumbnail-template/logo.svg         DDOS лого
 
 - `ddos-ingest`           — Twitch API + filter + yt-dlp download
 - `ddos-score`            — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE — в Stage 2 через transcribe-batch.js
-- `ddos-render`           — FFmpeg trim + overlays + long-form render
-- `ddos-shorts`           — vertical crop + captions + shorts render
-- `ddos-youtube-creatives`— METADATA: title/description/tags/shortIntros → exports/metadata.json
-- `ddos-thumbnail`        — Puppeteer thumbnail (читає metadata.json, сам його не генерує)
-- `ddos-review`           — review.html генерація
-- `ddos-publish`          — YouTube upload + OAuth2 publish flow
+- `ddos-render`           — FFmpeg trim + censor + streamer overlay (без reconnecting/long-form — CapCut)
+- `ddos-shorts`           — вимкнено (RENDER SHORTS робить користувач у CapCut)
+- `ddos-youtube-creatives`— METADATA: title/tags/visibleTags/chapters/shortsMetadata → exports/metadata.json (без опису)
+- `ddos-thumbnail`        — Higgsfield thumbnail (читає metadata.json, сам його не генерує)
+- `ddos-review`           — review.html генерація (мінімальний — без embed фінального відео/shorts)
+- `ddos-publish`          — YouTube upload вручну, читає exports/episode.mp4 + exports/shorts/*.mp4 з CapCut
 
 ---
 
