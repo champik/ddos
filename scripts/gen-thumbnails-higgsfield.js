@@ -36,7 +36,6 @@ const localPaths = Object.fromEntries(downloaded.map(c => [c.id, c.localPath]));
 const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
 const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
 const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
-const TRANSCRIPTS_DIR = processedTypeDir(projectDir, 'transcripts');
 
 const scoredPath = path.join(projectDir, 'clips', 'scored-clips.json');
 const scoredClips = fs.existsSync(scoredPath)
@@ -53,18 +52,6 @@ const metadata = fs.existsSync(metadataPath)
 const thumbnailHooksMap = Object.fromEntries(
   (metadata.thumbnailHooks || []).map(h => [h.clipId, h.hook])
 );
-
-function getTranscriptSnippet(clipId) {
-  const basename = basenames[clipId];
-  if (!basename) return '';
-  const p = path.join(TRANSCRIPTS_DIR, `${basename}.json`);
-  if (!fs.existsSync(p)) return '';
-  try {
-    const t = JSON.parse(fs.readFileSync(p, 'utf8'));
-    const text = (t.text || t.segments?.map(s => s.text).join(' ') || '').trim();
-    return text.slice(0, 200);
-  } catch { return ''; }
-}
 
 if (thumbnails.length === 0) {
   console.error('No thumbnails defined in editorial.json');
@@ -114,10 +101,10 @@ const items = thumbnails.map((t, i) => {
     isMain: !!t.main,
     broadcasterName: meta.broadcaster_name || t.clipId,
     gameName: meta.game_name || '',
-    hook: thumbnailHooksMap[t.clipId] || '',
-    transcriptSnippet: getTranscriptSnippet(t.clipId),
+    // t.hook — user-entered in edit.html when marking the frame. Falls back to the old
+    // metadata.json-driven map for episodes edited before this field existed.
+    hook: t.hook || thumbnailHooksMap[t.clipId] || '',
     framePath,
-    // prompt: Claude writes a tailored per-clip prompt based on hook + transcriptSnippet
     nanoCandidatePath: path.join(exportsDir, `thumb-candidate-${i}-nano.png`),
     seedreamCandidatePath: path.join(exportsDir, `thumb-candidate-${i}-seedream.png`),
   };

@@ -3,18 +3,21 @@
 ## Що це
 
 Щоденна автоматична система для YouTube каналу "Daily Dose Of Stream" (DDOS).
-Твич кліпи → відібрані, обрізані, зацензурені й оверлеєні кліпи, готові для монтажу.
+Твич кліпи → відібрані кліпи повної довжини + картинки імені стрімера, готові для монтажу.
 
-**Selection-only pipeline:** автоматизація закінчується на готових кліпах
-(`processed/overlayed/*.mp4`) — фінальний монтаж (склейка епізоду, reconnecting-перебивки,
-Shorts, субтитри) робиться вручну в CapCut. Деталі й межа система/CapCut —
+**Selection-only pipeline:** автоматизація закінчується на готових кліпах ПОВНОЇ довжини
+(`processed/clean/*.mp4`) + картинках імені стрімера (`processed/streamers_name/*.png`) —
+фінальний монтаж (обрізка кліпів, склейка епізоду, reconnecting-перебивки, накладання імені
+стрімера, Shorts, субтитри) робиться вручну в CapCut. Деталі й межа система/CapCut —
 `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
 
-**Output системи:** `processed/overlayed/<NN>_<streamer>_<idSuffix>.mp4` (кліпи для CapCut) +
-`exports/thumbnail.png` + `exports/metadata.json` (title/tags/visibleTags/chapters/shortsMetadata).  
+**Output системи:** `processed/clean/<NN>_<streamer>_<idSuffix>.mp4` (кліпи повної довжини для
+CapCut) + `processed/streamers_name/<streamer>.png` (картинки імені стрімера, по одній на
+унікального стрімера) + `exports/thumbnail.png` (якщо позначені `editorial.thumbnails`).
+**METADATA/REVIEW тимчасово вимкнені** (залежали від транскриптів/metadata.json, яких більше
+нема — див. "Вимкнено" нижче) — `exports/metadata.json` не генерується.
 **Після CapCut:** користувач кладе фінальний експорт у `exports/episode.mp4` +
-`exports/shorts/*.mp4`, публікація — вручну через `/ddos approve` (YouTube upload,
-metadata.json вже готовий).
+`exports/shorts/*.mp4`, публікація — вручну через `/ddos approve` (YouTube upload).
 
 ### Іменування папок проектів
 - Проекти групуються по місяцях: `projects/YYYY_MM_Month/Episode_N_YYYY_MM_DD/`
@@ -62,9 +65,10 @@ metadata.json вже готовий).
 Ніяких "продовжувати?", "дозволити bash?", "confirm?".  
 Якщо щось пішло не так — записати в state.json і продовжити далі.
 
-**Коли `stage2.js` завершується** (processed/overlayed/*.mp4 готові) — одразу вивести
-список файлів у чат, щоб користувач міг почати монтаж негайно; METADATA → THUMBNAIL → REVIEW
-запускати далі у фоні, не блокуючи чат очікуванням.
+**Коли `stage2.js` завершується** (`processed/clean/*.mp4` повної довжини +
+`processed/streamers_name/*.png` готові) — одразу вивести список файлів у чат, щоб
+користувач міг почати монтаж негайно; THUMBNAIL (якщо є `editorial.thumbnails`) запускати
+далі у фоні, не блокуючи чат очікуванням. METADATA/REVIEW вимкнені (див. Stage 2 нижче).
 
 ---
 
@@ -97,27 +101,33 @@ metadata.json вже готовий).
 ### Stage 2 (після editorial JSON) — selection-only, один серійний ланцюг
 
 ```
-7.  APPLY_EDITORIAL  apply-editorial.js → processed/clean/<basename>.mp4 (trim + cuts з editorial.json)
+7.  APPLY_EDITORIAL  apply-editorial.js → processed/clean/<basename>.mp4 — ПОВНА довжина
+                     клipу, без trim/cuts (editorial.json's trim/keeps ігноруються — CapCut
+                     ріже сам)
                      + VOD replace: якщо editorial.vodClipIds не порожній → vod-segment.js замінює clean.mp4
-8.  TRANSCRIBE       WhisperX large-v3 → processed/transcripts/<basename>.json (тільки вибрані кліпи, з clean.mp4)
-8b. CENSOR           apply-censor.js → мьютить Tier 1/2 матюки/слюри в processed/clean/<basename>.mp4
-                     (за word-level таймстемпами з transcript.json + ручні
-                     позначки 🔇 Mute з edit.html), підставляє glitch.wav
-9.  OVERLAYS         Puppeteer → streamer overlay → processed/overlayed/<basename>.mp4
+9.  STREAMER_NAMES   fetch-avatars.js → render-streamer-names.js → одна статична PNG-картинка
+                     імені на унікального стрімера → processed/streamers_name/<slug>.png
                      ← ГОТОВО ДЛЯ CAPCUT (список видається в чат одразу після stage2.js)
-12. METADATA         Claude → title/tags/visibleTags/chapters/shortsMetadata (на основі транскриптів,
-                     БЕЗ опису — користувач пише сам у YouTube Studio)
-14. THUMBNAIL        Higgsfield (nano_banana_pro + seedream_v4_5) → exports/thumbnail.png
-15. REVIEW           review.html (мінімальний — без embed фінального відео/shorts,
-                     секція Tags замість Metadata) + index.html
-     ↓ (користувач монтує processed/overlayed/*.mp4 в CapCut, експортує в exports/)
+14. THUMBNAIL        якщо editorial.thumbnails не порожній — Higgsfield прибирає стрімерський
+                     chat/HUD/сабки/рекламу з позначеного кадру + upscale (БЕЗ творчої
+                     трансформації емоції), потім Claude накладає наш дизайн (caution-tape
+                     смужки + заголовок) → exports/thumbnail.png. Хук — editorial.thumbnails[].hook,
+                     вписаний користувачем в edit.html (без transcript/metadata.json)
+     ↓ (користувач монтує/ріже processed/clean/*.mp4 в CapCut, накладає streamers_name/*.png
+       вручну, експортує в exports/)
 16. PUBLISH          /ddos approve — вручну, читає exports/episode.mp4 + exports/shorts/*.mp4
 ```
 
 **Вимкнено (файли лишились, виклики прибрані з `stage2.js`/`apply-overlays.js`):**
-EXTRACT_FRAMES (нема споживача — thumbnail сам робить frame-grab), RECONNECTING-рендер
-(готовий прозорий actив — `assets/overlays/reconnecting-panel.mov`, накладається вручну в
-CapCut), CAPTIONS (`gen-captions.js`), RENDER LONG (`build-concat.js`, `render-final.js`,
+TRANSCRIBE (`transcribe-batch.js` — нема споживача: CENSOR і METADATA обидві читали
+транскрипти), CENSOR (`apply-censor.js` — без транскриптів нема word-level таймстемпів для
+мьюту), video-burn OVERLAYS (стара версія `apply-overlays.js` — animated banner burned у
+відео; замінена на STREAMER_NAMES вище), METADATA/REVIEW (`ddos-youtube-creatives`/
+`ddos-review` — METADATA будувала title/tags з транскриптів, яких нема; REVIEW залежить від
+`exports/metadata.json`, який METADATA більше не пише — THUMBNAIL більше НЕ залежить від
+жодного з них, працює окремо), EXTRACT_FRAMES (нема споживача), RECONNECTING-рендер (готовий
+прозорий actив — `assets/overlays/reconnecting-panel.mov`, накладається вручну в CapCut),
+CAPTIONS (`gen-captions.js`), RENDER LONG (`build-concat.js`, `render-final.js`,
 `render-concat-filter.js`), RENDER SHORTS (`render-shorts.js`).
 
 ---
@@ -207,14 +217,11 @@ projects/<YYYY_MM_Month>/<runId>/
 ├── downloads/{category}_{streamer}_{views}_{YYYY_MM_DD}.mp4  # ім'я кліпу
 ├── processed/                         # групування за типом, файли = <NN>_<streamer>_<idSuffix>
 │   ├── clean/
-│   │   ├── <basename>.mp4             # trimmed + re-encoded (CRF 18, 30fps) + loudnorm + censored
-│   │   ├── <basename>.edit-hash.txt   # хеш editorial-рішень для інвалідації кешу
-│   │   └── <basename>.precensor.mp4   # untouched backup до CENSOR (для повторних mute-прогонів)
-│   ├── transcripts/<basename>.json
-│   ├── censor/
-│   │   ├── <basename>.censor-log.json # список замьючених слів/міток (слово, час, source: auto/manual)
-│   │   └── <basename>.censor-hash.txt # хеш mute-вікон для інвалідації кешу цензури
-│   └── overlayed/<basename>.mp4       # clean.mp4 + animated MKV broadcaster overlay ← для CapCut
+│   │   ├── <basename>.mp4             # ПОВНА довжина (без trim/cuts), re-encoded (CRF 18, 30fps)
+│   │   │                              # + loudnorm ← для CapCut
+│   │   └── <basename>.edit-hash.txt   # хеш audio-рішення (skipLoudnorm) для інвалідації кешу
+│   └── streamers_name/<slug>.png      # статична картинка імені стрімера (одна на унікального
+│                                       # стрімера) — для ручного накладання в CapCut
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
 │   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
@@ -222,15 +229,19 @@ projects/<YYYY_MM_Month>/<runId>/
 │   └── shorts-selection.json
 ├── exports/
 │   ├── episode.mp4                    # користувач кладе сюди фінальний експорт з CapCut
-│   ├── thumbnail.png
-│   ├── metadata.json                  # title/tags/visibleTags/chapters/shortsMetadata (без description)
+│   ├── thumbnail.png                  # якщо є editorial.thumbnails (ddos-thumbnail, Higgsfield)
+│   ├── thumb-candidate-{i}-{model}.png     # альтернативні кандидати (nano/seedream)
+│   ├── thumb-candidate-{i}-{model}-raw.png # без нашого caution-tape overlay, для reference
 │   └── shorts/*.mp4                   # користувач кладе сюди Shorts-експорт з CapCut
-└── review/review.html
+└── review/review.html                 # ВИМКНЕНО — залежить від exports/metadata.json
 ```
 
 EXTRACT_FRAMES вимкнено → `processed/frames/` і `frames-hash.txt` більше не генеруються.
 RECONNECTING-рендер вимкнено → `edit/reconnecting.mp4` і `edit/concat-list.txt` більше не
 генеруються (`build-concat.js`/`render-final.js` не викликаються).
+TRANSCRIBE/CENSOR вимкнено → `processed/transcripts/`, `processed/censor/`,
+`<basename>.precensor.mp4` більше не генеруються. METADATA вимкнено →
+`exports/metadata.json` більше не генерується (THUMBNAIL більше не залежить від нього).
 
 **Глобальний кеш (поза папкою проекту):**
 ```
@@ -272,18 +283,16 @@ assets/thumbnail-template/logo.svg         DDOS лого
   скасовується і лишається оригінальний `clean.mp4`
   Крім `clean.mp4`, `vod-segment.js` ТАКОЖ перезаписує сирий завантажений файл
   (`downloads/…`, той самий `dlClip.localPath`) на VOD-якість — той самий
-  діапазон `[0, fullDur]`, тому всі `keeps`/`trim` таймстемпи лишаються дійсними.
+  діапазон `[0, fullDur]`, узгоджено з full-length policy APPLY_EDITORIAL вище.
   Позначається `downloaded-clips.json[].sourceReplacedWithVod = true`.
-  **Чому:** без цього будь-яка подальша регенерація `clean.mp4` (інша обрізка,
-  виправлення мьюту) через `apply-editorial.js` читає `dlClip.localPath` заново
-  і мовчки повертає сирий (не-VOD) кліп — `vod-segment.js` довелось би
-  пам'ятати запускати повторно вручну щоразу. Тепер джерело правди на диску
-  завжди VOD-якості, і жодного окремого кроку не треба.
-- **CENSOR** (stage 8b, деталі вище) — працює ДО OVERLAYS, тому
-  `apply-overlays.js` в `stage2.js` чекає завершення CENSOR (інакше overlays
-  прочитав би ще нецензурований `clean.mp4`).
+  **Чому:** без цього будь-яка подальша регенерація `clean.mp4` через
+  `apply-editorial.js` читає `dlClip.localPath` заново і мовчки повертає
+  сирий (не-VOD) кліп — `vod-segment.js` довелось би пам'ятати запускати
+  повторно вручну щоразу. Тепер джерело правди на диску завжди VOD-якості,
+  і жодного окремого кроку не треба.
 
 **Вимкнено разом з рештою рендер-стадій** (файли лишились, не викликаються):
+CENSOR-перевірка мьют-вікон (`apply-censor.js` — немає транскриптів, тож немає що мьютити),
 `renderReconnecting()` у `apply-overlays.js` (перевірка меж/верифікація reconnecting.mp4),
 BUILD_CONCAT (`build-concat.js`) і RENDER LONG (`render-final.js`) перевірки звуку сегментів/
 фінального файлу. Ці ffmpeg-кроки тепер робить користувач у CapCut — перевіряти звук там
@@ -297,12 +306,14 @@ BUILD_CONCAT (`build-concat.js`) і RENDER LONG (`render-final.js`) переві
 ## Skills
 
 - `ddos-ingest`           — Twitch API + filter + yt-dlp download
-- `ddos-score`            — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE — в Stage 2 через transcribe-batch.js
-- `ddos-render`           — FFmpeg trim + censor + streamer overlay (без reconnecting/long-form — CapCut)
+- `ddos-score`            — GENERATE_EDITORIAL (Stage 1); TRANSCRIBE вимкнено
+- `ddos-render`           — full-length re-encode (без trim/cuts) + статичні картинки імені
+                            стрімера (без censor/reconnecting/long-form — CapCut)
 - `ddos-shorts`           — вимкнено (RENDER SHORTS робить користувач у CapCut)
-- `ddos-youtube-creatives`— METADATA: title/tags/visibleTags/chapters/shortsMetadata → exports/metadata.json (без опису)
-- `ddos-thumbnail`        — Higgsfield thumbnail (читає metadata.json, сам його не генерує)
-- `ddos-review`           — review.html генерація (мінімальний — без embed фінального відео/shorts)
+- `ddos-youtube-creatives`— вимкнено (METADATA залежала від транскриптів, яких нема)
+- `ddos-thumbnail`        — Higgsfield прибирає стрімерський HUD + upscale, наш дизайн
+                            (caution-tape + hook з editorial.thumbnails) — не залежить від metadata.json
+- `ddos-review`           — вимкнено (залежить від exports/metadata.json)
 - `ddos-publish`          — YouTube upload вручну, читає exports/episode.mp4 + exports/shorts/*.mp4 з CapCut
 
 ---

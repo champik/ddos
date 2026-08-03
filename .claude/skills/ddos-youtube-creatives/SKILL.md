@@ -5,6 +5,13 @@ description: Use when generating YouTube titles, thumbnail hooks, tags, or hasht
 
 # Skill: ddos-youtube-creatives
 
+> **ВИМКНЕНО.** METADATA більше не запускається автоматично після `stage2.js` — увесь цей
+> skill будував `clipHooks`/`thumbnailHooks`/`shortsMetadata` з `processed/transcripts/*.json`
+> (TRANSCRIBE), якого тепер нема (Stage 2 = APPLY_EDITORIAL full-length + STREAMER_NAMES,
+> без TRANSCRIBE/CENSOR). `ddos-thumbnail` і `ddos-review` теж на паузі — обидва читають
+> `exports/metadata.json`, який цей skill більше не пише. Лишено як довідка на випадок, якщо
+> транскрипцію повернуть — не виконувати без нового джерела даних замість transcript.
+
 Генерація YouTube-креативів для DDOS епізоду: назви, текст на обкладинці, теги, хештеги. Опис
 користувач пише сам у YouTube Studio (фінальний монтаж — CapCut, система його не бачить);
 субтитри для Shorts також робить CapCut.

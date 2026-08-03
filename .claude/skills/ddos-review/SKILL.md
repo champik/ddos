@@ -1,8 +1,12 @@
 ﻿# Skill: ddos-review
 
+> **ВИМКНЕНО (на паузі).** Читає `exports/metadata.json`, якого `ddos-youtube-creatives`
+> (METADATA) більше не генерує — TRANSCRIBE вимкнено в Stage 2, METADATA без транскриптів
+> не запускається.
+
 Згенеруй локальну HTML сторінку для перегляду і апруву епізоду. **Selection-only pipeline:**
-запускається одразу після OVERLAYS/METADATA/THUMBNAIL, ДО монтажу в CapCut — фінального відео
-і Shorts ще нема, сторінка мінімальна (без video embed).
+запускається одразу після STREAMER_NAMES/METADATA/THUMBNAIL, ДО монтажу в CapCut — фінального
+відео і Shorts ще нема, сторінка мінімальна (без video embed).
 
 ---
 

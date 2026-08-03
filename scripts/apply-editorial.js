@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // apply-editorial.js <runId>
-// Processes clips per editorial.json decisions (trim + cuts) → clean.mp4
+// Copies each selected clip to clean.mp4 at FULL original length (re-encoded
+// for consistent CRF/fps/loudness) — no trim/cuts. editorial.json's
+// clipOrder decides WHICH clips and in what ORDER; actual cutting happens
+// later by hand in CapCut (selection-only pipeline).
 // Clips are processed in parallel (CONCURRENCY = half of available CPU cores).
 
 const fs = require('fs');
@@ -11,7 +14,7 @@ const os = require('os');
 const { readJson, updateState, stageStatus } = require('./lib/state');
 const { getProjectDir } = require('./lib/project-path');
 const { LOUDNORM_TARGET, measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
-const { SILENCE_DB, hasAudioStreamAsync, getDurationAsync } = require('./lib/media-probe');
+const { SILENCE_DB, hasAudioStreamAsync } = require('./lib/media-probe');
 
 const runId = process.argv[2];
 if (!runId) { console.error('Usage: node scripts/apply-editorial.js <runId>'); process.exit(1); }
@@ -38,55 +41,9 @@ fs.mkdirSync(CLEAN_DIR, { recursive: true });
 
 const CONCURRENCY = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 2)));
 
-function fmtSec(sec) { return parseFloat(sec).toFixed(3); }
-
 function editsHash(clipEdits) {
-  // NOTE: this string must stay byte-identical to the pre-attenuate-only-fix
-  // value ('loudnorm=I=-16:TP=-1.5:LRA=11') so caching for clips that don't
-  // need the audio fix (measured already <= -16 LUFS, verified via a separate
-  // loudness scan) isn't invalidated. The actual filter applied at encode
-  // time is decided dynamically per-clip by buildLoudnormFilter() regardless
-  // of this string — it's a cache key, not the real filter.
-  const src = JSON.stringify({ trim: clipEdits.trim || null, keeps: clipEdits.keeps || [], audio: clipEdits.skipLoudnorm ? 'skip' : `loudnorm=${LOUDNORM_TARGET}` });
+  const src = JSON.stringify({ audio: clipEdits.skipLoudnorm ? 'skip' : `loudnorm=${LOUDNORM_TARGET}` });
   return crypto.createHash('md5').update(src).digest('hex');
-}
-
-// 999 fallback (not media-probe.js's 0) keeps outT permissive when a probe
-// fails, rather than truncating every segment to zero length.
-async function getVideoDuration(src) {
-  const dur = await getDurationAsync(src);
-  return dur || 999;
-}
-
-function buildPlan(inT, outT, keeps, audioInput, audioFilter) {
-  const segments = keeps && keeps.length > 0
-    ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
-    : [[inT, outT]];
-  if (segments.length === 0) segments.push([inT, outT]);
-
-  if (segments.length === 1) {
-    return { simple: true, inT: segments[0][0], outT: segments[0][1] };
-  }
-
-  const vParts = [], aParts = [], labels = [];
-  // setsar=1: фінальний епізод клеїться concat -c copy — несквадратний SAR
-  // з вихідного кліпу пройшов би крізь scale+pad і зламав геометрію склейки.
-  const scale = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1';
-  segments.forEach(([s, e], i) => {
-    vParts.push(`[0:v]trim=start=${fmtSec(s)}:end=${fmtSec(e)},setpts=PTS-STARTPTS,${scale}[v${i}]`);
-    aParts.push(`[${audioInput}:a]atrim=start=${fmtSec(s)}:end=${fmtSec(e)},asetpts=PTS-STARTPTS[a${i}]`);
-    labels.push(`[v${i}][a${i}]`);
-  });
-  const concat = `${labels.join('')}concat=n=${segments.length}:v=1:a=1[outv][outa]`;
-  // No boost policy: skip the loudnorm node entirely when the clip is already
-  // quiet enough (audioFilter === null) — mapping [outa] straight through.
-  const aMap = audioFilter ? '[louta]' : '[outa]';
-  const loudnormNode = audioFilter ? [`[outa]${audioFilter}[louta]`] : [];
-  return {
-    simple: false,
-    filter: [...vParts, ...aParts, concat, ...loudnormNode].join(';'),
-    vMap: '[outv]', aMap
-  };
 }
 
 function ffmpegAsync(args) {
@@ -99,44 +56,27 @@ function ffmpegAsync(args) {
   });
 }
 
-// CRF 18 для проміжних: clean.mp4 → overlayed.mp4 → concat -c copy,
-// тобто якість clean/overlayed і Є якістю фінального епізоду.
-async function encodeVariant({ src, outPath, plan, hasAudio, forceFps, audioFilter }) {
+// CRF 18 — clean.mp4 is the CapCut handoff source, its quality IS the final quality.
+async function encodeFull({ src, outPath, hasAudio, audioFilter }) {
   const inputs = ['-i', src];
-  if (!hasAudio) {
-    inputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
-  }
+  if (!hasAudio) inputs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
   const audioInput = hasAudio ? 0 : 1;
 
-  const common = [
+  const af = hasAudio
+    ? ['-af', audioFilter ? `asetpts=PTS-STARTPTS,${audioFilter}` : 'asetpts=PTS-STARTPTS']
+    : [];
+
+  const args = [
+    ...inputs,
+    '-map', '0:v', '-map', `${audioInput}:a`,
+    ...(hasAudio ? [] : ['-shortest']),
+    '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
+    ...af,
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
-    ...(forceFps ? ['-r', '30'] : []),
+    '-r', '30',
     '-y', outPath
   ];
-
-  let args;
-  if (plan.simple) {
-    const af = hasAudio
-      ? ['-af', audioFilter ? `asetpts=PTS-STARTPTS,${audioFilter}` : 'asetpts=PTS-STARTPTS']
-      : [];
-    args = [
-      ...inputs,
-      '-ss', fmtSec(plan.inT), '-to', fmtSec(plan.outT),
-      '-map', '0:v', '-map', `${audioInput}:a`,
-      ...(hasAudio ? [] : ['-shortest']),
-      '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
-      ...af,
-      ...common
-    ];
-  } else {
-    args = [
-      ...inputs,
-      '-filter_complex', plan.filter,
-      '-map', plan.vMap, '-map', plan.aMap,
-      ...common
-    ];
-  }
 
   const result = await ffmpegAsync(args);
   if (result.status !== 0) {
@@ -171,30 +111,13 @@ async function processClip(clipId) {
     return;
   }
 
-  const inT = clipEdits.trim?.in ?? 0;
-  const fullDur = await getVideoDuration(src);
-  const outT = clipEdits.trim?.out ?? fullDur;
-  const keeps = clipEdits.keeps || [];
   const hasAudio = await hasAudioStreamAsync(src);
-  // Той самий набір відрізків, що piде в buildPlan — міряємо лише те, що
-  // реально опиниться у відео, а не весь файл разом з вирізаними шматками.
-  const measureSegments = (keeps.length > 0
-    ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
-    : [[inT, outT]]);
-  // Same empty-fallback as buildPlan: if every keep filters out (e.g. stale
-  // keeps left over after re-trimming), measure [inT, outT] rather than
-  // falling through to an unbounded whole-file measurement.
-  if (measureSegments.length === 0) measureSegments.push([inT, outT]);
-  const measured = hasAudio ? await measureLoudness(src, { segments: measureSegments }) : null;
-  // skipLoudnorm: editor override to keep this clip's original volume even
-  // if it measured louder than target (e.g. a live-vocal clip where the
-  // attenuate-only pass made it sound duller than intended).
+  const measured = hasAudio ? await measureLoudness(src) : null;
   const audioFilter = (hasAudio && !clipEdits.skipLoudnorm) ? buildLoudnormFilter(measured) : null;
   if (!hasAudio) console.warn(`  [NO AUDIO] ${clipId} — додаю тишу (anullsrc)`);
 
   // Німа доріжка ≠ відсутня доріжка: заглушений або битий кліп має аудіо-стрім,
   // просто порожній. input_i вже виміряний для loudnorm, тож перевірка безкоштовна.
-  // ffmpeg віддає "-inf" для цифрової тиші → parseFloat дає NaN.
   if (hasAudio && measured) {
     const inputI = parseFloat(measured.input_i);
     if (!isFinite(inputI) || inputI <= SILENCE_DB) {
@@ -202,19 +125,10 @@ async function processClip(clipId) {
     }
   }
 
-  const plan = buildPlan(inT, outT, keeps, hasAudio ? 0 : 1, audioFilter);
-
-  console.log(`PROCESS: ${clipId} (${keeps.length} keeps, range ${fmtSec(inT)}-${fmtSec(outT)}, loudnorm=${audioFilter ? 'attenuate' : 'skip'})`);
-  // clean.mp4 — завжди 30fps (вимога concat -c copy для лонгформу)
-  const ok = await encodeVariant({ src, outPath, plan, hasAudio, forceFps: true, audioFilter });
+  console.log(`PROCESS: ${clipId} (full length, loudnorm=${audioFilter ? 'attenuate' : 'skip'})`);
+  const ok = await encodeFull({ src, outPath, hasAudio, audioFilter });
 
   if (!ok) { console.error('FAILED:', clipId); failed++; return; }
-
-  // clean.mp4 just got fully regenerated (fresh, uncensored) — any censor
-  // pristine-source backup from a previous censor pass now points at stale
-  // (differently trimmed/normalized) audio. Drop it so apply-censor.js
-  // recreates the backup from THIS version on its next run.
-  fs.rmSync(path.join(CLEAN_DIR, `${basename}.precensor.mp4`), { force: true });
 
   fs.writeFileSync(hashPath, currentHash, 'utf8');
   console.log('OK:', clipId);
@@ -223,7 +137,7 @@ async function processClip(clipId) {
 
 async function main() {
   const clipIds = editorial.clipOrder.filter(id => !String(id).startsWith('__recon'));
-  console.log(`\nProcessing ${clipIds.length} clips (concurrency: ${CONCURRENCY})\n`);
+  console.log(`\nProcessing ${clipIds.length} clips at full length (concurrency: ${CONCURRENCY})\n`);
 
   let i = 0;
   async function worker() {

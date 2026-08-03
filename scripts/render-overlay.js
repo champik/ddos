@@ -112,6 +112,63 @@ async function renderStreamer(name, outputPath, avatarUrl) {
   }
 }
 
+// Single static PNG of the #so name-tag block (not the full 1920x1080 frame,
+// not animated) — for manual placement in CapCut instead of a burned-in
+// video overlay. Viewport stays 1920x1080 so the block's CSS (bottom/left %,
+// adaptive width) renders identically to the video-overlay path; only the
+// element itself is captured.
+async function captureStreamerStatic(html, width, height, outputPath) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-ov-'));
+  const tmpHtml = path.join(tmpDir, '_overlay.html');
+  fs.writeFileSync(tmpHtml, html, 'utf8');
+
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security']
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    await page.goto(`file://${path.resolve(tmpHtml)}`, { waitUntil: 'networkidle0' });
+    await new Promise(r => setTimeout(r, 800)); // wait for fonts
+
+    // Settle the entrance animation mid-hold (fully slid in, not yet exiting).
+    await page.evaluate(() => {
+      document.getAnimations().forEach(a => {
+        a.pause();
+        const dur = a.effect.getTiming().duration;
+        a.currentTime = typeof dur === 'number' ? dur * 0.5 : 0;
+      });
+      document.documentElement.getBoundingClientRect(); // flush style recalc
+    });
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+    const el = await page.$('#so');
+    if (!el) throw new Error('#so element not found in streamer_name.html');
+    await el.screenshot({ path: outputPath, type: 'png', omitBackground: true });
+  } finally {
+    await browser.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function renderStreamerStatic(name, outputPath, avatarUrl) {
+  let html = fs.readFileSync('assets/streamer-overlay/streamer_name.html', 'utf8');
+  html = inlineLogoSvg(html);
+
+  html = html.replace(/(<[^>]+data-ddos-name[^>]*>)[^<]*/g, `$1${name.toUpperCase()}`);
+
+  if (avatarUrl) {
+    html = html.replace(/<img[^>]+data-ddos-avatar[^>]*>/g,
+      `<img data-ddos-avatar src="${avatarUrl}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">`);
+  } else {
+    html = html.replace(/<div class="ddos-streamer__av">[\s\S]*?<\/div>/g, '');
+  }
+
+  await captureStreamerStatic(html, 1920, 1080, outputPath);
+  console.log(`streamer_name.html (static) → ${outputPath}`);
+}
+
 async function renderReconnecting(outputPath) {
   await renderOverlay({
     htmlFile: 'assets/overlays/reconnecting.html',
@@ -131,12 +188,15 @@ async function renderShortsHeader(name, outputPath) {
 const [,, mode, ...args] = process.argv;
 if (mode === 'streamer' && args.length >= 2) {
   renderStreamer(args[0], args[1], args[2] || null).catch(e => { console.error(e.message); process.exit(1); });
+} else if (mode === 'streamer-static' && args.length >= 2) {
+  renderStreamerStatic(args[0], args[1], args[2] || null).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'reconnecting' && args.length >= 1) {
   renderReconnecting(args[0]).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'shorts-header' && args.length >= 2) {
   renderShortsHeader(args[0], args[1]).catch(e => { console.error(e.message); process.exit(1); });
 } else {
   console.error('Usage: node render-overlay.js streamer <name> <out.mkv>');
+  console.error('       node render-overlay.js streamer-static <name> <out.png> [avatarUrl]');
   console.error('       node render-overlay.js reconnecting <out.mkv>');
   console.error('       node render-overlay.js shorts-header <name> <out.png>');
   process.exit(1);

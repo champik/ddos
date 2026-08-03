@@ -1,9 +1,11 @@
-﻿# Skill: ddos-render
+# Skill: ddos-render
 
-Обріж кліпи, зацензуруй, накладе streamer overlay → `processed/overlayed/*.mp4`, готові для
-монтажу в CapCut. **Selection-only pipeline** — RENDER LONG (склейка епізоду) і
-RECONNECTING-рендер більше НЕ виконуються тут (файли/секції нижче лишені як довідка, код не
-викликається) — див. `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
+Приведи обрані кліпи до єдиного стандарту (повна довжина, CRF18/30fps/loudnorm) →
+`processed/clean/*.mp4`, і зроби картинки імені стрімера → `processed/streamers_name/*.png`.
+Обидва — готові для монтажу в CapCut. **Selection-only pipeline** — обрізка кліпів, цензура,
+транскрипція, burned-in overlay, RENDER LONG (склейка епізоду) і RECONNECTING-рендер більше
+НЕ виконуються тут (файли/секції нижче лишені як довідка, код не викликається) —
+див. `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
 
 Всі шляхи `processed/...` тепер групуються за типом, файл = `<basename>` з
 `scripts/lib/clip-naming.js` (`buildBasenameMap`), формат `<NN>_<streamer>_<idSuffix>` —
@@ -11,112 +13,104 @@ RECONNECTING-рендер більше НЕ виконуються тут (фа�
 
 ---
 
-## APPLY_EDITORIAL — Обробка кліпів за editorial.json
+## APPLY_EDITORIAL — Стандартизація кліпів, повна довжина
 
 ```bash
-node scripts/progress.js "<projectDir>" 6 "Обробка кліпів (editorial cuts)"
+node scripts/progress.js "<projectDir>" 6 "Обробка кліпів (full length)"
 ```
 
 ```bash
 node scripts/apply-editorial.js "<runId>"
 ```
 
-Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує `processed/clean/<basename>.mp4` з:
-- `-ss trim.in -to trim.out` (якщо задано)
-- FFmpeg filter_complex з множинними сегментами (якщо є `keeps[]`)
-- Завжди: scale 1920×1080, loudnorm, libx264 CRF 18, 30fps, aac 192k, -ac 2
-- Кліп без аудіодоріжки → автоматично додається тиша (anullsrc)
-Кешування: `clean.mp4` пропускається тільки якщо хеш editorial-рішень (`edit-hash.txt`)
-не змінився. Змінив trim/keeps у editorial.json → кліп перерендериться автоматично.
+Скрипт читає `edit/editorial.json` → для кожного кліпу з `clipOrder` генерує
+`processed/clean/<basename>.mp4` на **повну оригінальну довжину** — `trim`/`keeps` з
+editorial.json (якщо присутні) ігноруються, обрізку робить користувач сам у CapCut.
+Завжди: scale 1920×1080, loudnorm (attenuate-only, `lib/audio-loudness.js`), libx264 CRF 18,
+30fps, aac 192k, `-ac 2`. Кліп без аудіодоріжки → автоматично додається тиша (anullsrc).
+
+Кешування: `clean.mp4` пропускається тільки якщо хеш audio-рішення (`edit-hash.txt`,
+залежить лише від `skipLoudnorm`) не змінився.
+
+Якщо в `editorial.vodClipIds` є кліпи — після цього кроку `vod-segment.js` підміняє їхній
+`clean.mp4` на VOD-якість (той самий діапазон `[0, fullDur]`, без обрізки — сумісно з
+full-length policy вище).
 
 Оновити `state.stages.trim` (`done` / `done_with_errors` / `failed` — скрипт ставить сам).
 
 ---
 
-## CENSOR — Мьют матюків/слюрів + glitch.wav
+## STREAMER_NAMES — Статична картинка імені стрімера
 
-Виконується автоматично в `stage2.js` між TRANSCRIBE і OVERLAYS (серіально — OVERLAYS
-читає `clean.mp4`, тож має чекати, поки CENSOR допише в нього цензуроване аудіо).
+> VP9/VP8 WebM alpha is broken on Windows FFmpeg — FFV1/PNG-alpha шлях лишається; але тут
+> результат уже не відео, а один PNG-кадр на стрімера (не на кліп).
 
 ```bash
-node scripts/apply-censor.js "<projectDir>"
+node scripts/fetch-avatars.js "<projectDir>"
+node scripts/render-streamer-names.js "<projectDir>"
 ```
 
 Скрипт:
-- Для кожного кліпу читає `processed/transcripts/<basename>.json` (word-level таймстемпи)
-  і `edit/editorial.json → clips[id].manualMutes` (ручні позначки 🔇 Mute з edit.html)
-- Список слів для мьюту — `scripts/lib/profanity.js` (Tier 1 матюки + Tier 2 слюри,
-  без м'яких слів типу damn/hell/crap)
-- Кожне знайдене слово: мьютить оригінальне аудіо в межах `[word.start-40ms, word.end+40ms]`
-  (clamp щоб не зайти в сусіднє слово) і підмішує `assets/sounds/glitch.wav`, обрізаний
-  точно під це вікно — не вилазить у сусіднє слово
-- Ручні позначки: вікно `[at, at + тривалість glitch.wav]`
-- Перезаписує `processed/clean/<basename>.mp4` на місці (відео — `-c:v copy`, без
-  перекодування; лише аудіо-фільтр) — тому `apply-overlays.js` нічого не треба міняти,
-  він і так читає вже зацензурований `clean.mp4`
-- Кешування: `processed/censor/<basename>.censor-hash.txt` — пропускає кліп, якщо набір
-  mute-вікон не змінився з минулого запуску
-- Пише `processed/censor/<basename>.censor-log.json` (слово/маска/час/джерело auto|manual)
-  для аудиту — показується в review.html Tags column
+- Читає `edit/episode-plan.json` (`clipOrder`) і `clips/downloaded-clips.json`
+- Для кожного **унікального** стрімера серед обраних кліпів (не для кожного кліпу окремо)
+  рендерить один PNG → `processed/streamers_name/<slug(streamer)>.png`
+- Картинка — це `#so` блок з `assets/streamer-overlay/streamer_name.html` (caution-tape
+  смужка + аватар + нік), settled-кадр анімації (без руху), розмір під сам блок — НЕ
+  1920×1080 повний кадр
+- Аватар — `clips/streamer-avatars.json` (готує `fetch-avatars.js`), якщо є
+- `render-overlay.js streamer-static "<name>" "<out.png>" [avatarUrl]` — Puppeteer рендерить
+  HTML у 1920×1080 viewport (щоб CSS `bottom/left %` рахувався правильно), потім скріншотить
+  тільки елемент `#so`, `omitBackground: true` → прозорий PNG
 
-Оновити `state.stages.censor` (`done` / `done_with_errors` / `failed` — скрипт ставить сам).
+Користувач сам накладає картинку на потрібний кліп у CapCut (позиція/тривалість — вручну).
 
----
-
-## OVERLAYS — Puppeteer frame-by-frame → FFV1 MKV
-
-> VP9/VP8 WebM alpha is broken on Windows FFmpeg — FFV1 in MKV correctly preserves alpha.
-> Drawtext/drawbox cannot replicate the designed animation — use Puppeteer capture.
-
-```bash
-node scripts/apply-overlays.js "<projectDir>"
-```
-
-Скрипт:
-- Читає `edit/episode-plan.json` і `clips/scored-clips.json`
-- Для кожного кліпу: `processed/clean/<basename>.mp4` → `processed/overlayed/<basename>.mp4`
-  з animated streamer name banner (перші 3с) — це фінальний output для CapCut
-- Банер рендериться через `scripts/render-overlay.js streamer <name> <out.mkv>` (Puppeteer → FFV1 MKV)
-- Кешується в `cache/overlays/<slug>.mkv` (повторно використовується між епізодами)
-- Consecutивні кліпи від одного стрімера: банер не показується (лише `-c copy`)
-- RECONNECTING **вимкнено** — `renderReconnecting()` лишається у файлі, але не викликається з
-  `main()`. Готовий прозорий actив для ручного накладання в CapCut —
-  `assets/overlays/reconnecting-panel.mov` (ProRes 4444, alpha)
-- FFmpeg overlay (ВАЖЛИВО — НЕ використовувати `eof_action=pass`, не працює на Windows FFmpeg):
-  ```
-  [0:v][1:v]overlay=0:0:enable='between(t,0,3)':format=auto[out]
-  ```
-  `enable='between(t,0,3)'` — банер показується перші 3 секунди, потім зникає автоматично.
-
-Якщо треба переробити overlay — видалити `cache/overlays/<slug>.mkv` вручну, потім запустити знову.
-
-Оновити `state.stages.overlays = "done"`. `processed/overlayed/*.mp4` тепер готові —
-видати список у чат, далі METADATA/THUMBNAIL/REVIEW у фоні (див. AUTONOMOUS MODE в CLAUDE.md).
+Оновити `state.stages.overlays = "done"` (та сама назва stage, що й раніше — просто інший
+результат: PNG замість burned-in відео).
 
 **render-overlay.js modes:**
 ```bash
-node scripts/render-overlay.js streamer "<broadcaster_name>" "<out.mkv>"
-node scripts/render-overlay.js reconnecting "<out.mkv>"   # не викликається з apply-overlays.js більше
+node scripts/render-overlay.js streamer "<name>" "<out.mkv>"           # старий animated video overlay — НЕ викликається з render-streamer-names.js
+node scripts/render-overlay.js streamer-static "<name>" "<out.png>" [avatarUrl]   # новий, статична картинка
+node scripts/render-overlay.js reconnecting "<out.mkv>"                # не викликається
 ```
 
 Streamer overlay HTML: `assets/streamer-overlay/streamer_name.html`
 
 ---
 
-## EFFECTS — DISABLED
+## TRANSCRIBE, CENSOR, EFFECTS, старий video-burn OVERLAYS — ВИМКНЕНО
 
-Zoom punch та color punch effects вимкнені — реалізація виявилась занадто жорстокою і псує відео.
-Встановити `state.stages.effects = "skip"` і продовжити без змін у overlayed.mp4.
+Більше не виконуються — немає транскриптів (нема кому давати censor word-таймстемпи),
+а ім'я стрімера тепер накладається вручну в CapCut як картинка (`STREAMER_NAMES` вище)
+замість burned-in відео-оверлею. `transcribe-batch.js`, `apply-censor.js`,
+`apply-overlays.js` лишились на диску (не викликаються зі `stage2.js`) — довідка нижче
+застаріла, не виконувати.
+
+<details>
+<summary>Стара довідка (не виконувати, лишена для контексту)</summary>
+
+**CENSOR** читала `processed/transcripts/<basename>.json` (word-level таймстемпи з WhisperX)
+і `editorial.json → clips[id].manualMutes`, мьютила Tier 1/2 матюки/слюри
+(`scripts/lib/profanity.js`) вікном `[word.start-40ms, word.end+40ms]`, підмішувала
+`assets/sounds/glitch.wav`, писала `processed/censor/<basename>.censor-log.json` для
+review.html Tags column.
+
+**OVERLAYS (стара версія)** — `apply-overlays.js` рендерила animated banner (Puppeteer →
+FFV1 MKV, кешовано в `cache/overlays/<slug>.mkv`) і накладала його на перші 3с кожного
+`clean.mp4` через `ffmpeg overlay=0:0:enable='between(t,0,3)'` → `processed/overlayed/
+<basename>.mp4`. Consecutивні кліпи від одного стрімера — банер не показувався.
+
+</details>
 
 ---
 
 ## CAPTIONS, RECONNECTING, RENDER LONG-FORM — ВИМКНЕНО (CapCut)
 
-Ці кроки більше НЕ виконуються системою — фінальний монтаж (склейка епізоду,
-reconnecting-перебивка, субтитри) робить користувач вручну в CapCut з
-`processed/overlayed/*.mp4`. `gen-captions.js`, `build-concat.js`, `render-final.js`,
-`render-concat-filter.js` лишились на диску (не викликаються) — довідка нижче застаріла,
-не виконувати.
+Ці кроки більше НЕ виконуються системою — фінальний монтаж (склейка епізоду, обрізка
+кліпів, reconnecting-перебивка, субтитри) робить користувач вручну в CapCut з
+`processed/clean/*.mp4` + `processed/streamers_name/*.png`. `gen-captions.js`,
+`build-concat.js`, `render-final.js`, `render-concat-filter.js` лишились на диску
+(не викликаються) — довідка нижче застаріла, не виконувати.
 
 <details>
 <summary>Стара довідка (не виконувати, лишена для контексту)</summary>

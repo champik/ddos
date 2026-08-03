@@ -17,12 +17,15 @@
   "clipOrder": ["id1", "id2", "id3", "..."],
   "reconnectSource": { "clipId": "id1", "from": 3.0, "to": 5.0 },
   "reconnectPositions": ["id1"],
-  "thumbnail": { "clipId": "id4", "at": 25.5, "crop": { "x": 10, "y": 0, "w": 80, "h": 80 } },
+  "thumbnails": [{ "clipId": "id4", "at": 25.5, "main": true, "hook": "THEY LIED", "crop": { "x": 10, "y": 0, "w": 80, "h": 80 } }],
   "clips": {
     "id1": { "keeps": [[3.0, 25.0]], "short": { "mode": "desktop", "desktop": { "x": 0, "y": 0, "w": 100, "h": 100 } } }
   }
 }
 ```
+
+`clips[id].keeps`/`trim`, якщо присутні в JSON, **ігноруються** — `apply-editorial.js`
+завжди бере повну довжину кліпу (обрізку робить користувач сам у CapCut).
 
 ## Крок 1 — Перевірка стрімерів на причетність до Росії
 
@@ -62,7 +65,7 @@ streamer: <ім'я>
   clipOrder: editorial.clipOrder,
   // Groups = splits at reconnectPositions; reconnect separator inserted after each group except last
   groups: buildGroups(editorial.clipOrder, editorial.reconnectPositions || []),
-  openerClipId: editorial.thumbnail?.clipId || editorial.clipOrder[0],
+  openerClipId: (editorial.thumbnails || []).find(t => t.main)?.clipId || editorial.thumbnails?.[0]?.clipId || editorial.clipOrder[0],
   reconnectingClipId: editorial.reconnectSource?.clipId || null,
   chillPlan: { type: "skip" },
   // shorts: new format — copy directly from editorial.shorts if present
@@ -88,7 +91,7 @@ streamer: <ім'я>
 
 Вивести в чат:
 ```
-[6–9/16] APPLY_EDITORIAL + TRANSCRIBE + CENSOR + OVERLAYS...
+[6–9/16] APPLY_EDITORIAL (full length) + STREAMER_NAMES...
 ```
 
 Запустити **у фоні** (`run_in_background: true`):
@@ -110,11 +113,9 @@ ScheduleWakeup(
 ✅/🔄/⏳ СТАДІЯ   прогрес/деталі
 
 Стадії:
-- APPLY_EDITORIAL (X/26 clips — шукай "OK:" рядки)
+- APPLY_EDITORIAL (X/26 clips — шукай "OK:" рядки; кліпи повної довжини, без обрізки)
 - VOD_REPLACE (шукай "replaced, N skipped")
-- TRANSCRIBE (шукай "[N/26]")
-- CENSOR (шукай "Done: N censored" в apply-censor секції; done_with_errors/warnings — не зупиняє pipeline, дивись "state.warnings")
-- OVERLAYS (шукай "[OK]" в apply-overlays секції)
+- STREAMER_NAMES (шукай "[OK]"/"[STREAMER_NAMES] Done" в render-streamer-names секції)
 - stage2 загалом (шукай "=== stage2.js done")
 
 Якщо "=== stage2.js done" знайдено → НЕ плануй наступний wakeup, продовж pipeline:
@@ -133,40 +134,52 @@ ScheduleWakeup(
 
 Якщо всі ok — написати одним рядком "📼 VOD заміни: N/N успішно" і продовжити.
 
-**ОДРАЗУ після цього — вивести список готових кліпів для CapCut** (не чекати METADATA/THUMBNAIL/REVIEW):
+**ОДРАЗУ після цього — вивести список готових кліпів для CapCut**:
 ```
-🎬 Готові кліпи для CapCut (processed/overlayed/):
+🎬 Готові кліпи для CapCut (processed/clean/, повна довжина):
 01_<streamer>.mp4
 02_<streamer>.mp4
 ...
-```
-(`ls processed/overlayed/` в projectDir, у порядку файлів — вони вже NN-префіксовані).
 
-Далі → METADATA → THUMBNAIL → REVIEW, все **у фоні**, без очікування від користувача.
+🏷️ Картинки імені стрімера (processed/streamers_name/):
+<streamer1>.png
+<streamer2>.png
+...
+```
+(`ls processed/clean/*.mp4` і `ls processed/streamers_name/` в projectDir, у порядку
+файлів — вони вже NN-префіксовані).
+
+Якщо `editorial.thumbnails` не порожній — запусти THUMBNAIL (ddos-thumbnail skill) у фоні
+одразу після цього, не чекаючи нічого іншого (хук тепер береться прямо з
+`editorial.thumbnails[].hook`, не з metadata.json). METADATA/REVIEW лишаються вимкненими
+(METADATA залежала від транскриптів, яких більше нема; REVIEW — від metadata.json).
+
 Якщо ще йде stage2.js → заплануй ще один ScheduleWakeup(60s) з цим самим prompt.
 """
 )
 ```
 
 `stage2.js` виконує один серійний ланцюг (детальніше — `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`):
-1. `apply-editorial.js` — trim + cuts → `processed/clean/<basename>.mp4` per clip (+ VOD replace)
-2. `transcribe-batch.js` → `apply-censor.js` (серіально — CENSOR мьютить матюки/слюри
-   в `clean.mp4`, тому OVERLAYS має чекати його завершення)
-3. `fetch-avatars.js` → `apply-overlays.js` → `processed/overlayed/<basename>.mp4` — ГОТОВО ДЛЯ CAPCUT
+1. `apply-editorial.js` — повна довжина кліпу, без trim/cuts → `processed/clean/<basename>.mp4`
+   (+ VOD replace якщо clip у `editorial.vodClipIds`)
+2. `fetch-avatars.js` → `render-streamer-names.js` — по одній статичній PNG-картинці
+   імені на унікального стрімера → `processed/streamers_name/<slug>.png` — ГОТОВО ДЛЯ CAPCUT
 
-CAPTIONS, EXTRACT_FRAMES, BUILD_CONCAT, RENDER_FINAL більше не виконуються тут (файли
-лишились, виклики прибрані зі `stage2.js`).
+TRANSCRIBE, CENSOR і старий video-burn OVERLAYS (`apply-overlays.js`) більше не
+виконуються (файли лишились, виклики прибрані зі `stage2.js`) — немає транскриптів,
+немає що цензурити, а ім'я стрімера тепер накладається вручну в CapCut як картинка.
+CAPTIONS, EXTRACT_FRAMES, BUILD_CONCAT, RENDER_FINAL так само не виконуються.
 
-### Кроки 7–10 (Claude + скрипти)
+### Крок 7 — THUMBNAIL (якщо є editorial.thumbnails)
 
-Після завершення `stage2.js` і виводу списку готових кліпів (вище):
+Вивести `[14/16] THUMBNAIL — генерую обкладинку...` → THUMBNAIL (ddos-thumbnail skill),
+у фоні. Хук на обкладинці — `editorial.thumbnails[].hook`, вписаний користувачем в edit.html
+(жодної залежності від METADATA/транскриптів).
 
-7. Вивести `[10/13] METADATA — генерую YouTube метадані...` → METADATA (ddos-youtube-creatives skill)
-   — БЕЗ опису і shortIntros, лише title/tags/visibleTags/chapters/shortsMetadata
+### Кроки 8+ — ВИМКНЕНО
 
-8. THUMBNAIL (ddos-thumbnail skill, Higgsfield) — залежить тільки від metadata.json,
-   запустити одразу після METADATA. RENDER SHORTS тут більше нема — Shorts ріже сам
-   користувач у CapCut.
-
-9. Вивести `[13/13] REVIEW — генерую сторінку ревю...` → REVIEW (ddos-review skill,
-   мінімальна версія — без embed фінального відео/shorts)
+METADATA (ddos-youtube-creatives) і REVIEW (ddos-review) більше не запускаються
+автоматично після `stage2.js`/THUMBNAIL — METADATA залежала від транскриптів
+(`processed/transcripts/`), яких тепер нема, а REVIEW залежить від `exports/metadata.json`,
+який METADATA більше не генерує. Pipeline зупиняється одразу після THUMBNAIL (або одразу
+після виводу списку готових файлів, якщо `editorial.thumbnails` порожній).

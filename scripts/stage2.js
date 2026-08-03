@@ -4,16 +4,21 @@
 //
 // Selection-only pipeline (final montage happens in CapCut, see
 // docs/superpowers/specs/2026-08-02-capcut-handoff-design.md): a single
-// serial chain after APPLY_EDITORIAL (clean.mp4 ready):
-//   TRANSCRIBE → CENSOR → fetch-avatars → OVERLAYS
-// When this finishes, processed/overlayed/*.mp4 are ready to import into
-// CapCut. CAPTIONS, EXTRACT_FRAMES, BUILD_CONCAT and RENDER_LONG are no
-// longer invoked here (their scripts still exist, just unused — CapCut does
-// captions/render now, and EXTRACT_FRAMES has no remaining consumer since
-// gen-thumbnails-higgsfield.js grabs its own frames).
+// serial chain after APPLY_EDITORIAL (clean.mp4 ready, FULL length — no
+// trim/cuts, CapCut does the cutting):
+//   fetch-avatars → render-streamer-names
+// When this finishes, processed/clean/*.mp4 (full-length clips) +
+// processed/streamers_name/*.png (per-streamer name-tag images) are ready
+// for CapCut. TRANSCRIBE, CENSOR, and the old video-burn OVERLAYS
+// (apply-overlays.js) are no longer invoked here — no transcripts means no
+// censor input, and streamer identification is now a static image the user
+// places by hand instead of a burned-in video overlay. CAPTIONS,
+// EXTRACT_FRAMES, BUILD_CONCAT and RENDER_LONG remain unused for the same
+// reason as before (their scripts still exist, just unused).
 //
-// METADATA and beyond (THUMBNAIL, REVIEW) are left to Claude — they require
-// API calls and depend on METADATA output.
+// METADATA no longer runs (it depended on transcripts, which no longer
+// exist) — THUMBNAIL and REVIEW downstream of it are on hold too until
+// that's resolved.
 //
 // Usage: node scripts/stage2.js <runId> [episodeNumber]
 
@@ -60,14 +65,12 @@ async function main() {
     }
   } catch {}
 
-  // ── TRANSCRIBE → CENSOR → fetch-avatars → OVERLAYS (single serial chain —
-  // OVERLAYS is now the last stage this orchestrator runs; its output
-  // (processed/overlayed/*.mp4) is the CapCut handoff).
+  // ── fetch-avatars → render-streamer-names (single serial chain — this is
+  // now the last stage this orchestrator runs; its output (processed/clean/
+  // *.mp4 + processed/streamers_name/*.png) is the CapCut handoff).
   try {
-    await run('scripts/transcribe-batch.js', [runId]);
-    await run('scripts/apply-censor.js', [projectDir]);
     await run('scripts/fetch-avatars.js', [projectDir]);
-    await run('scripts/apply-overlays.js', [projectDir]);
+    await run('scripts/render-streamer-names.js', [projectDir]);
   } catch (e) {
     const elapsed = ((Date.now() - t0) / 60000).toFixed(1);
     console.error(`[FAIL] ${e.message}`);
@@ -76,7 +79,7 @@ async function main() {
   }
 
   const elapsed = ((Date.now() - t0) / 60000).toFixed(1);
-  console.log(`\n=== stage2.js done in ${elapsed} min — processed/overlayed/*.mp4 ready for CapCut ===\n`);
+  console.log(`\n=== stage2.js done in ${elapsed} min — processed/clean/*.mp4 + processed/streamers_name/*.png ready for CapCut ===\n`);
 }
 
 main().catch(e => { console.error('[FATAL]', e.message); process.exit(1); });

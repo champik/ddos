@@ -1,7 +1,8 @@
 ﻿# Skill: ddos-score
 
 > **Цей skill виконує тільки GENERATE_EDITORIAL (Stage 1).**
-> TRANSCRIBE відбувається в Stage 2 — крок 2 resume skill (`node scripts/transcribe-batch.js`). Не пропускати.
+> TRANSCRIBE вимкнено (Stage 2 більше не транскрибує — немає споживача: CENSOR і METADATA,
+> які читали транскрипти, теж вимкнені; деталі — `ddos-render` skill).
 > GENERATE_EDITORIAL викликається напряму з `run.md` через `node scripts/gen-editorial.js`.
 
 ---

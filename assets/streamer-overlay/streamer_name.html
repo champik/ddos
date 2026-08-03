@@ -145,20 +145,30 @@
 
       .ddos-streamer {
         /* Positioning base — Claude Code overrides per clip */
-        position: absolute;
+        /* position: absolute;
         bottom: 13%;
-        left: 32px; /* .pos-bl default */
+        left: 32px; .pos-bl default */
 
         /* Layout */
         display: flex;
         align-items: stretch;
+        /* width:fit-content — without position:absolute, a block-level flex
+           container defaults to width:auto (fills the containing block, i.e.
+           the full viewport) instead of shrinking to its content. fit-content
+           restores the shrink-to-fit sizing so the block stays exactly as
+           wide as the nickname needs.
+           No max-width: that cap existed to keep the old burned-in video
+           banner from covering too much of a 1920px frame. As a standalone
+           image the user scales by hand in CapCut, so capping width here
+           only clips long nicknames (white-space: nowrap won't wrap, and the
+           overflow falls outside the screenshot's bounding box). */
+        width: fit-content;
         min-width: 200px;
-        max-width: 540px;
 
         /* Entrance animation lifecycle */
-        animation: overlay-lifecycle 5s linear forwards;
+        /* animation: overlay-lifecycle 5s linear forwards;
         --hold-ms: 5s;
-        will-change: transform;
+        will-change: transform; */
       }
       .ddos-streamer.pos-br {
         left: auto;
