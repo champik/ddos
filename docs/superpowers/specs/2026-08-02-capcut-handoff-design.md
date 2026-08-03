@@ -1,5 +1,15 @@
 # CapCut Handoff — Selection-Only Pipeline
 
+> **Історичний документ — описує дизайн на момент 2026-08-02.** Кілька подальших ітерацій
+> змінили деталі нижче: APPLY_EDITORIAL тепер завжди full-length (`trim`/`keeps` ігноруються),
+> STREAMER OVERLAY замінено на STREAMER_NAMES (статичні PNG замість burned-in відео,
+> `processed/streamers_name/`), TRANSCRIBE/CENSOR/METADATA/REVIEW вимкнені (немає
+> транскриптів), THUMBNAIL більше не залежить від METADATA (hook — з
+> `editorial.thumbnails[].hook`, вписується вручну в edit.html), і VOD_REPLACE тепер йде
+> ПЕРШИМ (перед APPLY_EDITORIAL, заміняє лише сирий `downloads/`-файл, не кодує
+> `processed/clean/` сам). Актуальний стан — `CLAUDE.md` і skill-файли (`ddos-render`,
+> `resume`, `ddos-thumbnail` тощо), не цей файл.
+
 ## Контекст
 
 Зараз система робить повний pipeline до готового `episode-NNN.mp4` + shorts. Користувач хоче

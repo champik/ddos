@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 'use strict';
-// vod-segment.js — замінює clean.mp4 на чисту версію з VOD (без субтитрів).
+// vod-segment.js — replaces the raw downloaded clip (downloads/…) with the
+// same [0, fullDur] span sourced from the VOD (no Twitch subtitles baked in).
 //
-// Завантажує тільки потрібні сегменти з VOD і склеює їх в clean.mp4,
-// зберігаючи ті самі trim/keeps що editorial.json задав.
+// Runs BEFORE apply-editorial.js in stage2.js, purely as a source swap: find
+// the clip inside the raw VOD via audio cross-correlation, then overwrite
+// downloads/<file>.mp4 with that VOD-quality span. apply-editorial.js does
+// the one and only full-length encode afterward, reading whichever source
+// (original Twitch clip or VOD-replaced) is on disk by then — no separate
+// clean.mp4-specific encode here anymore (that used to redo the same encode
+// apply-editorial.js already did, and — because it re-applied editorial.json's
+// keeps/trim while apply-editorial.js now always uses full length — could
+// silently truncate a VOD-replaced clip back down to a stale keep range).
 //
 // Usage: node scripts/vod-segment.js <runId> <clipId1> [clipId2 ...]
 
@@ -14,7 +22,7 @@ const { readJson } = require('./lib/state');
 const { pythonBin } = require('./lib/sys');
 const { getProjectDir } = require('./lib/project-path');
 const { measureLoudness, buildLoudnormFilter } = require('./lib/audio-loudness');
-const { getDuration, hasAudioStream, analyzeSilence, hasMuteGap, isSilent } = require('./lib/media-probe');
+const { getDuration, hasAudioStream, analyzeSilence, hasMuteGap } = require('./lib/media-probe');
 
 const [,, runId, ...clipIds] = process.argv;
 if (!runId || clipIds.length === 0) {
@@ -23,19 +31,12 @@ if (!runId || clipIds.length === 0) {
 }
 
 const projectDir = getProjectDir(runId);
-const editorialPath = path.join(projectDir, 'edit', 'editorial.json');
 const downloadedPath = path.join(projectDir, 'clips', 'downloaded-clips.json');
-
-const editorial = readJson(editorialPath);
 const downloaded = readJson(downloadedPath);
 const dlMap = {};
 downloaded.forEach(c => { dlMap[c.id] = c; });
 
-const { buildBasenameMap, processedTypeDir } = require('./lib/clip-naming');
-const basenames = buildBasenameMap(editorial.clipOrder, downloaded);
-const CLEAN_DIR = processedTypeDir(projectDir, 'clean');
-const CENSOR_DIR = processedTypeDir(projectDir, 'censor');
-fs.mkdirSync(CLEAN_DIR, { recursive: true });
+const TMP_ROOT = path.join(projectDir, 'clips', '_vod_tmp');
 
 function fmtSec(sec) { return parseFloat(sec).toFixed(3); }
 
@@ -170,24 +171,14 @@ function downloadVodSegment(videoId, start, end, outPath) {
   });
 }
 
-function extractFrameSync(input, timestamp, output) {
-  const r = spawnSync('ffmpeg', [
-    '-ss', String(Math.max(0, timestamp)),
-    '-i', input,
-    '-frames:v', '1',
-    '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
-    '-q:v', '3', '-update', '1', '-y', output
-  ], { stdio: 'pipe' });
-  return r.status === 0;
-}
-
 // Overwrites the raw downloaded clip (downloads/…) with the same [0, fullDur]
-// span extracted from the VOD, so it becomes the new source of truth for any
-// future apply-editorial.js run — not just the current clean.mp4. rawPath is
-// already downloaded (it covers vodClipStart±margin, which spans the whole
-// clip by construction), so this reuses it instead of a second download.
-// Best-effort: any failure here just leaves the raw file as-is and logs a
-// warning — it must never take down the VOD replace that already succeeded.
+// span extracted from the VOD, so it becomes the new source of truth for
+// apply-editorial.js's (single) encode pass — not just some already-encoded
+// clean.mp4. rawPath is already downloaded (it covers vodClipStart±margin,
+// which spans the whole clip by construction), so this reuses it instead of
+// a second download. Best-effort: any failure here just leaves the raw file
+// as-is and logs a warning — apply-editorial.js will simply encode the
+// original Twitch clip in that case.
 async function replaceRawSource(clipId, dlClip, rawPath, srcPath, fullDur, xcorrOffset, fallbackBuffer) {
   try {
     const ssOffsetFull = (xcorrOffset !== null ? xcorrOffset : fallbackBuffer);
@@ -262,30 +253,14 @@ async function processClip(clipId, results) {
     return false;
   }
 
-  const clipEdits = editorial.clips?.[clipId] || {};
-  const inT = clipEdits.trim?.in ?? 0;
   const srcPath = dlClip.localPath;
   const fullDur = fs.existsSync(srcPath) ? await getVideoDuration(srcPath) : (dlClip.duration || 60);
-  const outT = clipEdits.trim?.out ?? fullDur;
-  const keeps = clipEdits.keeps || [];
 
   // vod_offset = END of clip in VOD; clip starts at (vod_offset - fullDur)
   const vodClipStart = vod_offset - fullDur;
 
-  // Обчислити сегменти (та сама логіка що apply-editorial.js)
-  const segments = keeps.length > 0
-    ? keeps.map(([s, e]) => [Math.max(s, inT), Math.min(e, outT)]).filter(([s, e]) => e > s)
-    : [[inT, outT]];
-
-  const basename = basenames[clipId];
-  if (!basename) {
-    console.error(`  SKIP: not in editorial.clipOrder`);
-    results[clipId] = { status: 'skipped', streamer: dlClip.broadcaster_name, reason: 'not in editorial.clipOrder' };
-    return false;
-  }
-  const tmpDir = path.join(CLEAN_DIR, `_vod_tmp_${basename}`);
+  const tmpDir = path.join(TMP_ROOT, clipId.replace(/[^a-zA-Z0-9]/g, '_'));
   fs.mkdirSync(tmpDir, { recursive: true });
-
   const rawPath = path.join(tmpDir, 'raw_vod.mp4');
 
   // Download+correlate at a given margin. Small margin covers the common ~1s
@@ -313,7 +288,7 @@ async function processClip(clipId, results) {
     const errMsg = located.stderr.slice(0, 200).trim();
     console.error(`  FAIL download: ${errMsg}`);
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    console.warn(`  → fallback: залишаємо оригінальний clean.mp4`);
+    console.warn(`  → fallback: залишаємо оригінальний завантажений файл`);
     results[clipId] = { status: 'failed', streamer: dlClip.broadcaster_name, reason: `VOD download failed: ${errMsg || 'unknown error'}` };
     return false;
   }
@@ -326,176 +301,17 @@ async function processClip(clipId, results) {
   }
 
   const { fallbackBuffer, xcorrOffset } = located;
-  if (xcorrOffset === null) console.log(`  [xcorr] fallback: ssOffset = fallbackBuffer + segStart`);
+  if (xcorrOffset === null) console.log(`  [xcorr] fallback: ssOffset = fallbackBuffer`);
 
-  const cleanPath = path.join(CLEAN_DIR, `${basename}.mp4`);
-  const cleanBak = path.join(CLEAN_DIR, `${basename}.mp4.bak`);
-
-  // Encode кожного keep-сегмента з raw_vod.mp4 (застосовуємо editorial поверх VOD-кліпу)
-  const encodedPaths = [];
-  const mutedSegments = [];
-  for (let i = 0; i < segments.length; i++) {
-    const [segStart, segEnd] = segments[i];
-    const ssOffset = xcorrOffset !== null
-      ? xcorrOffset + segStart
-      : fallbackBuffer + segStart;
-    const duration = segEnd - segStart;
-    const encodedPath = segments.length === 1 ? cleanPath : path.join(tmpDir, `enc${i}.mp4`);
-
-    // Аудіо VOD придатне, тільки якщо доріжка є І в цьому діапазоні реально є
-    // звук. Перевірка самого стріму не ловить DMCA-мют — доріжка при ньому на місці.
-    const vodHasStream = hasAudioStream(rawPath);
-    const mute = vodHasStream
-      ? detectVodMute(rawPath, ssOffset, duration, srcPath, segStart)
-      : { muted: false, detail: null };
-    const vodAudioOk = vodHasStream && !mute.muted;
-
-    if (!vodHasStream) console.warn(`  [MUTE] seg${i}: у VOD немає аудіо-доріжки`);
-    else if (mute.muted) console.warn(`  [MUTE] seg${i}: ${mute.detail}`);
-
-    // Звук з оригінального кліпу поверх VOD-картинки. Синхронність тримається
-    // на тому, що ssOffset = xcorrOffset + segStart — це той самий момент.
-    const useOrigAudio = !vodAudioOk && fs.existsSync(srcPath) && hasAudioStream(srcPath);
-    if (mute.muted && useOrigAudio) {
-      console.warn(`  [MUTE] seg${i}: беру звук з оригінального кліпу`);
-      mutedSegments.push({ seg: i, detail: mute.detail, recovered: true });
-    } else if (mute.muted || !vodHasStream) {
-      console.warn(`  [MUTE] seg${i}: оригінал теж без звуку — сегмент лишиться німим`);
-      mutedSegments.push({ seg: i, detail: mute.detail || 'no audio stream in VOD', recovered: false });
-    }
-
-    const audioInput = vodAudioOk ? 0 : 1;
-    const fallbackInputs = vodAudioOk
-      ? []
-      : useOrigAudio
-        ? ['-ss', String(segStart), '-i', srcPath]  // original clip, pre-seeked to segment start
-        : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
-
-    // No-boost policy: only attenuate loud audio, never boost quiet clips.
-    // Міряємо саме той діапазон, що піде у відео, а не весь завантажений шматок.
-    const loudnessSrc = vodAudioOk ? rawPath : (useOrigAudio ? srcPath : null);
-    const loudnessRange = vodAudioOk
-      ? { ss: ssOffset, dur: duration }
-      : { ss: segStart, dur: duration };
-    const measured = loudnessSrc ? await measureLoudness(loudnessSrc, loudnessRange) : null;
-    const loudnormFilter = loudnessSrc ? buildLoudnormFilter(measured) : null;
-    const audioFilterChain = loudnormFilter ? `,${loudnormFilter}` : '';
-
-    if (i === 0 && fs.existsSync(cleanPath)) fs.renameSync(cleanPath, cleanBak);
-
-    // Pre-seek rawPath to avoid output-level -ss applying to ALL inputs (double-seek bug
-    // when fallbackInputs adds a second input with its own pre-seek).
-    const result = await ffmpegAsync([
-      '-ss', ssOffset.toFixed(3),
-      '-i', rawPath,
-      ...fallbackInputs,
-      '-t', duration.toFixed(3),
-      '-map', '0:v', '-map', `${audioInput}:a`,
-      ...(!vodAudioOk && !useOrigAudio ? ['-shortest'] : []),
-      '-vf', 'setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1',
-      '-af', `asetpts=PTS-STARTPTS${audioFilterChain}`,
-      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
-      '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-r', '30',
-      '-y', encodedPath
-    ], `encode-seg${i}`);
-
-    if (!result.ok) {
-      const errMsg = result.stderr.slice(-200).trim();
-      console.error(`  FAIL encode seg${i}: ${errMsg}`);
-      if (fs.existsSync(cleanBak)) fs.renameSync(cleanBak, cleanPath);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      results[clipId] = { status: 'failed', streamer: dlClip.broadcaster_name, reason: `encode seg${i} failed: ${errMsg || 'unknown error'}` };
-      return false;
-    }
-    encodedPaths.push(encodedPath);
-  }
-
-  if (segments.length > 1) {
-    // Concat encoded segments → clean.mp4
-    const concatList = path.resolve(tmpDir, 'concat.txt');
-    fs.writeFileSync(concatList, encodedPaths.map(p => `file '${path.resolve(p).replace(/\\/g, '/')}'`).join('\n'));
-
-    const result = await ffmpegAsync([
-      '-f', 'concat', '-safe', '0', '-i', concatList,
-      '-c:v', 'copy', '-c:a', 'aac', '-ar', '48000', '-ac', '2',
-      '-af', 'aresample=async=1',
-      '-y', cleanPath
-    ], 'concat');
-
-    if (!result.ok) {
-      const errMsg = result.stderr.slice(-200).trim();
-      console.error(`  FAIL concat: ${errMsg}`);
-      if (fs.existsSync(cleanBak)) fs.renameSync(cleanBak, cleanPath);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      results[clipId] = { status: 'failed', streamer: dlClip.broadcaster_name, reason: `concat failed: ${errMsg || 'unknown error'}` };
-      return false;
-    }
-  }
-
-  // Відкат: якщо мют не вдалося перекрити звуком оригіналу, а той clean.mp4,
-  // який ми щойно замінили, звук мав — VOD-версія гірша за наявну. Краще
-  // лишити оригінал із субтитрами, ніж німий епізод.
-  const unrecovered = mutedSegments.filter(m => !m.recovered);
-  if (unrecovered.length > 0 && fs.existsSync(cleanBak)) {
-    const bakSilent = isSilent(cleanBak);
-    if (bakSilent === false) {
-      console.warn(`  ↩ VOD-заміну скасовано: ${unrecovered.length} сегм. без звуку, а оригінал звук мав`);
-      fs.rmSync(cleanPath, { force: true });
-      fs.renameSync(cleanBak, cleanPath);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      results[clipId] = {
-        status: 'rejected',
-        streamer: dlClip.broadcaster_name,
-        reason: `VOD muted: ${unrecovered.map(m => m.detail).join('; ')}`,
-      };
-      return false;
-    }
-  }
-
-  if (fs.existsSync(cleanBak)) fs.unlinkSync(cleanBak);
-
-  // clean.mp4 щойно перезаписано свіжим (нецензурованим) відео з VOD.
-  // apply-censor.js кешує за хешем СПИСКУ вікон мьюту, не за вмістом
-  // clean.mp4 — якщо editorial.json не змінився з минулого разу, хеш
-  // збігається і censor мовчки пропускає вже нецензурований файл. Стираємо
-  // кеш, щоб наступний запуск apply-censor.js завжди обробив цю VOD-версію.
-  fs.rmSync(path.join(CENSOR_DIR, `${basename}.censor-hash.txt`), { force: true });
-  fs.rmSync(path.join(CENSOR_DIR, `${basename}.censor-log.json`), { force: true });
-
-  // Замінити сирий завантажений файл (downloads/…) на VOD-якість, тим самим
-  // діапазоном [0, fullDur] що й оригінал — щоб будь-який майбутній
-  // apply-editorial.js (інша обрізка, виправлення мьюту тощо) читав VOD-версію
-  // за замовчуванням, а не сирий Twitch-кліп. Без цього регенерація clean.mp4
-  // без ручного повторного запуску vod-segment.js мовчки відкочує кліп назад
-  // на сирий — це вже двічі ставалось.
   const rawReplaced = await replaceRawSource(clipId, dlClip, rawPath, srcPath, fullDur, xcorrOffset, fallbackBuffer);
-
-  // Прибрати tmp
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
-  // EXTRACT_FRAMES вимкнено (gen-thumbnails-higgsfield.js сам робить frame-grab,
-  // цей кеш кадрів більше нікому не потрібен) — re-extract тут теж пропускається.
-  const dur = await getVideoDuration(cleanPath);
-
-  // Фінальна перевірка результату — VOD-заміна не повинна лишати німий кліп.
-  const warnings = mutedSegments
-    .filter(m => m.recovered)
-    .map(m => `seg${m.seg}: ${m.detail} → звук з оригіналу`);
-  if (!hasAudioStream(cleanPath)) {
-    warnings.push('у готовому clean.mp4 немає аудіо-доріжки');
-  } else if (isSilent(cleanPath) === true) {
-    warnings.push('готовий clean.mp4 повністю німий');
+  if (!rawReplaced) {
+    results[clipId] = { status: 'failed', streamer: dlClip.broadcaster_name, reason: 'raw source replace failed or rejected (see log above)' };
+    return false;
   }
-  warnings.forEach(w => console.warn(`  ⚠ ${w}`));
 
-  console.log(`  ✓ clean.mp4 замінено з VOD (${dur.toFixed(1)}s)`);
-  results[clipId] = {
-    status: 'ok',
-    streamer: dlClip.broadcaster_name,
-    reason: null,
-    warnings: warnings.length ? warnings : undefined,
-    rawReplaced,
-  };
+  results[clipId] = { status: 'ok', streamer: dlClip.broadcaster_name, reason: null };
   return true;
 }
 
@@ -510,9 +326,11 @@ async function main() {
     const success = await processClip(clipId, results);
     if (success) ok++;
   }
+  fs.rmSync(TMP_ROOT, { recursive: true, force: true });
 
-  // Персистимо sourceReplacedWithVod — без цього наступний regen (apply-editorial.js
-  // читає dlClip.localPath заново) не дізнається, що файл на диску вже VOD-якості.
+  // Персистимо sourceReplacedWithVod — без цього apply-editorial.js (читає
+  // dlClip.localPath заново) не дізнається, що файл на диску вже VOD-якості
+  // (хоча localPath не змінюється, тільки вміст файлу за тим самим шляхом).
   if (downloaded.some(c => c.sourceReplacedWithVod)) {
     fs.writeFileSync(downloadedPath, JSON.stringify(downloaded, null, 2));
   }
@@ -523,20 +341,10 @@ async function main() {
 
   const failed = clipIds.filter(id => results[id]?.status === 'failed');
   const skipped = clipIds.filter(id => results[id]?.status === 'skipped');
-  const rejected = clipIds.filter(id => results[id]?.status === 'rejected');
-  const warned = clipIds.filter(id => results[id]?.warnings?.length);
   console.log(`\n=== vod-segment.js done: ${ok}/${clipIds.length} replaced ===`);
   if (skipped.length > 0) {
     console.log(`Пропущено (${skipped.length}):`);
     skipped.forEach(id => console.log(`  ⚠ ${results[id].streamer || id}: ${results[id].reason}`));
-  }
-  if (rejected.length > 0) {
-    console.log(`Скасовано через мют (${rejected.length}) — лишився оригінальний clean.mp4:`);
-    rejected.forEach(id => console.log(`  ↩ ${results[id].streamer || id}: ${results[id].reason}`));
-  }
-  if (warned.length > 0) {
-    console.log(`Зі звуковими зауваженнями (${warned.length}):`);
-    warned.forEach(id => results[id].warnings.forEach(w => console.log(`  ⚠ ${results[id].streamer || id}: ${w}`)));
   }
   if (failed.length > 0) {
     console.log(`Не вдалося (${failed.length}):`);

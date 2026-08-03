@@ -13,6 +13,34 @@
 
 ---
 
+## VOD_REPLACE — Заміна сирого джерела (ДО кодування)
+
+```bash
+node scripts/vod-segment.js "<runId>" <clipId1> [clipId2 ...]
+```
+
+Викликається ПЕРШИМ, до APPLY_EDITORIAL, для кліпів з `editorial.vodClipIds`. Знаходить кліп
+у сирому VOD через audio cross-correlation і перезаписує **лише** сирий завантажений файл
+(`downloads/<file>.mp4`, той самий `dlClip.localPath`) на VOD-якість — той самий діапазон
+`[0, fullDur]`. Не чіпає `processed/clean/` (там ще нічого нема на цьому кроці) і не читає
+`editorial.clips[id].keeps/trim` — це вже просто заміна вхідного матеріалу, а не encode-крок
+з обрізкою.
+
+**Чому саме тут, перед кодуванням:** якщо VOD-заміна відбувається ПІСЛЯ APPLY_EDITORIAL (як
+було раніше), доводиться кодувати `clean.mp4` двічі — один раз з сирого Twitch-кліпу, другий
+раз (наново) з VOD. Замінюючи джерело спочатку, APPLY_EDITORIAL кодує кожен кліп рівно один
+раз, читаючи що б не лежало на диску (оригінал чи вже VOD-версію) на момент запуску.
+
+Позначає `downloaded-clips.json[].sourceReplacedWithVod = true`. Якщо VOD-заміна не вдалась
+(нема video_id/vod_offset, download failed, або весь діапазон німий і в VOD, і в оригіналі) —
+сирий файл лишається як є, APPLY_EDITORIAL закодує оригінальний Twitch-кліп.
+
+Пише `edit/vod-segment-results.json` (per-clip статус ok/failed/skipped + причина) — resume
+skill читає його для VOD-звіту в чат. Не оновлює `state.stages` (немає окремого stage-ключа
+для цього кроку — прогрес видно з `vod-segment-results.json`).
+
+---
+
 ## APPLY_EDITORIAL — Стандартизація кліпів, повна довжина
 
 ```bash
@@ -28,13 +56,13 @@ node scripts/apply-editorial.js "<runId>"
 editorial.json (якщо присутні) ігноруються, обрізку робить користувач сам у CapCut.
 Завжди: scale 1920×1080, loudnorm (attenuate-only, `lib/audio-loudness.js`), libx264 CRF 18,
 30fps, aac 192k, `-ac 2`. Кліп без аудіодоріжки → автоматично додається тиша (anullsrc).
+Джерело — `dlClip.localPath` (`downloads/...`), яким він є на момент запуску: якщо
+VOD_REPLACE вище вже підмінив цей файл, кодується VOD-версія; інакше — оригінальний
+Twitch-кліп. Єдиний encode-крок на кліп, більше ніхто `processed/clean/` не пише.
 
-Кешування: `clean.mp4` пропускається тільки якщо хеш audio-рішення (`edit-hash.txt`,
-залежить лише від `skipLoudnorm`) не змінився.
-
-Якщо в `editorial.vodClipIds` є кліпи — після цього кроку `vod-segment.js` підміняє їхній
-`clean.mp4` на VOD-якість (той самий діапазон `[0, fullDur]`, без обрізки — сумісно з
-full-length policy вище).
+Кешування: `clean.mp4` пропускається тільки якщо хеш (`edit-hash.txt`, залежить від
+`skipLoudnorm` І mtime сирого файлу) не змінився — заміна джерела (VOD чи будь-яка інша)
+завжди форсує перекодування.
 
 Оновити `state.stages.trim` (`done` / `done_with_errors` / `failed` — скрипт ставить сам).
 

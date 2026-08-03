@@ -91,7 +91,7 @@ streamer: <ім'я>
 
 Вивести в чат:
 ```
-[6–9/16] APPLY_EDITORIAL (full length) + STREAMER_NAMES...
+[6–9/16] VOD_REPLACE + APPLY_EDITORIAL (full length) + STREAMER_NAMES...
 ```
 
 Запустити **у фоні** (`run_in_background: true`):
@@ -112,15 +112,17 @@ ScheduleWakeup(
 Прочитай кінець логу (offset ~150, limit 100) і виведи таблицю:
 ✅/🔄/⏳ СТАДІЯ   прогрес/деталі
 
-Стадії:
-- APPLY_EDITORIAL (X/26 clips — шукай "OK:" рядки; кліпи повної довжини, без обрізки)
+Стадії (у цьому порядку — VOD_REPLACE тепер йде ПЕРЕД APPLY_EDITORIAL, замінює сирий
+downloads/-файл до кодування, а не clean.mp4 після):
 - VOD_REPLACE (шукай "replaced, N skipped")
+- APPLY_EDITORIAL (X/26 clips — шукай "OK:" рядки; кліпи повної довжини, без обрізки,
+  кодуються рівно один раз — з уже підміненого VOD-джерела де застосовно)
 - STREAMER_NAMES (шукай "[OK]"/"[STREAMER_NAMES] Done" в render-streamer-names секції)
 - stage2 загалом (шукай "=== stage2.js done")
 
 Якщо "=== stage2.js done" знайдено → НЕ плануй наступний wakeup, продовж pipeline:
 
-Перед METADATA — прочитай `<projectDir>/edit/vod-segment-results.json` (якщо існує) і виведи VOD звіт:
+Прочитай `<projectDir>/edit/vod-segment-results.json` (якщо існує) і виведи VOD звіт:
 
 ```
 📼 VOD заміни: X/N успішно
@@ -160,9 +162,11 @@ ScheduleWakeup(
 ```
 
 `stage2.js` виконує один серійний ланцюг (детальніше — `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`):
-1. `apply-editorial.js` — повна довжина кліпу, без trim/cuts → `processed/clean/<basename>.mp4`
-   (+ VOD replace якщо clip у `editorial.vodClipIds`)
-2. `fetch-avatars.js` → `render-streamer-names.js` — по одній статичній PNG-картинці
+1. `vod-segment.js` — якщо є `editorial.vodClipIds`, підміняє СИРИЙ `downloads/<file>.mp4`
+   на той самий діапазон з VOD (ДО кодування — не чіпає `processed/clean/`)
+2. `apply-editorial.js` — повна довжина кліпу, без trim/cuts → `processed/clean/<basename>.mp4`,
+   рівно один encode на кліп (читає вже підмінене джерело, якщо крок 1 його підмінив)
+3. `fetch-avatars.js` → `render-streamer-names.js` — по одній статичній PNG-картинці
    імені на унікального стрімера → `processed/streamers_name/<slug>.png` — ГОТОВО ДЛЯ CAPCUT
 
 TRANSCRIBE, CENSOR і старий video-burn OVERLAYS (`apply-overlays.js`) більше не

@@ -41,8 +41,16 @@ fs.mkdirSync(CLEAN_DIR, { recursive: true });
 
 const CONCURRENCY = Math.max(2, Math.min(4, Math.floor(os.cpus().length / 2)));
 
-function editsHash(clipEdits) {
-  const src = JSON.stringify({ audio: clipEdits.skipLoudnorm ? 'skip' : `loudnorm=${LOUDNORM_TARGET}` });
+// srcMtimeMs is part of the cache key so a source swap (e.g. VOD replace
+// overwriting downloads/<file>.mp4 in place, same path/new content) forces a
+// re-encode — without it, a re-run after VOD_REPLACE would see the cached
+// clean.mp4 as still valid (skipLoudnorm unchanged) and keep the stale,
+// pre-swap encode.
+function editsHash(clipEdits, srcMtimeMs) {
+  const src = JSON.stringify({
+    audio: clipEdits.skipLoudnorm ? 'skip' : `loudnorm=${LOUDNORM_TARGET}`,
+    srcMtimeMs,
+  });
   return crypto.createHash('md5').update(src).digest('hex');
 }
 
@@ -102,7 +110,8 @@ async function processClip(clipId) {
   const hashPath = path.join(CLEAN_DIR, `${basename}.edit-hash.txt`);
 
   const clipEdits = editorial.clips?.[clipId] || {};
-  const currentHash = editsHash(clipEdits);
+  const srcMtimeMs = fs.statSync(src).mtimeMs;
+  const currentHash = editsHash(clipEdits, srcMtimeMs);
 
   const cachedHash = fs.existsSync(hashPath) ? fs.readFileSync(hashPath, 'utf8').trim() : null;
   if (fs.existsSync(outPath) && cachedHash === currentHash) {
