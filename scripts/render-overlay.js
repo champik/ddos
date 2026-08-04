@@ -117,6 +117,19 @@ async function renderStreamer(name, outputPath, avatarUrl) {
 // video overlay. Viewport stays 1920x1080 so the block's CSS (bottom/left %,
 // adaptive width) renders identically to the video-overlay path; only the
 // element itself is captured.
+// Fixed canvas width/height every streamer-name PNG gets padded (transparently)
+// up to, regardless of nickname length or avatar presence — CapCut scales
+// imported images to a target size on drop, so two source PNGs of different
+// native size (e.g. a short "xQc" tag vs a long "wendolynortizz" tag; or a
+// streamer with an avatar — 70px tall block — vs one without — 62px tall)
+// land at different visual scales unless every export shares the same canvas.
+// The real block stays anchored at its natural size in the top-left corner;
+// only empty transparent space is added to the right/bottom. Both are a
+// floor, not a cap: a block bigger than these (a very long nickname, or some
+// future taller variant) still gets its full size rather than being cropped.
+const STREAMER_CANVAS_WIDTH = 500;
+const STREAMER_CANVAS_HEIGHT = 70;
+
 async function captureStreamerStatic(html, width, height, outputPath) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddos-ov-'));
   const tmpHtml = path.join(tmpDir, '_overlay.html');
@@ -145,7 +158,20 @@ async function captureStreamerStatic(html, width, height, outputPath) {
 
     const el = await page.$('#so');
     if (!el) throw new Error('#so element not found in streamer_name.html');
-    await el.screenshot({ path: outputPath, type: 'png', omitBackground: true });
+    const box = await el.boundingBox();
+    if (!box) throw new Error('#so element has no bounding box (not rendered/visible)');
+
+    await page.screenshot({
+      path: outputPath,
+      type: 'png',
+      omitBackground: true,
+      clip: {
+        x: box.x,
+        y: box.y,
+        width: Math.max(STREAMER_CANVAS_WIDTH, Math.ceil(box.width)),
+        height: Math.max(STREAMER_CANVAS_HEIGHT, Math.ceil(box.height)),
+      },
+    });
   } finally {
     await browser.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -164,6 +190,15 @@ async function renderStreamerStatic(name, outputPath, avatarUrl) {
   } else {
     html = html.replace(/<div class="ddos-streamer__av">[\s\S]*?<\/div>/g, '');
   }
+
+  // 1/255 background alpha across the whole page — imperceptible to the eye,
+  // but keeps every pixel in the padded canvas at alpha>0. Some editors
+  // (CapCut confirmed) auto-trim PNGs down to their fully-transparent
+  // (alpha=0) bounding box on import, which would silently undo the fixed
+  // 500x70 canvas below. Scoped to this static-PNG path only — the animated
+  // video-overlay path (renderStreamer) still wants true alpha=0 padding
+  // since it's composited with ffmpeg overlay, not re-imported as a still.
+  html = html.replace('</head>', '<style>html,body{background:rgba(0,0,0,0.004);}</style></head>');
 
   await captureStreamerStatic(html, 1920, 1080, outputPath);
   console.log(`streamer_name.html (static) → ${outputPath}`);

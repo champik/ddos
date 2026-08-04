@@ -83,12 +83,26 @@ node scripts/render-streamer-names.js "<projectDir>"
 - Для кожного **унікального** стрімера серед обраних кліпів (не для кожного кліпу окремо)
   рендерить один PNG → `processed/streamers_name/<slug(streamer)>.png`
 - Картинка — це `#so` блок з `assets/streamer-overlay/streamer_name.html` (caution-tape
-  смужка + аватар + нік), settled-кадр анімації (без руху), розмір під сам блок — НЕ
-  1920×1080 повний кадр
+  смужка + аватар + нік), settled-кадр анімації (без руху)
+- **Канва завжди 500×70px** (`STREAMER_CANVAS_WIDTH`/`STREAMER_CANVAS_HEIGHT` в
+  `render-overlay.js`), незалежно від довжини ніка чи наявності аватарки (без аватарки блок
+  сам по собі 62px заввишки, з аватаркою — 70px) — блок притиснутий у верхній лівий кут,
+  решта праворуч/знизу "прозора". Без цього CapCut масштабує імпортовані PNG по своєму, і
+  різні ніки/з чи без аватарки виходили б різного візуального розміру один відносно одного.
+  500×70 — floor, не cap: якщо блок сам більший (довгий нік типу 25-символьного
+  Twitch-максимуму) — канва розтягується під нього, контент ніколи не обрізається
+- **Padding не є справді прозорим (`alpha=0`) — це `alpha≈1` з 255** (0.4% непрозорості,
+  візуально непомітно). CapCut підтверджено обрізає PNG до bounding box повністю прозорих
+  (`alpha=0`) пікселів при імпорті — фіксована канва вище без цього нічого не дає, CapCut
+  просто обрізає її назад до видимого блоку. `renderStreamerStatic()` домішує
+  `html,body{background:rgba(0,0,0,0.004)}` перед рендером — тільки для static-PNG шляху,
+  не для старого animated video-overlay (`renderStreamer()`), де true alpha=0 і далі
+  потрібен для коректного `ffmpeg overlay`
 - Аватар — `clips/streamer-avatars.json` (готує `fetch-avatars.js`), якщо є
 - `render-overlay.js streamer-static "<name>" "<out.png>" [avatarUrl]` — Puppeteer рендерить
-  HTML у 1920×1080 viewport (щоб CSS `bottom/left %` рахувався правильно), потім скріншотить
-  тільки елемент `#so`, `omitBackground: true` → прозорий PNG
+  HTML у 1920×1080 viewport (щоб CSS `bottom/left %` рахувався правильно), бере
+  `boundingBox()` елемента `#so` і скріншотить прямокутник `{x, y, width: max(500, box.width),
+  height: max(70, box.height)}` — НЕ просто сам елемент і НЕ повний 1920×1080 кадр
 
 Користувач сам накладає картинку на потрібний кліп у CapCut (позиція/тривалість — вручну).
 
