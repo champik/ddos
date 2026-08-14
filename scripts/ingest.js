@@ -41,6 +41,14 @@ const parsedHours = hoursArg >= 0 ? parseInt(flags[hoursArg + 1], 10) : NaN;
 const HOURS = Number.isInteger(parsedHours) && parsedHours > 0 ? parsedHours : 24;
 const MAX_CANDIDATES = 500;
 
+// One-off per-run exclusion (e.g. `--exclude kaicenat,ishowspeed`) — separate
+// from the permanent STREAMER_BLACKLIST in lib/filter.js, which is for
+// streamers banned across all future episodes.
+const excludeArg = flags.indexOf('--exclude');
+const EXCLUDE_BROADCASTERS = new Set(
+  excludeArg >= 0 ? flags[excludeArg + 1].toLowerCase().split(',').map(s => s.trim()).filter(Boolean) : []
+);
+
 // Ensure month folder exists before creating project dir
 const _month = monthFolderFromRunId(runId);
 if (_month) fs.mkdirSync(path.join('projects', _month), { recursive: true });
@@ -88,6 +96,7 @@ async function main() {
       if (JCIRL_IDS.has(cat.id)) jcIrlCursors[cat.id] = nextCursor;
       let added = 0;
       for (const c of clips) {
+        if (EXCLUDE_BROADCASTERS.has((c.broadcaster_name || '').toLowerCase())) continue;
         if (!seen.has(c.id)) {
           seen.add(c.id);
           const login = c.url ? (new URL(c.url).pathname.split('/').filter(Boolean)[0] || undefined) : undefined;
@@ -140,6 +149,7 @@ async function main() {
         pages++;
         for (const c of (page.data || [])) {
           if (seenTopup.has(c.id)) continue;
+          if (EXCLUDE_BROADCASTERS.has((c.broadcaster_name || '').toLowerCase())) continue;
           seenTopup.add(c.id);
           const clip = { ...c, game_id: gameId, game_name: JCIRL_TOPUP_NAMES[gameId] };
           const rejectReason = getRejectReason(clip, vtuberBroadcasterIds);

@@ -204,10 +204,10 @@ async function renderStreamerStatic(name, outputPath, avatarUrl) {
   console.log(`streamer_name.html (static) → ${outputPath}`);
 }
 
-async function renderReconnecting(outputPath) {
+async function renderReconnecting(outputPath, durationS = DURATION_S) {
   await renderOverlay({
     htmlFile: 'assets/overlays/reconnecting.html',
-    width: 1920, height: 1080, outputPath,
+    width: 1920, height: 1080, durationS, outputPath,
   });
 }
 
@@ -226,13 +226,14 @@ if (mode === 'streamer' && args.length >= 2) {
 } else if (mode === 'streamer-static' && args.length >= 2) {
   renderStreamerStatic(args[0], args[1], args[2] || null).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'reconnecting' && args.length >= 1) {
-  renderReconnecting(args[0]).catch(e => { console.error(e.message); process.exit(1); });
+  const durationS = args[1] ? parseFloat(args[1]) : undefined;
+  renderReconnecting(args[0], durationS).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'shorts-header' && args.length >= 2) {
   renderShortsHeader(args[0], args[1]).catch(e => { console.error(e.message); process.exit(1); });
 } else {
   console.error('Usage: node render-overlay.js streamer <name> <out.mkv>');
   console.error('       node render-overlay.js streamer-static <name> <out.png> [avatarUrl]');
-  console.error('       node render-overlay.js reconnecting <out.mkv>');
+  console.error('       node render-overlay.js reconnecting <out.mkv> [durationS]');
   console.error('       node render-overlay.js shorts-header <name> <out.png>');
   process.exit(1);
 }

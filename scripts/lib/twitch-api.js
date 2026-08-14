@@ -106,6 +106,58 @@ function createTwitchClient(clientId, token) {
     return { clips, nextCursor: cursor };
   }
 
+  // Resolves login → broadcaster_id for a batch of logins (up to 100/request).
+  async function getUsersByLogin(logins) {
+    const unique = [...new Set(logins.filter(Boolean))];
+    const map = new Map();
+    for (let i = 0; i < unique.length; i += 100) {
+      const batch = unique.slice(i, i + 100);
+      const params = batch.map(l => `login=${encodeURIComponent(l)}`).join('&');
+      const data = await httpsGet(`https://api.twitch.tv/helix/users?${params}`);
+      for (const u of (data.data || [])) map.set(u.login.toLowerCase(), u.id);
+      if (i + 100 < unique.length) await sleep(150);
+    }
+    return map;
+  }
+
+  async function fetchClipsPageForBroadcaster(broadcasterId, startedAt, after) {
+    let url = `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}&started_at=${startedAt}&first=100`;
+    if (after) url += `&after=${after}`;
+    return httpsGet(url);
+  }
+
+  // Fetches ALL clips for a broadcaster in the window (no per-category cap —
+  // caller filters by view_count afterwards). Safety cap of 20 pages (2000
+  // clips) so a runaway pagination loop can't hang the run.
+  async function fetchClipsForBroadcaster(broadcasterId, startedAt, maxPages = 20) {
+    const clips = [];
+    let cursor = null;
+    for (let i = 0; i < maxPages; i++) {
+      const page = await fetchClipsPageForBroadcaster(broadcasterId, startedAt, cursor);
+      if (page.data) clips.push(...page.data);
+      cursor = page.pagination?.cursor;
+      await sleep(80);
+      if (!cursor) break;
+    }
+    return clips;
+  }
+
+  // Resolves game_id → name for a batch of ids (up to 100/request). Clips
+  // fetched by broadcaster (not by category) don't come pre-labeled with
+  // game_name the way ingest.js's category loop labels them.
+  async function getGamesByIds(gameIds) {
+    const unique = [...new Set(gameIds.filter(Boolean))];
+    const map = new Map();
+    for (let i = 0; i < unique.length; i += 100) {
+      const batch = unique.slice(i, i + 100);
+      const params = batch.map(id => `id=${encodeURIComponent(id)}`).join('&');
+      const data = await httpsGet(`https://api.twitch.tv/helix/games?${params}`);
+      for (const g of (data.data || [])) map.set(g.id, g.name);
+      if (i + 100 < unique.length) await sleep(150);
+    }
+    return map;
+  }
+
   // Batch-fetches channel tags for the given broadcaster_ids and returns the
   // subset tagged "vtuber".
   async function fetchVtuberBroadcasterIds(broadcasterIds) {
@@ -148,7 +200,10 @@ function createTwitchClient(clientId, token) {
     return vodMap;
   }
 
-  return { httpsGet, getTopGames, fetchClipsPage, fetchClipsForCategory, fetchVtuberBroadcasterIds, fetchVodCreatedTimes };
+  return {
+    httpsGet, getTopGames, fetchClipsPage, fetchClipsForCategory, fetchVtuberBroadcasterIds, fetchVodCreatedTimes,
+    getUsersByLogin, fetchClipsForBroadcaster, getGamesByIds,
+  };
 }
 
 module.exports = { createTwitchClient, sleep, fetchAppAccessToken };

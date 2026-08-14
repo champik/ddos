@@ -26,7 +26,10 @@ for (const c of downloaded) dlMap[c.id] = c;
 
 const streamerAvatars = readJsonSafe(path.join(projectDir, 'clips/streamer-avatars.json'), {});
 
-function slug(name) { return name.toLowerCase().replace(/[^a-z0-9]/g, '_'); }
+// Preserves the streamer's display-name casing (as shown in edit.html / on
+// Twitch) in the output filename — only strips characters unsafe for a
+// filename, doesn't lowercase.
+function slug(name) { return name.replace(/[^a-zA-Z0-9]/g, '_'); }
 
 const clipIds = (plan.clipOrder || []).filter(id => !String(id).startsWith('__recon'));
 

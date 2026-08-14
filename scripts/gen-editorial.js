@@ -41,6 +41,16 @@ function buildEditorialClip(c) {
   };
 }
 
+// Optional per-run override: state.priorityStreamers = ["kaicenat", "ishowspeed"]
+// pins those streamers' clips to the front, ahead of the normal group sort below
+// — regardless of category, and interleaved with each other (not one streamer's
+// block then the other's) by broadcastedAt (VOD start + offset — when the moment
+// actually happened, not when the clip resource was created). Empty/absent = no-op.
+const PRIORITY_STREAMERS = (state.priorityStreamers || []).map(s => s.toLowerCase());
+function isPriority(c) {
+  return PRIORITY_STREAMERS.includes(c.broadcaster_name.toLowerCase());
+}
+
 // Order: JC/IRL → Gaming → Music/Specialty
 // JC/IRL: grouped by streamer (streamer rank = best view_count of that streamer)
 // Gaming: grouped by game (game rank = best view_count in that game), within game by streamer
@@ -66,6 +76,13 @@ for (const c of downloaded) {
 
 const selected = [...downloaded]
   .sort((a, b) => {
+    const pa = isPriority(a), pb = isPriority(b);
+    if (pa !== pb) return pa ? -1 : 1;
+    if (pa) { // both priority — chronological by when the moment happened
+      const ta = new Date(a.broadcastedAt || a.created_at).getTime();
+      const tb = new Date(b.broadcastedAt || b.created_at).getTime();
+      return ta - tb;
+    }
     const gd = clipGroup(a) - clipGroup(b);
     if (gd !== 0) return gd;
     const g = clipGroup(a);

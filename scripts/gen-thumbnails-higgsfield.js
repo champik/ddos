@@ -58,6 +58,13 @@ if (thumbnails.length === 0) {
   process.exit(1);
 }
 
+function getDuration(filePath) {
+  const result = execFileSync('ffprobe', [
+    '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath,
+  ], { encoding: 'utf8', stdio: 'pipe' }).trim();
+  return parseFloat(result) || null;
+}
+
 function getVideoDimensions(filePath) {
   const result = execFileSync('ffprobe', [
     '-v', 'quiet', '-select_streams', 'v:0',
@@ -73,6 +80,11 @@ function extractFrame(clipId, atSec, outPath, crop) {
   if (!fs.existsSync(srcMp4)) {
     throw new Error(`source video not found for clip ${clipId}: ${srcMp4}`);
   }
+  // A seek landing exactly on (or past) the last frame yields no output frame at
+  // all — ffmpeg still exits 0, so the missing file goes unnoticed unless checked.
+  // Marks made by scrubbing to the very end of a clip in edit.html hit this.
+  const duration = getDuration(srcMp4);
+  if (duration && atSec >= duration) atSec = Math.max(0, duration - 0.1);
   const vfArgs = [];
   if (crop && crop.w < 99) {
     const { w: vw, h: vh } = getVideoDimensions(srcMp4);
@@ -86,6 +98,9 @@ function extractFrame(clipId, atSec, outPath, crop) {
     '-ss', String(atSec), '-i', srcMp4,
     '-frames:v', '1', '-q:v', '2', ...vfArgs, '-update', '1', '-y', outPath,
   ], { stdio: 'pipe' });
+  if (!fs.existsSync(outPath)) {
+    throw new Error(`ffmpeg exited 0 but wrote no frame for ${clipId} at ${atSec}s (source duration issue?)`);
+  }
   console.log(`[frame] extracted ${path.basename(outPath)} from ${clipId} at ${atSec}s${crop && crop.w < 99 ? ' (cropped)' : ''}`);
 }
 
