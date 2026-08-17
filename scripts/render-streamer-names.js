@@ -40,9 +40,11 @@ const basenames = buildBasenameMap(plan.clipOrder, downloaded);
 const state = readJsonSafe(path.join(projectDir, 'state.json'), {});
 const RANKING_MODE = state.viewOrderAscending === true || (state.categoryOrder || []).length > 0;
 
-// Rank = clip's 1-based position within its own category, ordered by
-// view_count ascending (fewest → most) — matches the video's actual per-
-// category playback order regardless of where categories fall in clipOrder.
+// Rank = clip's 1-based popularity position within its own category — #1 is
+// always the most-viewed clip in that category, #N the least, regardless of
+// which order they actually play in (the video plays low→high views, ending
+// on the #1 clip; the badge always reads "how good is this clip", not "what
+// position does it play at").
 const rankByClipId = {};
 if (RANKING_MODE) {
   const byCategory = new Map();
@@ -54,7 +56,7 @@ if (RANKING_MODE) {
     byCategory.get(key).push(c);
   }
   for (const clips of byCategory.values()) {
-    clips.sort((a, b) => a.view_count - b.view_count);
+    clips.sort((a, b) => b.view_count - a.view_count);
     clips.forEach((c, i) => { rankByClipId[c.id] = i + 1; });
   }
 }
