@@ -51,26 +51,36 @@ function isPriority(c) {
   return PRIORITY_STREAMERS.includes(c.broadcaster_name.toLowerCase());
 }
 
+// Optional per-run override: state.categoryOrder = ["Just Chatting", "IRL", ...]
+// forces category (game_name) order exactly as given, ignoring the normal
+// JC/IRL→Gaming→Specialty bucket + rank sort below. Categories not listed fall
+// back to the end, in their normal bucket/rank order. Empty/absent = no-op.
+const CATEGORY_ORDER = state.categoryOrder || [];
+function categoryOrderRank(c) {
+  const i = CATEGORY_ORDER.indexOf(c.game_name);
+  return i === -1 ? CATEGORY_ORDER.length : i;
+}
+
+// Optional per-run override: state.viewOrderAscending = true — within a
+// category, orders clips from fewest → most views (build-up/countdown
+// structure) instead of the normal best-first. Used by ranking-style
+// episodes (e.g. TopClips) where the video plays low→high per category and
+// the on-screen rank number / processed/ filename NN must match that order.
+const VIEW_ASC = state.viewOrderAscending === true ? -1 : 1;
+
 // Order: JC/IRL → Gaming → Music/Specialty
-// JC/IRL: grouped by streamer (streamer rank = best view_count of that streamer)
-// Gaming: grouped by game (game rank = best view_count in that game), within game by streamer
+// Grouped by category only (no streamer clustering) — within each top-level
+// group, clips are grouped by game_id (category rank = best view_count in
+// that category), then by view_count within the category.
 function clipGroup(c) {
   if (JCIRL_IDS.has(c.game_id)) return 0;
   if (!SPECIALTY_IDS.has(c.game_id)) return 1; // Gaming
   return 2; // Music/Specialty
 }
 
-// Streamer rank = best view_count per streamer within each group
-const streamerRank = {};
-for (const c of downloaded) {
-  const key = `${clipGroup(c)}:${c.broadcaster_name.toLowerCase()}`;
-  if (!streamerRank[key] || c.view_count > streamerRank[key]) streamerRank[key] = c.view_count;
-}
-
-// Game rank = best view_count per game (Gaming group only)
+// Category rank = best view_count per game_id, across all groups
 const gameRank = {};
 for (const c of downloaded) {
-  if (clipGroup(c) !== 1) continue;
   if (!gameRank[c.game_id] || c.view_count > gameRank[c.game_id]) gameRank[c.game_id] = c.view_count;
 }
 
@@ -83,21 +93,17 @@ const selected = [...downloaded]
       const tb = new Date(b.broadcastedAt || b.created_at).getTime();
       return ta - tb;
     }
+    if (CATEGORY_ORDER.length > 0) {
+      const cod = categoryOrderRank(a) - categoryOrderRank(b);
+      if (cod !== 0) return cod;
+      return (b.view_count - a.view_count) * VIEW_ASC;
+    }
     const gd = clipGroup(a) - clipGroup(b);
     if (gd !== 0) return gd;
-    const g = clipGroup(a);
-    if (g === 1) {
-      // Gaming: by game → by streamer → by view_count
-      const grd = (gameRank[b.game_id] || 0) - (gameRank[a.game_id] || 0);
-      if (grd !== 0) return grd;
-      const ra = streamerRank[`1:${a.broadcaster_name.toLowerCase()}`] || 0;
-      const rb = streamerRank[`1:${b.broadcaster_name.toLowerCase()}`] || 0;
-      return ra !== rb ? rb - ra : b.view_count - a.view_count;
-    }
-    // JC/IRL and rest: by streamer → by view_count
-    const ra = streamerRank[`${g}:${a.broadcaster_name.toLowerCase()}`] || 0;
-    const rb = streamerRank[`${g}:${b.broadcaster_name.toLowerCase()}`] || 0;
-    return ra !== rb ? rb - ra : b.view_count - a.view_count;
+    // Within the top-level group: by category (game_id) → by view_count
+    const grd = (gameRank[b.game_id] || 0) - (gameRank[a.game_id] || 0);
+    if (grd !== 0) return grd;
+    return (b.view_count - a.view_count) * VIEW_ASC;
   })
   .map(buildEditorialClip);
 

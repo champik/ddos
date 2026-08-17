@@ -211,6 +211,10 @@
       }
 
       /* Avatar placeholder */
+      .ddos-streamer__av-wrap {
+        position: relative;
+        flex-shrink: 0;
+      }
       .ddos-streamer__av {
         width: 48px;
         height: 48px;
@@ -221,6 +225,21 @@
         align-items: center;
         justify-content: center;
         overflow: hidden;
+      }
+
+      /* Rank number — episode-specific (e.g. TopClips: #1 in category by views).
+         Sits before the avatar, stretched to the full panel height (matches
+         nick+meta stacked height via align-items:stretch on the panel). */
+      .ddos-streamer__rank {
+        display: flex;
+        align-items: center;
+        font-family: 'Anton', sans-serif;
+        font-size: 52px;
+        line-height: 1;
+        color: #f5ff3d;
+        padding-right: 12px;
+        margin-right: 2px;
+        border-right: 2px solid rgba(245, 255, 61, 0.35);
       }
 
       /* Text block */
@@ -237,6 +256,25 @@
         color: #f4f0e6;
         white-space: nowrap;
         line-height: 1.1;
+      }
+
+      .ddos-streamer__meta {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        color: #f5ff3d;
+        white-space: nowrap;
+        line-height: 1.2;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ddos-streamer__meta .sep {
+        color: rgba(244, 240, 230, 0.35);
+      }
+      .ddos-streamer__meta .date {
+        color: rgba(244, 240, 230, 0.6);
+        margin-left: 10px;
       }
 
       /* Variant B: larger, for featured streamer */
@@ -272,13 +310,21 @@
     <div class="ddos-streamer pos-bl" id="so">
       <div class="ddos-streamer__tape"></div>
       <div class="ddos-streamer__panel">
-        <div class="ddos-streamer__av">
-          <img data-ddos-avatar
-               src="https://static-cdn.jtvnw.net/jtv_user_pictures/46a38d3a-a39c-4c43-ac12-c331b1c469c2-profile_image-300x300.png"
-               style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">
+        <div class="ddos-streamer__rank" data-ddos-rank>#3</div>
+        <div class="ddos-streamer__av-wrap">
+          <div class="ddos-streamer__av">
+            <img data-ddos-avatar
+                 src="https://static-cdn.jtvnw.net/jtv_user_pictures/46a38d3a-a39c-4c43-ac12-c331b1c469c2-profile_image-300x300.png"
+                 style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">
+          </div>
         </div>
         <div class="ddos-streamer__info">
-          <div class="ddos-streamer__nick" data-ddos-name>ISHOWSPEED</div>
+          <div class="ddos-streamer__nick" data-ddos-name>IShowSpeed</div>
+          <div class="ddos-streamer__meta">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span data-ddos-views>17.7M</span>
+            <span class="date" data-ddos-date>Mar 20, 2024</span>
+          </div>
         </div>
       </div>
     </div>

@@ -92,7 +92,7 @@ async function renderStreamer(name, outputPath, avatarUrl) {
   html = inlineLogoSvg(html);
 
   // Replace streamer name in element with data-ddos-name attribute
-  html = html.replace(/(<[^>]+data-ddos-name[^>]*>)[^<]*/g, `$1${name.toUpperCase()}`);
+  html = html.replace(/(<[^>]+data-ddos-name[^>]*>)[^<]*/g, `$1${name}`);
 
   // Replace avatar block
   if (avatarUrl) {
@@ -178,17 +178,35 @@ async function captureStreamerStatic(html, width, height, outputPath) {
   }
 }
 
-async function renderStreamerStatic(name, outputPath, avatarUrl) {
+// meta: { views?: string, date?: string, rank?: number|string } — all three
+// are opt-in. Default (no meta / meta.views omitted) = the plain classic tag,
+// name + avatar only, nothing else shown. Only ranking-style episodes (e.g.
+// TopClips) pass meta, which turns on the views/date row and — if meta.rank
+// is also given — the "#N" rank badge (a normal episode has no "#N" concept).
+async function renderStreamerStatic(name, outputPath, avatarUrl, meta = {}) {
   let html = fs.readFileSync('assets/streamer-overlay/streamer_name.html', 'utf8');
   html = inlineLogoSvg(html);
 
-  html = html.replace(/(<[^>]+data-ddos-name[^>]*>)[^<]*/g, `$1${name.toUpperCase()}`);
+  html = html.replace(/(<[^>]+data-ddos-name[^>]*>)[^<]*/g, `$1${name}`);
 
   if (avatarUrl) {
     html = html.replace(/<img[^>]+data-ddos-avatar[^>]*>/g,
       `<img data-ddos-avatar src="${avatarUrl}" style="width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;">`);
   } else {
     html = html.replace(/<div class="ddos-streamer__av">[\s\S]*?<\/div>/g, '');
+  }
+
+  if (meta.views != null) {
+    html = html.replace(/(<[^>]+data-ddos-views[^>]*>)[^<]*/g, `$1${meta.views}`);
+    if (meta.date != null) html = html.replace(/(<[^>]+data-ddos-date[^>]*>)[^<]*/g, `$1${meta.date}`);
+  } else {
+    html = html.replace(/<div class="ddos-streamer__meta">[\s\S]*?<\/div>/, '');
+  }
+
+  if (meta.rank != null) {
+    html = html.replace(/(<[^>]+data-ddos-rank[^>]*>)[^<]*/g, `$1#${meta.rank}`);
+  } else {
+    html = html.replace(/<div class="ddos-streamer__rank"[\s\S]*?<\/div>/, '');
   }
 
   // 1/255 background alpha across the whole page — imperceptible to the eye,
@@ -224,7 +242,8 @@ const [,, mode, ...args] = process.argv;
 if (mode === 'streamer' && args.length >= 2) {
   renderStreamer(args[0], args[1], args[2] || null).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'streamer-static' && args.length >= 2) {
-  renderStreamerStatic(args[0], args[1], args[2] || null).catch(e => { console.error(e.message); process.exit(1); });
+  const meta = args[3] ? JSON.parse(args[3]) : {};
+  renderStreamerStatic(args[0], args[1], args[2] || null, meta).catch(e => { console.error(e.message); process.exit(1); });
 } else if (mode === 'reconnecting' && args.length >= 1) {
   const durationS = args[1] ? parseFloat(args[1]) : undefined;
   renderReconnecting(args[0], durationS).catch(e => { console.error(e.message); process.exit(1); });
@@ -232,7 +251,7 @@ if (mode === 'streamer' && args.length >= 2) {
   renderShortsHeader(args[0], args[1]).catch(e => { console.error(e.message); process.exit(1); });
 } else {
   console.error('Usage: node render-overlay.js streamer <name> <out.mkv>');
-  console.error('       node render-overlay.js streamer-static <name> <out.png> [avatarUrl]');
+  console.error('       node render-overlay.js streamer-static <name> <out.png> [avatarUrl] [metaJson]');
   console.error('       node render-overlay.js reconnecting <out.mkv> [durationS]');
   console.error('       node render-overlay.js shorts-header <name> <out.png>');
   process.exit(1);

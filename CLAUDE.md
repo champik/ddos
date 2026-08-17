@@ -12,8 +12,10 @@
 `docs/superpowers/specs/2026-08-02-capcut-handoff-design.md`.
 
 **Output системи:** `processed/clean/<NN>_<streamer>_<idSuffix>.mp4` (кліпи повної довжини для
-CapCut) + `processed/streamers_name/<streamer>.png` (картинки імені стрімера, по одній на
-унікального стрімера) + `exports/thumbnail.png` (якщо позначені `editorial.thumbnails`).
+CapCut) + `processed/streamers_name/<NN>_<streamer>_<idSuffix>.png` (картинка імені стрімера на
+кожен кліп, той самий basename що й відповідний `.mp4` — несе перегляди/дату кліпу, і для
+ranking-епізодів `#N` — не дедуплікується по стрімеру, бо ці дані відрізняються кліп від кліпу)
++ `exports/thumbnail.png` (якщо позначені `editorial.thumbnails`).
 **METADATA/REVIEW тимчасово вимкнені** (залежали від транскриптів/metadata.json, яких більше
 нема — див. "Вимкнено" нижче) — `exports/metadata.json` не генерується.
 **Після CapCut:** користувач кладе фінальний експорт у `exports/episode.mp4` +
@@ -109,8 +111,11 @@ CapCut) + `processed/streamers_name/<streamer>.png` (картинки імені
                      ріже сам). Єдиний encode на кліп, читає downloads/ яким він є на
                      момент запуску (оригінал Twitch або вже VOD-замінений)
 9.  STREAMER_NAMES   fetch-avatars.js → render-streamer-names.js → одна статична PNG-картинка
-                     імені на унікального стрімера → processed/streamers_name/<slug>.png
-                     ← ГОТОВО ДЛЯ CAPCUT (список видається в чат одразу після stage2.js)
+                     на КОЖЕН кліп (basename = той самий що у processed/clean/, через
+                     lib/clip-naming.js) → processed/streamers_name/<NN>_<streamer>_<idSuffix>.png
+                     — несе views+дату кліпу, і #N (ранг у категорії, fewest→most views) якщо
+                     state.viewOrderAscending/categoryOrder виставлені (ranking-епізод типу
+                     TopClips) ← ГОТОВО ДЛЯ CAPCUT (список видається в чат одразу після stage2.js)
 14. THUMBNAIL        якщо editorial.thumbnails не порожній — Higgsfield прибирає стрімерський
                      chat/HUD/сабки/рекламу з позначеного кадру + upscale (БЕЗ творчої
                      трансформації емоції), потім Claude накладає наш дизайн (caution-tape
@@ -223,8 +228,9 @@ projects/<YYYY_MM_Month>/<runId>/
 │   │   ├── <basename>.mp4             # ПОВНА довжина (без trim/cuts), re-encoded (CRF 18, 30fps)
 │   │   │                              # + loudnorm ← для CapCut
 │   │   └── <basename>.edit-hash.txt   # хеш audio-рішення (skipLoudnorm) для інвалідації кешу
-│   └── streamers_name/<slug>.png      # статична картинка імені стрімера (одна на унікального
-│                                       # стрімера) — для ручного накладання в CapCut
+│   └── streamers_name/<basename>.png  # картинка імені стрімера, одна на кліп (basename як у
+│                                       # clean/) — views+дата, #N ранг для ranking-епізодів —
+│                                       # для ручного накладання в CapCut
 ├── edit/
 │   ├── edit.html                      # Editorial UI (відкрити в браузері після SCORE)
 │   ├── editorial.json                 # Рішення редактора (Claude пише при /ddos resume)
