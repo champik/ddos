@@ -57,6 +57,7 @@ async function downloadOne(match, nn) {
     }
     console.warn(`  [RETRY ${attempt}] ${basename}.mp4: ${result.stderr}`);
   }
+  console.error(`  [FAILED] ${match.sceneId} (${match.role}/${match.streamer}): exhausted 3 attempts`);
   return { match, status: 'error' };
 }
 
