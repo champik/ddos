@@ -72,11 +72,13 @@ function runTranscribeBatch(jobsFile) {
 
 async function transcribeTrailer() {
   if (fs.existsSync(TRANSCRIPT_PATH)) {
-    const existing = JSON.parse(fs.readFileSync(TRANSCRIPT_PATH, 'utf8'));
-    if (!existing.error) {
-      console.log('[TRAILER-PREP] transcript.json already exists — skipping transcription');
-      return;
-    }
+    try {
+      const existing = JSON.parse(fs.readFileSync(TRANSCRIPT_PATH, 'utf8'));
+      if (!existing.error) {
+        console.log('[TRAILER-PREP] transcript.json already exists — skipping transcription');
+        return;
+      }
+    } catch {}
   }
 
   fs.mkdirSync(TMP_DIR, { recursive: true });
