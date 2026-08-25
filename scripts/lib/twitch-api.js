@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // twitch-api.js — Twitch Helix client with retry/backoff. Single source of truth
 // so one-off/manual scripts don't hand-copy this logic and silently diverge
 // (e.g. skipping VOD enrichment, as happened when Episode_48's 72h top-up was
@@ -142,6 +142,29 @@ function createTwitchClient(clientId, token) {
     return clips;
   }
 
+  async function fetchClipsPageForBroadcasterAllTime(broadcasterId, after) {
+    let url = `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}&first=100`;
+    if (after) url += `&after=${after}`;
+    return httpsGet(url);
+  }
+
+  // Top N clips of all time for a broadcaster — no started_at/ended_at, so
+  // Twitch returns clips sorted by view_count descending instead of scoping
+  // to an ingest window. Used to build the meme-trailer phrase-search pool,
+  // which is independent of any run's ingest window (unlike fetchClipsForBroadcaster).
+  async function fetchTopClipsForBroadcaster(broadcasterId, maxClips) {
+    const clips = [];
+    let cursor = null;
+    while (clips.length < maxClips) {
+      const page = await fetchClipsPageForBroadcasterAllTime(broadcasterId, cursor);
+      if (page.data) clips.push(...page.data);
+      cursor = page.pagination?.cursor;
+      await sleep(80);
+      if (!cursor || !page.data || page.data.length === 0) break;
+    }
+    return clips.slice(0, maxClips);
+  }
+
   // Resolves game_id → name for a batch of ids (up to 100/request). Clips
   // fetched by broadcaster (not by category) don't come pre-labeled with
   // game_name the way ingest.js's category loop labels them.
@@ -202,7 +225,7 @@ function createTwitchClient(clientId, token) {
 
   return {
     httpsGet, getTopGames, fetchClipsPage, fetchClipsForCategory, fetchVtuberBroadcasterIds, fetchVodCreatedTimes,
-    getUsersByLogin, fetchClipsForBroadcaster, getGamesByIds,
+    getUsersByLogin, fetchClipsForBroadcaster, getGamesByIds, fetchTopClipsForBroadcaster,
   };
 }
 
