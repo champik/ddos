@@ -86,4 +86,4 @@ async function runParallel(tasks, concurrency) {
   return results;
 }
 
-module.exports = { buildFilename, isValidMp4, downloadClip, runParallel };
+module.exports = { buildFilename, isValidMp4, downloadClip, runParallel, tryDownload };
