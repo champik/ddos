@@ -55,7 +55,8 @@ and any of the streamer's own on-screen layout graphics.
 Keep the person, their exact facial expression, pose, and the background exactly as they
 appear in the original — do not change the emotion, do not recompose the framing, do not add
 or remove anything else that isn't stream UI.
-Photorealistic, natural lighting, no artifacts.
+Improve overall image quality: remove compression artifacts, pixelation, and noise/grain;
+sharpen fine detail. Photorealistic, natural lighting, no artifacts.
 ```
 
 ### Крок 3 — Higgsfield: очищення + upscale (всі паралельно)
