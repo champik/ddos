@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // twitch-api.js — Twitch Helix client with retry/backoff. Single source of truth
 // so one-off/manual scripts don't hand-copy this logic and silently diverge
 // (e.g. skipping VOD enrichment, as happened when Episode_48's 72h top-up was
