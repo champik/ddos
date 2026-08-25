@@ -109,10 +109,12 @@ async function processStreamer(login, broadcasterId, poolSize, twitch) {
 
   const merged = mergePhraseEntries(existing, newEntries);
   fs.mkdirSync(path.dirname(phrasesPath(login)), { recursive: true });
-  writeJsonAtomic(phrasesPath(login), merged);
-  console.log(`[PHRASE-INDEX] ${login}: phrases.json now has ${merged.length} entries (+${newEntries.length})`);
-
-  fs.rmSync(streamerTmpDir, { recursive: true, force: true });
+  try {
+    writeJsonAtomic(phrasesPath(login), merged);
+    console.log(`[PHRASE-INDEX] ${login}: phrases.json now has ${merged.length} entries (+${newEntries.length})`);
+  } finally {
+    fs.rmSync(streamerTmpDir, { recursive: true, force: true });
+  }
 
   return { login, indexed: merged.length, added: newEntries.length };
 }
@@ -150,12 +152,19 @@ async function main() {
   for (const login of logins) {
     const id = idMap.get(login);
     if (!id) continue;
-    const result = await processStreamer(login, id, poolByLogin.get(login), twitch);
-    summary.push(result);
+    try {
+      const result = await processStreamer(login, id, poolByLogin.get(login), twitch);
+      summary.push(result);
+    } catch (e) {
+      console.error(`[PHRASE-INDEX] ${login}: FAILED — ${e.message}`);
+      summary.push({ login, error: e.message });
+    }
   }
 
   console.log('\n[PHRASE-INDEX] Summary:');
-  summary.forEach(s => console.log(`  ${s.login}: ${s.indexed} indexed (+${s.added} this run)`));
+  summary.forEach(s => console.log(
+    s.error ? `  ${s.login}: FAILED — ${s.error}` : `  ${s.login}: ${s.indexed} indexed (+${s.added} this run)`
+  ));
 }
 
 main().catch(e => {
