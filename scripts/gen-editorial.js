@@ -23,33 +23,11 @@ const downloaded = allDownloaded.filter(c => {
 const state = readJson(path.join(RUN_DIR, 'state.json'));
 const episodeNumber = state.episodeNumber || 1;
 
-// Cap: at most 5 clips per streamer per episode (keep the highest view_count).
-// The download-selection maxClipsPerStreamer is 5, but the JC/IRL diversity-floor
-// and the custom-hours recency-compensation pools have NO per-streamer limit, so
-// the pool handed to editorial can carry >5 for a prolific streamer (e.g. an IRL
-// trip that spawns many clips). Trim here so one streamer can't dominate the
-// episode / the edit UI. Per-run override: state.maxClipsPerStreamer.
-const MAX_CLIPS_PER_STREAMER = state.maxClipsPerStreamer || 5;
-function capPerStreamer(clips, limit) {
-  const byStreamer = new Map();
-  for (const c of clips) {
-    const k = c.broadcaster_name.toLowerCase();
-    if (!byStreamer.has(k)) byStreamer.set(k, []);
-    byStreamer.get(k).push(c);
-  }
-  const keep = new Set();
-  for (const list of byStreamer.values()) {
-    [...list].sort((a, b) => b.view_count - a.view_count)
-      .slice(0, limit)
-      .forEach(c => keep.add(c.id));
-  }
-  return clips.filter(c => keep.has(c.id));
-}
-const capped = capPerStreamer(downloaded, MAX_CLIPS_PER_STREAMER);
-const cappedOut = downloaded.length - capped.length;
-if (cappedOut > 0) {
-  console.log(`[EDITORIAL] Per-streamer cap (${MAX_CLIPS_PER_STREAMER}/streamer): dropped ${cappedOut} clip(s)`);
-}
+// No per-streamer cap at the editorial stage — every downloaded clip that
+// survived FILTER + GAMING_SCREEN goes into edit.html so the user can pick from
+// the full pool by hand. (Tried a 5/streamer cap 2026-08-28 — user wants all
+// clips visible instead; the streamer grouping below keeps a prolific streamer's
+// block together without dropping anything.)
 
 function buildEditorialClip(c) {
   return {
@@ -97,13 +75,14 @@ function categoryOrderRank(c) {
 const VIEW_ASC = state.viewOrderAscending === true ? -1 : 1;
 
 // Order: JC/IRL bucket → Gaming bucket → Music/Specialty bucket.
-// Within a bucket: by category (game_name) — category rank = best view_count in
-// that category. Within a category: grouped by streamer — a streamer's block is
-// positioned by their single best clip's view_count, and that streamer's clips
-// stay back-to-back, ordered by view_count. So Just Chatting and IRL are their
-// own sections (not merged), each streamer-grouped; same for every gaming
-// category. Keeping one streamer's clips consecutive is the per-episode default
-// — makes the editorial pass and the CapCut drag-in far easier. Overridden by
+//  - JC/IRL is ONE combined category (Just Chatting + IRL not split). Group by
+//    streamer: a streamer's block is positioned by their single best clip's
+//    view_count across JC+IRL, and their clips stay back-to-back, by view_count.
+//  - Gaming is split per game (game_name). Within a game, same streamer grouping.
+//  - Specialty (Music/Pools) same as gaming (per game). Excluded from selection
+//    in practice, so rarely hit.
+// Keeping one streamer's clips consecutive is the per-episode default — makes the
+// editorial pass and the CapCut drag-in far easier. Overridden by
 // state.categoryOrder / state.priorityStreamers when set.
 function clipGroup(c) {
   if (JCIRL_IDS.has(c.game_id)) return 0;
@@ -111,21 +90,30 @@ function clipGroup(c) {
   return 2; // Music/Specialty
 }
 
-// Category rank = best view_count per game_id (across the whole pool)
+// Game rank = best view_count per game_id (used to order gaming/specialty games)
 const gameRank = {};
-for (const c of capped) {
+for (const c of downloaded) {
   if (!gameRank[c.game_id] || c.view_count > gameRank[c.game_id]) gameRank[c.game_id] = c.view_count;
 }
 
-// Streamer rank = best view_count per streamer WITHIN a category (game_id) —
-// so the same streamer appearing in two categories is ranked separately in each.
+// Streamer rank = a streamer's best view_count within their category scope:
+//  - JC/IRL: across the whole combined JC+IRL category  → key `jcirl:<streamer>`
+//  - Gaming/Specialty: within each game_id              → key `<game_id>:<streamer>`
+// so the same streamer in two gaming categories is ranked separately in each.
 const streamerRank = {};
-for (const c of capped) {
-  const key = `${c.game_id}:${c.broadcaster_name.toLowerCase()}`;
+for (const c of downloaded) {
+  const key = clipGroup(c) === 0
+    ? `jcirl:${c.broadcaster_name.toLowerCase()}`
+    : `${c.game_id}:${c.broadcaster_name.toLowerCase()}`;
   if (!streamerRank[key] || c.view_count > streamerRank[key]) streamerRank[key] = c.view_count;
 }
+function streamerRankOf(c) {
+  return clipGroup(c) === 0
+    ? streamerRank[`jcirl:${c.broadcaster_name.toLowerCase()}`] || 0
+    : streamerRank[`${c.game_id}:${c.broadcaster_name.toLowerCase()}`] || 0;
+}
 
-const selected = [...capped]
+const selected = [...downloaded]
   .sort((a, b) => {
     const pa = isPriority(a), pb = isPriority(b);
     if (pa !== pb) return pa ? -1 : 1;
@@ -139,13 +127,15 @@ const selected = [...capped]
       if (cod !== 0) return cod;
       return (b.view_count - a.view_count) * VIEW_ASC;
     }
-    // bucket → category → streamer-block → view_count within the streamer
+    // bucket → (gaming only: game) → streamer-block → view_count within the streamer
     const gd = clipGroup(a) - clipGroup(b);
     if (gd !== 0) return gd;
-    const crd = (gameRank[b.game_id] || 0) - (gameRank[a.game_id] || 0);
-    if (crd !== 0) return crd;
-    const ra = streamerRank[`${a.game_id}:${a.broadcaster_name.toLowerCase()}`] || 0;
-    const rb = streamerRank[`${b.game_id}:${b.broadcaster_name.toLowerCase()}`] || 0;
+    if (clipGroup(a) !== 0) {
+      // Gaming / Specialty: order games by their best clip first
+      const crd = (gameRank[b.game_id] || 0) - (gameRank[a.game_id] || 0);
+      if (crd !== 0) return crd;
+    }
+    const ra = streamerRankOf(a), rb = streamerRankOf(b);
     if (ra !== rb) return rb - ra;
     return (b.view_count - a.view_count) * VIEW_ASC;
   })
@@ -225,9 +215,8 @@ updateState(RUN_DIR, s => {
 });
 
 // Write scored-clips.json for downstream compat (no scoring fields, just clip
-// metadata). Uses the per-streamer-capped set — matches what's in the edit UI,
-// so a capped-out clip can't be referenced by editorial.thumbnails etc.
-const scoredClips = capped.map(c => ({
+// metadata).
+const scoredClips = downloaded.map(c => ({
   ...c,
   _categoryName: c._categoryName || c.game_name || c._category,
 }));
