@@ -60,10 +60,61 @@ function runTranscribeBatch(jobsFile) {
   });
 }
 
+// 70% all-time top clips + 30% top clips from the last year — all-time surfaces
+// the most quotable/iconic moments (best phrase-match material), the recent
+// slice keeps some results in the streamer's current voice/persona. Both
+// slices are still ranked by view_count; only the date window differs.
+const ALL_TIME_SHARE = 0.7;
+
+async function fetchMixedPool(broadcasterId, poolSize, twitch) {
+  const allTimeCount = Math.ceil(poolSize * ALL_TIME_SHARE);
+  const recentCount = poolSize - allTimeCount;
+
+  const allTime = await twitch.fetchTopClipsForBroadcaster(broadcasterId, allTimeCount);
+
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const now = new Date().toISOString();
+  // ended_at must be passed explicitly — Twitch defaults it to started_at + ~1
+  // week when omitted, which would silently narrow "last year" down to a
+  // single week exactly a year ago instead of the full year-to-now range.
+  const recentMaxPages = Math.max(1, Math.ceil(recentCount / 100));
+  const recent = recentCount > 0
+    ? await twitch.fetchClipsForBroadcaster(broadcasterId, oneYearAgo.toISOString(), recentMaxPages, now)
+    : [];
+
+  const seen = new Set(allTime.map(c => c.id));
+  const recentUnique = recent.filter(c => !seen.has(c.id)).slice(0, recentCount);
+
+  // The two windows overlap (a clip popular enough this year often also
+  // ranks in the all-time top), so recentUnique usually falls short of
+  // recentCount after dedup and the combined pool undershoots poolSize.
+  // Top up from all-time rather than digging deeper into "last year" —
+  // view counts there fall off fast past the first couple hundred (a
+  // recent clip has had less time to accumulate views), while all-time
+  // clip #900 is still solid. Each top-up can itself newly overlap
+  // recentUnique, shrinking it further, so loop until the shortfall
+  // stops shrinking (converges within a few rounds) rather than assuming
+  // one pass closes the gap.
+  let combinedAllTime = allTime;
+  let finalRecent = recentUnique;
+  for (let round = 0; round < 5; round++) {
+    const shortfall = poolSize - (combinedAllTime.length + finalRecent.length);
+    if (shortfall <= 0) break;
+    const grown = await twitch.fetchTopClipsForBroadcaster(broadcasterId, combinedAllTime.length + shortfall);
+    if (grown.length <= combinedAllTime.length) break; // broadcaster is out of clips, stop trying
+    combinedAllTime = grown;
+    const finalSeen = new Set(combinedAllTime.map(c => c.id));
+    finalRecent = recentUnique.filter(c => !finalSeen.has(c.id));
+  }
+
+  return { clips: [...combinedAllTime, ...finalRecent], allTimeCount: combinedAllTime.length, recentCount: finalRecent.length };
+}
+
 async function processStreamer(login, broadcasterId, poolSize, twitch) {
-  console.log(`\n[PHRASE-INDEX] ${login}: fetching up to ${poolSize} clips...`);
-  const clips = await twitch.fetchTopClipsForBroadcaster(broadcasterId, poolSize);
-  console.log(`[PHRASE-INDEX] ${login}: ${clips.length} clips returned by Twitch`);
+  console.log(`\n[PHRASE-INDEX] ${login}: fetching up to ${poolSize} clips (70% all-time / 30% last year)...`);
+  const { clips, allTimeCount, recentCount } = await fetchMixedPool(broadcasterId, poolSize, twitch);
+  console.log(`[PHRASE-INDEX] ${login}: ${clips.length} clips returned by Twitch (${allTimeCount} all-time, ${recentCount} last-year)`);
 
   const existing = readJsonSafe(phrasesPath(login), []);
   const alreadyIndexed = new Set(existing.map(e => e.clipId));

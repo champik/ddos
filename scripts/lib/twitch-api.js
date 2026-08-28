@@ -120,8 +120,15 @@ function createTwitchClient(clientId, token) {
     return map;
   }
 
-  async function fetchClipsPageForBroadcaster(broadcasterId, startedAt, after) {
+  // endedAt is optional — omitting it leaves Twitch's own default in effect,
+  // which is NOT "now": undocumented but confirmed empirically, Twitch caps
+  // the window to started_at + ~1 week when ended_at isn't given. Existing
+  // callers (short ingest windows, where "started_at + a week" comfortably
+  // covers "now") rely on that default and must keep working unchanged, so
+  // this stays opt-in rather than always sending ended_at=now.
+  async function fetchClipsPageForBroadcaster(broadcasterId, startedAt, after, endedAt) {
     let url = `https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}&started_at=${startedAt}&first=100`;
+    if (endedAt) url += `&ended_at=${endedAt}`;
     if (after) url += `&after=${after}`;
     return httpsGet(url);
   }
@@ -129,11 +136,11 @@ function createTwitchClient(clientId, token) {
   // Fetches ALL clips for a broadcaster in the window (no per-category cap —
   // caller filters by view_count afterwards). Safety cap of 20 pages (2000
   // clips) so a runaway pagination loop can't hang the run.
-  async function fetchClipsForBroadcaster(broadcasterId, startedAt, maxPages = 20) {
+  async function fetchClipsForBroadcaster(broadcasterId, startedAt, maxPages = 20, endedAt) {
     const clips = [];
     let cursor = null;
     for (let i = 0; i < maxPages; i++) {
-      const page = await fetchClipsPageForBroadcaster(broadcasterId, startedAt, cursor);
+      const page = await fetchClipsPageForBroadcaster(broadcasterId, startedAt, cursor, endedAt);
       if (page.data) clips.push(...page.data);
       cursor = page.pagination?.cursor;
       await sleep(80);
