@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { readJson, readJsonSafe, updateState } = require('./lib/state');
-const { getProjectDir, monthFolderFromRunId } = require('./lib/project-path');
+const { getProjectDir, monthFolderFromRunId, findAllProjects } = require('./lib/project-path');
 const { JCIRL_IDS, SPECIALTY_IDS } = require('./lib/categories');
 
 const runId = process.argv[2];
@@ -29,6 +29,37 @@ const episodeNumber = state.episodeNumber || 1;
 // clips visible instead; the streamer grouping below keeps a prolific streamer's
 // block together without dropping anything.)
 
+// Prior use: clipId → sorted list of episode labels (e.g. "52") where this exact
+// Twitch clip already appeared in another run's editorial.json clipOrder. Lets
+// edit.html flag a clip that a previous episode already burned — matters most
+// for month/"best of" runs that naturally re-pull the top daily clips.
+function buildPriorUseMap() {
+  const map = {};
+  for (const proj of findAllProjects()) {
+    if (proj.runId === runId) continue;
+    const ej = readJsonSafe(path.join(proj.projectDir, 'edit/editorial.json'), null);
+    const order = ej?.clipOrder;
+    if (!Array.isArray(order) || !order.length) continue;
+    // Prefer the number in the folder name (Episode_54_… → "54") — that's the
+    // identity the user and projects/index.html use; fall back to state.json's
+    // episodeNumber for Month_/Special_ runs, then the raw runId.
+    const st = readJsonSafe(path.join(proj.projectDir, 'state.json'), null);
+    const nameNum = /^Episode_(\d+)_/.exec(proj.runId);
+    const label = nameNum ? nameNum[1]
+      : (st?.episodeNumber != null ? String(st.episodeNumber) : proj.runId);
+    for (const id of order) {
+      if (!map[id]) map[id] = new Set();
+      map[id].add(label);
+    }
+  }
+  const out = {};
+  for (const [id, set] of Object.entries(map)) {
+    out[id] = [...set].sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || String(a).localeCompare(b));
+  }
+  return out;
+}
+const priorUseMap = buildPriorUseMap();
+
 function buildEditorialClip(c) {
   return {
     id: c.id,
@@ -44,6 +75,7 @@ function buildEditorialClip(c) {
     viewCount: c.view_count,
     language: c.language,
     url: c.url,
+    priorEpisodes: priorUseMap[c.id] || [],
   };
 }
 
