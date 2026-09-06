@@ -9,7 +9,6 @@ mechanical Resolve operations from data it's handed (a manifest JSON for
 Usage:
     python scripts/resolve_ctl.py assemble --manifest <path> [--force] [--dry-run]
     python scripts/resolve_ctl.py chapters --project-name <name> --timeline-name <name>
-        (not implemented yet — lands in a follow-up task in this same file)
 """
 
 import argparse
@@ -26,8 +25,7 @@ FPS = 30  # must match the CRF18/30fps encode in apply-editorial.js
 # to tell "one of our content clips" apart from intro/outro/reconnecting/
 # anything the user added by hand — the actual streamer name is resolved back
 # in Node (resolve-chapters.js), which has editorial.json/downloaded-clips.json.
-# Not used yet in this file — the `chapters` subcommand that consumes it lands in
-# a follow-up task, in the same module.
+# Consumed by cmd_chapters() below.
 BASENAME_RE = re.compile(r'^\d{2}_.+_([a-z0-9]{8}|noid)$')
 
 
@@ -217,6 +215,35 @@ def cmd_assemble(args):
           'confirmed inside Resolve.')
 
 
+def cmd_chapters(args):
+    resolve = _bootstrap_resolve()
+    pm = resolve.GetProjectManager()
+    if not pm.LoadProject(args.project_name):
+        sys.exit(f'FATAL: project "{args.project_name}" not found — run assemble first.')
+    project = pm.GetCurrentProject()
+
+    timeline = _find_timeline(project, args.timeline_name)
+    if timeline is None:
+        sys.exit(f'FATAL: timeline "{args.timeline_name}" not found in project "{args.project_name}".')
+
+    fps = float(project.GetSetting('timelineFrameRate') or FPS)
+    items = timeline.GetItemListInTrack('video', 1) or []
+
+    matches = []
+    for item in items:
+        pool_item = item.GetMediaPoolItem()
+        if not pool_item:
+            continue
+        file_path = pool_item.GetClipProperty('File Path') or ''
+        basename = os.path.splitext(os.path.basename(file_path))[0]
+        if not BASENAME_RE.match(basename):
+            continue
+        matches.append({'basename': basename, 'startSeconds': item.GetStart() / fps})
+
+    matches.sort(key=lambda m: m['startSeconds'])
+    print(json.dumps(matches))
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest='command', required=True)
@@ -226,6 +253,11 @@ def main():
     p_assemble.add_argument('--force', action='store_true')
     p_assemble.add_argument('--dry-run', action='store_true')
     p_assemble.set_defaults(func=cmd_assemble)
+
+    p_chapters = sub.add_parser('chapters')
+    p_chapters.add_argument('--project-name', required=True)
+    p_chapters.add_argument('--timeline-name', required=True)
+    p_chapters.set_defaults(func=cmd_chapters)
 
     args = parser.parse_args()
     args.func(args)
