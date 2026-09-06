@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "node scripts/lib/select.test.js && node scripts/lib/timeline.test.js && node scripts/lib/profanity.test.js && node scripts/lib/phrase-index.test.js"
+    "test": "node scripts/lib/select.test.js && node scripts/lib/timeline.test.js && node scripts/lib/profanity.test.js && node scripts/lib/phrase-index.test.js && node scripts/lib/resolve-manifest.test.js && node scripts/lib/resolve-chapters-format.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
