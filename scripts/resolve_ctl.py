@@ -9,6 +9,7 @@ mechanical Resolve operations from data it's handed (a manifest JSON for
 Usage:
     python scripts/resolve_ctl.py assemble --manifest <path> [--force] [--dry-run]
     python scripts/resolve_ctl.py chapters --project-name <name> --timeline-name <name>
+        (not implemented yet — lands in a follow-up task in this same file)
 """
 
 import argparse
@@ -25,6 +26,8 @@ FPS = 30  # must match the CRF18/30fps encode in apply-editorial.js
 # to tell "one of our content clips" apart from intro/outro/reconnecting/
 # anything the user added by hand — the actual streamer name is resolved back
 # in Node (resolve-chapters.js), which has editorial.json/downloaded-clips.json.
+# Not used yet in this file — the `chapters` subcommand that consumes it lands in
+# a follow-up task, in the same module.
 BASENAME_RE = re.compile(r'^\d{2}_.+_([a-z0-9]{8}|noid)$')
 
 
