@@ -226,7 +226,10 @@ def cmd_chapters(args):
     if timeline is None:
         sys.exit(f'FATAL: timeline "{args.timeline_name}" not found in project "{args.project_name}".')
 
-    fps = float(project.GetSetting('timelineFrameRate') or FPS)
+    fps_setting = project.GetSetting('timelineFrameRate')
+    fps = float(fps_setting) if fps_setting else FPS
+    if fps <= 0:
+        sys.exit(f'FATAL: invalid timeline frame rate: {fps}')
     items = timeline.GetItemListInTrack('video', 1) or []
 
     matches = []
